@@ -1,0 +1,11 @@
+{
+  "name": "agentic-work-packages",
+  "description": "Decompose work into agent-executable issue hierarchies — epics, path-scoped work packages, blocking gates — with a PreToolUse hook that enforces SCOPE.json path lanes.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Ken Riley",
+    "email": "kenr@nodots.com"
+  },
+  "repository": "https://github.com/nodots/agentic-work-packages",
+  "license": "UNLICENSED"
+}
