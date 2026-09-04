@@ -35,6 +35,23 @@ branch. Worktrees matter more than they look: without them, two agents on one
 checkout will fight over the index and the working tree, and the failure looks
 like nondeterministic test breakage rather than a coordination bug.
 
+**`git stash` is banned in worker worktrees.** A worktree isolates files; it does
+not isolate the stash. Linked worktrees of one repo share a single stack at
+`<common-dir>/refs/stash` — common state, not per-worktree state like `HEAD` or
+the index — so `stash@{0}` is whatever *any* worktree pushed most recently, and a
+positional `git stash pop` takes another worker's changes into the wrong tree. It
+fails silently in both directions: the owner's worktree goes clean, which reads as
+"my changes vanished" rather than as a collision, and the popper's next build or
+suite run measures foreign changes.
+
+The trigger is the before/after measurement — stash, take a baseline, pop, measure
+again — so brief workers off it. Use a patch file, which cannot reach out of one
+worktree: `git diff > <path outside the tree>`, move untracked files aside,
+`git checkout -- .`, measure, then `git apply` the patch and restore the files. If
+a stash exists anyway, recover it by reference and never by position:
+`git stash list --format='%gd %gs'`, find the entry whose message names this
+package's branch, `git stash pop <that ref>`.
+
 ## Coordination files
 
 | File | Written by | Meaning |
