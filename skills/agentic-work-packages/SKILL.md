@@ -53,6 +53,12 @@ is how the model fails.
 5. **Discovered work becomes a new package.** Never widen a live lane.
 6. **Decision and progress logs are append-only.** They are the only memory that
    survives between waves of agents.
+7. **Done is proved, not asserted.** The failing test is written before the
+   change; a package that adds a field, type or dependency names its boundary
+   round-trip test; a suite that never executes is not a gate. See
+   `references/working-agreements.md` — green tests are necessary and not
+   sufficient, and most shipped defects came from packages whose tests could not
+   fail.
 
 ## Procedure
 
@@ -82,6 +88,11 @@ for the tracker mechanics: parentage, labels or statuses, and the create calls.
 `assets/hooks/enforce-scope.js` to `.claude/hooks/` and merge
 `assets/settings-snippet.json` into `.claude/settings.json`. Without the hook,
 `SCOPE.json` is a suggestion.
+
+**7a. Brief workers on the working agreements** — `references/working-agreements.md`:
+test-first, dead gates, no silent fallbacks, boundary round-trip tests, release
+sequencing, destructive-command safety, reporting. Package acceptance criteria
+should name the failing test, and UI packages the browser E2E.
 
 **8. Dispatch and coordinate** — `references/coordination.md`: waves, the WIP
 cap, worktrees, `BLOCKER.md` / `HANDOFF.md`, and what to do when a package
@@ -121,6 +132,7 @@ uncovers work nobody planned.
 | `references/gate.md` | Gate anatomy and template |
 | `references/scope-contract.md` | `SCOPE.json` spec, enforcement, worker protocol |
 | `references/coordination.md` | Dispatch, waves, logs, anti-patterns |
+| `references/working-agreements.md` | Proof of done: test-first, dead gates, boundaries, release order, reporting |
 | `references/adapter-github.md` | GitHub Issues mechanics |
 | `references/adapter-jira.md` | Jira mechanics |
 | `assets/hooks/enforce-scope.js` | PreToolUse scope hook, no dependencies |
