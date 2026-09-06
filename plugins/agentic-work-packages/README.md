@@ -6,9 +6,23 @@ Claude Code plugin bundling the Nodots agentic development workflow:
   autonomous agents can execute in parallel: epics, path-scoped work packages
   ("cells"/"waves"), and blocking verification gates. Tracker-neutral core with
   GitHub Issues and Jira adapters.
-- **Hook** — a `PreToolUse` hook on `Edit|Write` that enforces the active work
-  package's `SCOPE.json` path lanes. Fails open: repos without a `SCOPE.json`
-  are unaffected, so enabling the plugin globally is safe.
+- **Hooks** — two, both wired automatically on install.
+  - `enforce-scope.js` (`PreToolUse` on `Edit|Write`) enforces the active work
+    package's `SCOPE.json` path lanes. An out-of-lane write is denied with the
+    blocker instruction, never a permission ask.
+  - `require-handoff.js` (`Stop`) blocks a turn from ending on a dirty feature
+    branch with neither `HANDOFF.md` nor `BLOCKER.md` written.
+
+  Both fail open and say so on stderr: a repo with no `SCOPE.json` and a
+  session on the default branch are unaffected, so enabling the plugin
+  globally is safe.
+- **Scripts** — `sync-cells.sh` derives each package's `cell:*` label from
+  observable state (merged PRs, current evidence stamps, blockers on branches)
+  rather than trusting a hand-set one; `aei-epic.js` optionally enumerates an
+  epic's backlog for an external stop guard.
+- **Worker contract** — `assets/worker-contract.md`, the checked-in contract a
+  worker runs under, installed as `.claude/worker-contract.md` and imported
+  from the repo's own `CLAUDE.md`.
 
 The model was proven on a multi-phase program in `nodots/backgammon`
 (~30 packages, five phases, four concurrent agents).
@@ -30,10 +44,27 @@ repo: your git credentials must have access to the `nodots` org
 ```
 .claude-plugin/plugin.json       plugin manifest
 skills/agentic-work-packages/    the skill (SKILL.md + references + assets)
-hooks/hooks.json                 wires the enforce-scope hook
-hooks/enforce-scope.js           SCOPE.json path-lane enforcement
+  references/                    epic, cell, gate, SCOPE.json, coordination, adapters
+  assets/hooks/                  manual-install copies of both hooks
+  assets/scripts/                bootstrap-github-labels.sh, sync-cells.sh, aei-epic.js
+  assets/tests/                  fixture tests for the hooks and scripts
+  assets/worker-contract.md      the checked-in worker contract
+hooks/hooks.json                 wires both hooks
+hooks/enforce-scope.js           SCOPE.json path-lane enforcement (PreToolUse)
+hooks/require-handoff.js         written state before a turn ends (Stop)
 ```
 
-The copy under `skills/.../assets/hooks/` is kept for manual (non-plugin)
-installs into a repo's `.claude/settings.json`; the plugin wires the hook
-automatically via `hooks/hooks.json`.
+The copies under `skills/.../assets/hooks/` are kept for manual (non-plugin)
+installs into a repo's `.claude/settings.json`; the plugin wires both hooks
+automatically via `hooks/hooks.json`. CI asserts the two copies of each hook
+stay byte-identical.
+
+## Tests
+
+```bash
+for t in plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/*.test.sh; do
+  bash "$t"
+done
+```
+
+Bash and Node builtins only, no dependencies. They run on every pull request.
