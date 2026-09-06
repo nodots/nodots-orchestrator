@@ -16,18 +16,19 @@ The model was proven on a multi-phase program in `nodots/backgammon`
 ## Install
 
 ```bash
-claude plugin marketplace add nodots/agentic-work-packages
+claude plugin marketplace add nodots/nodots-orchestrator
 claude plugin install agentic-work-packages@nodots-plugins
 ```
 
-Private repo: your git credentials must have access to the `nodots` org
+The marketplace manifest lives at the root of `nodots/nodots-orchestrator`
+(`.claude-plugin/marketplace.json`); this plugin is one entry in it. Private
+repo: your git credentials must have access to the `nodots` org
 (`gh auth setup-git` if marketplace updates fail in the background).
 
 ## Layout
 
 ```
 .claude-plugin/plugin.json       plugin manifest
-.claude-plugin/marketplace.json  this repo is its own marketplace
 skills/agentic-work-packages/    the skill (SKILL.md + references + assets)
 hooks/hooks.json                 wires the enforce-scope hook
 hooks/enforce-scope.js           SCOPE.json path-lane enforcement

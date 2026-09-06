@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "agentic-work-packages",
-      "source": "./",
+      "source": "./plugins/agentic-work-packages",
       "description": "Epic/package/gate decomposition for autonomous agent fleets, plus SCOPE.json enforcement hook."
     },
     {
