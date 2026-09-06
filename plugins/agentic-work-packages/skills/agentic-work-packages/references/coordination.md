@@ -60,6 +60,23 @@ The point of the contract is that answer 2 costs the same effort as answer 1.
 A coordinator that can say "nothing is dispatchable" without citing counts will
 say it while a queued package sits ready.
 
+### Labels are derived each cycle
+
+**The coordinator runs `assets/scripts/sync-cells.sh` every cycle**, before
+reading the queue. Labels are a projection of observable state — merged PRs,
+current evidence stamps, `BLOCKER.md` on a branch, branches without PRs — not a
+baton handed between agents. A worker-written label is lost at the rate workers
+compact; a derived one is recomputed.
+
+Two consequences:
+
+- **`HANDOFF.md` is context for the next worker, never the routing signal.** It
+  says what was learned and what comes next. What is *dispatchable* is derived
+  from the tracker and the PRs, and nothing reads `HANDOFF.md` to decide it.
+- **A hand-set label is a hint, and the next sync overwrites it.** If a label
+  has to be forced, the state it claims does not exist yet: open the PR, write
+  the blocker, push the branch.
+
 ### After a compaction, re-derive before acting
 
 A coordinator's session will compact. When it does, the next action is to
@@ -187,7 +204,10 @@ package's branch, `git stash pop <that ref>`.
 | `BLOCKER.md` | worker | stopped; needs a decision. Names what was needed and why |
 | `HANDOFF.md` | worker | context for whoever picks this up next |
 
-All three are always writable regardless of scope.
+All three are always writable regardless of scope, and the Stop hook
+(`hooks/require-handoff.js`) enforces that a worker leaving a dirty feature
+branch has written one of the last two. A worker that walks away leaves written
+state, or does not walk away.
 
 ### `BLOCKER.md`
 

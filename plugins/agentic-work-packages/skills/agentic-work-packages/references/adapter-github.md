@@ -88,6 +88,51 @@ gh issue list --repo <owner>/<host-repo> --label cell:blocked --state open
   after. A package whose dependency is published as an artifact needs a version
   bump and a release, not just a merged commit.
 
+### The evidence stamp
+
+Before `[READY]`, one comment on the PR carries the proof, first line
+machine-readable:
+
+```
+VERIFIED: unit+e2e @ 6f1c0a4e9b2d8a15c7e340bb91d2f5a8c0e7b3d6
+
+npm test
+142 passed, 0 skipped
+```
+
+A push after the stamp voids it — the sha no longer matches the head, and both
+a reviewer and `sync-cells.sh` read that as unverified. Re-run and re-stamp.
+Full rule in `working-agreements.md` §Evidence is stamped to a sha.
+
+## Labels are derived, not passed
+
+Run `assets/scripts/sync-cells.sh` each cycle. It reads the tracker, the
+branches and the PRs, and sets each `cell:*` label from what it finds:
+
+| Observed | Label |
+|---|---|
+| PR merged | `cell:merged` |
+| PR open with a current `VERIFIED` stamp | `cell:awaiting-review` |
+| `BLOCKER.md` on the branch | `cell:blocked` |
+| branch exists, no PR | `cell:active` |
+| none of the above | unchanged |
+
+```bash
+# what would change
+assets/scripts/sync-cells.sh --repo <owner>/<host-repo> --target <owner>/<code-repo>
+
+# write it
+assets/scripts/sync-cells.sh --repo <owner>/<host-repo> --target <owner>/<code-repo> --apply
+```
+
+Dry run is the default. `--state <file.json>` runs the same derivation over a
+saved state file, which is how the fixture test exercises every rule without
+touching a network.
+
+The script matches a PR to an issue by the `#<number>` reference in the PR, and
+a branch to an issue by the package ID — which is why the numbering rules
+require that ID in the issue title, the branch name and the PR title alike.
+
 ## The scope hook in the target repo
 
 Every target repo carries `enforce-scope.js` before a wave dispatches into it —

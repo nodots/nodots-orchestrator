@@ -45,6 +45,35 @@ correct, and never execute.
 - **A red pipeline nobody is alerted about is a dead gate too.** Alerting on gate
   failure belongs in the plan, as a package.
 
+## Evidence is stamped to a sha
+
+A claim that a suite passed is about a specific tree. Say which one.
+
+The stamp is one comment on the PR, and its first line is machine-readable:
+
+```
+VERIFIED: <suite or run id> @ <full head sha>
+
+<the command that was run>
+<its summary output>
+```
+
+Three rules travel with it:
+
+- **A push after the stamp voids it.** The evidence describes a tree that is no
+  longer the one under review. Re-run and re-stamp; do not argue that the
+  change was small.
+- **`[READY]` requires a current stamp** — one naming the PR's present head
+  sha. Without it the package is not ready; it is finished-looking.
+- **Credit only the enforcing tool call.** A teammate's, a subagent's or a
+  script's report that "tests pass" is a pointer to go and re-query, never a
+  clearance. The stamp records what *this* run observed, and only a run that
+  could have failed counts.
+
+`assets/scripts/sync-cells.sh` parses the first line, so a stamp naming a
+superseded sha never promotes a package to `cell:awaiting-review` — the same
+check a reviewer would do, done every cycle.
+
 ## Classify a red before retrying it
 
 "It failed twice, try again" is not a rule; it is the absence of one. Every red
@@ -187,6 +216,8 @@ next action, never the inference.
   **browser E2E**.
 - A red is **classified before it is retried**, and a blocked package files a
   `BLOCKER.md` with a structured kind — see `coordination.md` §`BLOCKER.md`.
+- Evidence is **stamped to the head sha**, and `[READY]` waits for a current
+  stamp.
 - Any package adding a field, type or dependency names its **boundary round-trip
   test**.
 - The target repo has **CI enabled, running, and free of silently skipped suites** —
