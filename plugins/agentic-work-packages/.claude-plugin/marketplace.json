@@ -1,0 +1,23 @@
+{
+  "name": "nodots-plugins",
+  "owner": {
+    "name": "Ken Riley",
+    "email": "kenr@nodots.com"
+  },
+  "description": "Nodots Claude Code plugins",
+  "plugins": [
+    {
+      "name": "agentic-work-packages",
+      "source": "./",
+      "description": "Epic/package/gate decomposition for autonomous agent fleets, plus SCOPE.json enforcement hook."
+    },
+    {
+      "name": "backgammon-rules",
+      "source": {
+        "source": "github",
+        "repo": "nodots/backgammon-rules"
+      },
+      "description": "Nodots Backgammon domain knowledge and engineering rules: session preamble hook, domain and engineering skills, specialist agents."
+    }
+  ]
+}
