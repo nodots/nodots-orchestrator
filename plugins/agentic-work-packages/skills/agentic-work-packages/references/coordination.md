@@ -303,6 +303,155 @@ Follow-ups too small for their own package are **tracked on a named package** �
 say which one carries it, in the progress log. Anything not attached to an ID is
 lost.
 
+## The worker contract
+
+`assets/worker-contract.md` is the checked-in contract every worker in a repo
+runs under: read `SCOPE.json` first, read `HANDOFF.md` if resuming, explore
+before writing, prove rather than assert, the stopping conditions, the
+completion protocol. It lives in the repo so every worker gets the same one and
+it is reviewed like code, rather than being assembled at dispatch and different
+each time.
+
+Install it as `.claude/worker-contract.md` and import it from the repo's own
+instruction file:
+
+```markdown
+@.claude/worker-contract.md
+```
+
+**It is not shipped as `AGENTS.md`, deliberately.** Some tools generate
+`AGENTS.md` whole and mark it do-not-hand-edit; a contract written there is
+silently overwritten at the next regeneration. Import it from whichever root
+file the adopter owns.
+
+## Running with AIQT Guardrails
+
+Optional, and only relevant to an adopter who installs [AIQT
+Guardrails](https://github.com/jposluns/guardrails) alongside this model. AIQT
+is a separate tool under CC BY-SA 4.0; nothing of it is copied here, and nothing
+here requires it. Three places the two touch the same file, settled in advance
+so an adopter does not discover them at runtime. The observations below were
+read from the repository at commit `52e69c6`.
+
+### Seam 1 — who owns the instruction file
+
+AIQT generates `AGENTS.md` (and the vendor equivalents) whole, from its rule
+corpus, and marks the result do-not-hand-edit. Its `CLAUDE.md` convention is one
+generated block inside a file whose remainder the adopter owns.
+
+The resolution: this model's worker contract ships as
+`assets/worker-contract.md`, never as `AGENTS.md`, and the adopter imports it
+from the hand-authored layer with `@.claude/worker-contract.md`. Nothing here
+writes to a generated file, so regeneration is safe and the contract survives
+it.
+
+### Seam 2 — who declares the lane
+
+Both systems declare a write lane, and their declarations are not the same
+shape: `SCOPE.json` is globs, with `allowedPaths` plus a `forbiddenPaths`
+denial evaluated last; AIQT's write-scope reads a stricter allow-only,
+wildcard-free declaration from its own state directory.
+
+The resolution: **`SCOPE.json` stays the source of the lane.** An adopter who
+wants AIQT's deny stacked on top of `enforce-scope.js` may derive the AIQT
+declaration from `SCOPE.json` — one way, at dispatch, expanding globs against
+the tree. Never the reverse: a lane derived back from the stricter form would
+silently drop the `forbiddenPaths` half, and a package would gain access to the
+serialising paths that the model exists to keep it out of.
+
+Note the two are not redundant. `enforce-scope.js` is branch-scoped and
+coordinator-authored; AIQT's is slice-scoped with a floor its own declaration
+cannot lower. Running both means an out-of-lane write is denied twice, which is
+fine — a deny is idempotent.
+
+### Seam 3 — hook coexistence
+
+An unattended worker must never land in a permission prompt (§Enforcement in
+`scope-contract.md`). AIQT ships 22 controls at `52e69c6`; four of them default
+to `ask`, and a prompt in an unattended run is a stall. Every control, its
+default, and this model's disposition:
+
+| AIQT control | Event | Default | Disposition here |
+|---|---|---|---|
+| `diff-source` | PreToolUse (Bash) | block | compatible |
+| `commit-identity` | PreToolUse (Bash) | block | **check first** — see below |
+| `abs-paths` | PreToolUse (file tools) | block | compatible |
+| `abs-paths-bash` | PreToolUse (Bash) | **ask** | map to deny for unattended workers |
+| `git-discard` | PreToolUse (Bash) | **ask** | map to deny for unattended workers |
+| `protected-line-guard` | PreToolUse (Bash) | block | compatible |
+| `branch-root-guard` | PreToolUse (Bash) | block | compatible |
+| `gate-weakening-guard` | PreToolUse (Bash) | block | compatible — it enforces what §A gate that has never run is not a gate already says |
+| `commit-msg-subst` | PreToolUse (Bash) | **ask** | map to deny for unattended workers |
+| `secrets-shift-left` | PreToolUse (write + Bash) | block | compatible |
+| `gensrc-edit-guard` | PreToolUse (write tools) | **ask** | map to deny for unattended workers |
+| `write-scope` | PreToolUse (write tools) | block | seam 2 |
+| `diff-wall-stop` | Stop | warn | compatible |
+| `orch-stop-guard` | Stop | block | the N-14 seam: point its enumerator at `assets/scripts/aei-epic.js` |
+| `orch-teammate-idle-guard` | TeammateIdle | block | compatible |
+| `orch-yield-tool-guard` | PreToolUse (scheduling tools) | block | compatible |
+| `orch-ask-unattended` | PreToolUse (`AskUserQuestion`) | block | compatible, and it enforces the same rule as §Hook hygiene |
+| `orch-truncation-guard` | PreToolUse (Bash) | block | compatible |
+| `orch-dispatch-ledger` | PostToolUse | warn | compatible — recording only |
+| `orch-prompt-stamp` | UserPromptSubmit | warn | compatible — recording only |
+| `orch-resume-audit` | SessionStart | warn | compatible — complements §After a compaction, re-derive before acting |
+| `orch-resume-barrier` | PreToolUse (write + Bash) | warn | compatible |
+
+Four `ask` controls, and the disposition for each is the same: **for an
+unattended worker, configure them to deny.** An ask hands the confined worker
+the click-through on its own confinement, and with nobody at the keyboard it
+stalls the run instead of stopping it with a reason. For an attended session,
+leave them as they are.
+
+**One control to check before adopting: `commit-identity`.** It denies any AI
+identity in a commit author, committer, or trailer. This model states no
+commit-authorship convention, so there is no conflict *here* — but a repo whose
+own conventions require an agent attribution tag for PR-to-session traceability
+has a direct conflict, and one of the two has to give. Check the adopting repo's
+conventions before installing, not after the first denied commit.
+
+### The registry, for N-14
+
+If the adopter runs AIQT's stop guard, point its enumerator at this model's
+backlog so the guard's denial covers these packages. In
+`.aiqt/orchestration.json`:
+
+```json
+{
+  "version": 1,
+  "enumerator": {
+    "argv": ["node", ".claude/skills/agentic-work-packages/assets/scripts/aei-epic.js",
+             "--repo", "<owner>/<host-repo>", "--epic", "<epic issue number>"],
+    "timeout": 60
+  }
+}
+```
+
+The argv is fixed by the registry and the provider reads the epic from the
+tracker, so the guard never takes a backlog from the agent that wants to stop.
+The provider fails closed: a malformed line, a duplicate id, an unknown blocker
+kind or an unreadable epic exits non-zero, which the guard reads as
+cannot-evaluate and — on the stop path — denies.
+
+**A kind and a reference are not automatically proof.** Measured against the
+guard at `52e69c6`: a `not-before` blocker substantiates from its own timestamp,
+but a `tracked-task` reference must resolve to a live row in the guard's
+dispatch ledger, and a `human-decision` reference must be a decision id matching
+a row in a declared pending-decisions record. A blocker carrying only a kind and
+a bare reference enumerates correctly and is still counted as actionable by the
+guard, which denies the stop. That is the guard behaving as designed — it is why
+the reference field in `BLOCKER.md` names a real artifact rather than a person's
+job title — but an adopter wiring this up should expect it rather than read the
+denial as a provider bug.
+
+Verified once, by hand, against that commit: an epic with one open unblocked
+package denies the stop and names the package; an epic whose every open package
+carries a substantiated blocker allows it; a malformed checklist line makes the
+enumeration fail closed, and the guard denies rather than treating an
+unreadable backlog as an empty one.
+
+**This is optional.** Without AIQT, nothing changes and §The stopping condition
+stands on its own.
+
 ## Anti-patterns
 
 - **A package without file paths.** The exploration was not done; the agent will

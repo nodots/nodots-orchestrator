@@ -174,7 +174,25 @@ silent drop.
 - **Depends on:** #104 · **Parallelizable:** yes — alongside #110.
 ```
 
-### 9.3 A blocker — `BLOCKER.md` on the `feat/session-expiry` worktree
+### 9.3 The target repo's `CLAUDE.md`
+
+Each target repo imports the worker contract from the hand-authored layer, so
+every worker dispatched into it runs under the same reviewed file:
+
+```markdown
+# example/acme-chess-server
+
+@.claude/worker-contract.md
+
+## Domain invariants
+- The move protocol package is frozen; changes go through a
+  cell:contract-change cell.
+```
+
+The contract is installed as `.claude/worker-contract.md`, never as
+`AGENTS.md`: tools that generate `AGENTS.md` whole would overwrite it.
+
+### 9.4 A blocker — `BLOCKER.md` on the `feat/session-expiry` worktree
 
 The gap cell #110 stopped on a decision it could not make inside its lane.
 
