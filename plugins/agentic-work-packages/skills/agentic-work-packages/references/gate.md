@@ -18,6 +18,12 @@ whole. Each agent proved its own unit; nobody proved the seam.
   cases.** "Two users complete a session" is half a gate; "the off-turn user's
   mutations are rejected at multiple points" is the other half.
 - **Close with the consequence:** `**Blocking gate for:** Phase 2 (#N).`
+- **The verifier restates the criteria before the phase's workers build.** A
+  `gate-verify` package's verifier writes down the exact commands and
+  assertions that will constitute the proof, and it does so early enough that
+  the phase's packages can be built against it. Disagreement between the
+  restatement and the gate's criteria is a defect in the plan, filed before
+  code, not a negotiation at review time.
 
 ## Gates held for a human
 
@@ -54,10 +60,17 @@ gate: Phase 1 packages do not dispatch until it passes.
   "execution": {
     "model": "strongest available",
     "pattern": "gate-verify",
+    "window": "<context window, or the autocompact setting>",
     "agents": []
   }
 }
 ```
+
+### Verifier restatement
+_(the exact commands and assertions this gate will run, written before the
+phase's packages are built)_
+- Commands: `<exact command>`
+- Assertions: `<what each one proves>`
 
 ### Acceptance criteria
 - [ ] <positive end-to-end assertion>

@@ -111,16 +111,20 @@ Decisions log and progress log entries, showing the scope-down, gap-cell and esc
   cell:contract-change cell.
 
 ## Progress log (live)
-- 2026-08-04 — Wave 1 dispatched: #103, #104 (deps-free, cap 4, 2 used).
-  Scope-down on #104 at dispatch: reconnect only; presence indicators
-  deferred to a Phase 2 gap cell if needed.
-- 2026-08-05 — Wave 1 COMPLETE (2/2 merged). #104 revealed the session
-  store has no expiry sweep — gap cell opened: #110 M1.1k, inserted
-  before V1. Next wave: #105, #110.
-- 2026-08-06 — #105 failed review twice (validation accepted illegal
-  castling). Re-dispatched per the escalation rule: model upgraded one tier,
-  pattern upgraded solo → implement+review. Logged here; SCOPE.json
-  default unchanged.
+- **2026-08-04 · cycle 1 — moved.** Wave 1 dispatched: #103, #104
+  (deps-free, cap 4, 2 used). Scope-down on #104 at dispatch: reconnect
+  only; presence indicators deferred to a Phase 2 gap cell if needed.
+- **2026-08-05 · cycle 2 — moved.** Wave 1 complete: #103, #104 merged.
+  #104 revealed the session store has no expiry sweep — gap cell opened:
+  #110 M1.1k, inserted before V1. Next wave: #105, #110.
+- **2026-08-06 · cycle 3 — exhausted.** Open 5; blocked 1 (#110 on
+  BLOCKER.md, kind human-decision, ref: product owner); in review 1
+  (#105); free slots 3, nothing queued. No dispatch.
+- **2026-08-07 · cycle 4 — moved.** #105 failed review twice (validation
+  accepted illegal castling — deterministic red, classified, zero
+  re-runs). Re-dispatched per the escalation rule: model one tier up,
+  pattern solo → implement+review. Logged here; SCOPE.json default
+  unchanged. #110 unblocked by the decision below.
 ```
 
 ### 9.2 A cell — `example/acme-chess#105`
@@ -153,8 +157,9 @@ silent drop.
   "dependsOn": ["feat/websocket-relay"],
   "estimatedScope": "one session; ~3 files plus tests",
   "execution": {
-    "model": "sonnet",
+    "model": "session default",
     "pattern": "solo",
+    "window": "200k",
     "agents": []
   }
 }
@@ -167,6 +172,40 @@ silent drop.
 
 ### Dependencies
 - **Depends on:** #104 · **Parallelizable:** yes — alongside #110.
+```
+
+### 9.3 A blocker — `BLOCKER.md` on the `feat/session-expiry` worktree
+
+The gap cell #110 stopped on a decision it could not make inside its lane.
+
+```markdown
+# BLOCKER: M1.1k — expiry sweep needs a retention policy nobody has set
+
+**Bucket:** blocked on a decision
+**Kind:** human-decision
+**Reference:** product owner
+**Owner:** product owner
+**Un-blocks when:** a retention value is recorded in the epic's decisions log
+
+## What was needed, and why
+The sweep must delete abandoned sessions. `store.ts:140` has no retention
+value and none exists anywhere in the repo. Any number chosen here becomes
+the product's data-retention behaviour by default.
+
+## Alternatives searched
+- Infer from the existing reconnect grace period (90s) — fails: that bounds
+  one disconnect, not an abandoned game, and reusing it would expire live
+  games mid-play.
+- Ship the sweep behind a config flag defaulted off — fails: a flag nobody
+  sets is a dead gate; the store still grows unbounded in production.
+- Make it configurable with no default — fails: the deploy has no value to
+  supply, so this is the same decision one layer further away.
+
+## The ask
+M1.1k: session retention before sweep — options: 24h / 7d / configurable
+with a 7d default : recommendation 7d default, configurable : decide-by
+the V1 gate : cost-of-waiting V1 cannot assert cleanup, and the store grows
+unbounded on the staging stack.
 ```
 
 Note the arc across the two excerpts: #105 was cut as `solo` on the default tier (the execution-profile table would have given a core-logic cell `implement+review`; the planner under-provisioned it), it failed review twice, and the escalation rule moved it up a tier at re-dispatch — with the escalation recorded in the progress log, not by editing the cell.

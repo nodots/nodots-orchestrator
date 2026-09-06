@@ -55,10 +55,33 @@ A fenced `json` block, verbatim, ready to copy to disk. Full field reference in
 ### Execution profile
 
 `SCOPE.json.execution` declares how the package is run: model tier, subagent
-pattern, and any named agents. The planner assigns it at cut time from the
-table in `coordination.md` §Execution profiles; the coordinator may resolve it
-differently at dispatch and logs the change on the wave entry. Field reference
-in `scope-contract.md`.
+pattern, context window, and any named agents. The planner assigns it at cut
+time from the table in `coordination.md` §Execution profiles; the coordinator
+may resolve it differently at dispatch and logs the change on the wave entry.
+Field reference in `scope-contract.md`.
+
+Two rules travel with it:
+
+- **A cheaper tier needs a tool that checks the output** — a test, a schema, a
+  build, a gate — or a bounded transform against a precise spec. Ask the
+  question the profile table asks: is this package's output verifiable by a
+  tool? If the answer is no, the cheap tier is an unmeasured bet.
+- **State the `window`.** Choosing a model chooses a context window, and the
+  window drives cost more than the per-token price. A profile that omits it
+  does not say what the package costs.
+
+### Verifier restatement (optional, and worth it)
+
+For the `implement+test` and `gate-verify` patterns, add a step before any code
+is written: **the verifier restates the acceptance criteria as the exact
+commands and tests it will run**, and the worker builds to that restatement.
+
+The restatement comes from the verifier, not the implementer, because an agent
+grading its own output grades what it meant. Where the restatement and the
+criteria disagree, the package is defective — file the defect and fix the
+package *before* code exists, which is the cheapest moment it will ever be.
+Leave a placeholder in the package for the restatement so it is visible in
+review.
 
 ### Acceptance criteria
 
@@ -111,10 +134,17 @@ is a valid and useful answer — it marks the package as first-wave.
   "execution": {
     "model": "<cheapest | session default | strongest available>",
     "pattern": "<solo | implement+review | implement+test | gate-verify>",
+    "window": "<context window, or the autocompact setting>",
     "agents": []
   }
 }
 ```
+
+### Verifier restatement
+_(filled in by the verifier before implementation starts, for `implement+test`
+and `gate-verify` packages; delete for `solo`)_
+- Commands: `<exact command>`
+- Tests: `<exact test names>`
 
 ### Acceptance criteria
 - [ ] <observable behaviour, ideally under a named test>

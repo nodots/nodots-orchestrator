@@ -45,6 +45,49 @@ correct, and never execute.
 - **A red pipeline nobody is alerted about is a dead gate too.** Alerting on gate
   failure belongs in the plan, as a package.
 
+## Classify a red before retrying it
+
+"It failed twice, try again" is not a rule; it is the absence of one. Every red
+gets classified before anything is re-run, and the class decides the response.
+
+- **A deterministic red gets zero re-runs.** The same failure shape twice, or a
+  single failure that maps to a readable code path — a stable raise, a rejected
+  transition, a fixed assertion — is not a flake. Re-running it buys nothing
+  and costs a full suite. It is a diagnosis assignment: read the path, form the
+  hypothesis, then change something.
+- **An infrastructure red gets exactly one re-run.** A missing resource, a
+  crashed worker, a transient 5xx. If the second run reds identically, the
+  flake hypothesis is retired — permanently, for that failure — and it is
+  reclassified as deterministic.
+- **A passing re-run does not erase the earlier failure.** It narrows the
+  question to "what differs between the runs", which is still an open
+  question.
+
+**A verifier reports the state of the code. It never authors the green.** An
+agent that re-runs a suite until it passes, or relaxes an assertion until it
+holds, has produced a green that means nothing, and the cost is not the wasted
+runs — it is that nobody can tell afterwards which greens were witnessed and
+which were manufactured.
+
+### Four hypotheses at a product boundary
+
+Any red at a product boundary has four possible causes, and they are not
+interchangeable:
+
+| Hypothesis | Decidable from | |
+|---|---|---|
+| The test is bad by construction | the artifacts alone | self-decidable |
+| The harness or fixture is buggy | the artifacts alone | self-decidable |
+| The product is buggy | needs an oracle | **not** self-decidable |
+| The feature was never implemented | needs an oracle | **not** self-decidable |
+
+The first two an agent can settle by reading what it already has. The last two
+need an oracle outside the code — a specification, a prior human run, a
+recorded behaviour — and neither is ever handed to a worker as "make this
+green". A worker told to make a red green, where the red is an unimplemented
+feature, will implement whatever makes the assertion pass. That is how a stub
+acquires a passing test.
+
 ## Fail loudly; no silent fallbacks
 
 **Never add fallback logic that substitutes a different answer when the intended
@@ -142,6 +185,8 @@ next action, never the inference.
 
 - Package acceptance criteria name the **failing test first**; UI packages name the
   **browser E2E**.
+- A red is **classified before it is retried**, and a blocked package files a
+  `BLOCKER.md` with a structured kind — see `coordination.md` §`BLOCKER.md`.
 - Any package adding a field, type or dependency names its **boundary round-trip
   test**.
 - The target repo has **CI enabled, running, and free of silently skipped suites** —

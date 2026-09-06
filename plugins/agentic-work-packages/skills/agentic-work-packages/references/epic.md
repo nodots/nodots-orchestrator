@@ -51,6 +51,21 @@ checkboxes become filed packages with `SCOPE.json` blocks.
     injectable, so the wiring packages **must** configure the resolver; an
     unwired resolver ships unvalidated input."
 
+    **Every entry carries the cycle answer** — one of the three legal answers
+    from `coordination.md` §The cycle contract: what moved and the artifact
+    proving it, or an exhaustion statement citing live counts, or an alarm.
+    The entry shape:
+
+    ```markdown
+    - **<YYYY-MM-DD> · cycle <n> — <moved | exhausted | ALARM>**
+      <named packages and the artifact: PR opened, PR merged, gate passed>
+      <or: open N, blocked N (on what), in review N, free slots N>
+      <scope-downs and escalations decided this cycle, with the reason>
+    ```
+
+    Three consecutive `exhausted` entries with no movement is the stopping
+    condition: stop and report, do not open a fourth cycle.
+
 ## Validating the plan
 
 The epic and its packages are themselves drafted by an agent, which adds a
@@ -141,7 +156,13 @@ The gaps this epic closes:
   off with `HANDOFF.md`. The coordinator manages boundaries, unblocks, sequences
   merges — it does not write feature code.
 - **Status lifecycle:** queued -> active -> awaiting-review -> merged. A package
-  is queued only once every branch in its `dependsOn` has merged.
+  is queued only once every branch in its `dependsOn` has merged. Labels are
+  derived from observable state, not hand-set as a baton.
+- **Cycle contract and stopping condition.** Every cycle ends with what moved
+  (named, with its artifact), an exhaustion statement citing live counts, or an
+  alarm. After **3** consecutive cycles with no movement, the coordinator stops
+  and reports. After any compaction it re-derives wave state from the tracker
+  and the PRs before acting.
 
 ## Definition of done (every package)
 
@@ -186,5 +207,6 @@ The gaps this epic closes:
 
 ## Progress log (live)
 
-_(empty — updated by the coordinator as waves dispatch and merge)_
+_(empty — updated by the coordinator each cycle: what moved and the artifact
+proving it, or the exhaustion counts, or an alarm)_
 ````
