@@ -50,7 +50,12 @@ gate: Phase 1 packages do not dispatch until it passes.
   "allowedPaths": ["<e2e test glob>", "<test utils>"],
   "forbiddenPaths": ["<all implementation paths>", "<migrations>", "<manifests>"],
   "dependsOn": ["<every package branch in the phase>"],
-  "estimatedScope": "<one line>"
+  "estimatedScope": "<one line>",
+  "execution": {
+    "model": "strongest available",
+    "pattern": "gate-verify",
+    "agents": []
+  }
 }
 ```
 

@@ -37,7 +37,7 @@ prerequisite is exploration, not decomposition.
 "Package" is the unit that matters. Some teams call it a cell. It is the
 smallest thing an agent can finish in one sitting and prove with tests.
 
-### Six invariants
+### Seven invariants
 
 These are what make unattended parallel execution safe. Breaking any one of them
 is how the model fails.
@@ -137,4 +137,5 @@ uncovers work nobody planned.
 | `references/adapter-jira.md` | Jira mechanics |
 | `assets/hooks/enforce-scope.js` | PreToolUse scope hook, no dependencies |
 | `assets/settings-snippet.json` | Hook wiring for `.claude/settings.json` |
+| `assets/tests/` | Fixture tests for the hooks; run in CI |
 | `assets/scripts/bootstrap-github-labels.sh` | Creates the label set in a repo |

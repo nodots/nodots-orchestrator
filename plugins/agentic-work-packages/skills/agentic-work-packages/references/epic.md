@@ -51,6 +51,62 @@ checkboxes become filed packages with `SCOPE.json` blocks.
     injectable, so the wiring packages **must** configure the resolver; an
     unwired resolver ships unvalidated input."
 
+## Validating the plan
+
+The epic and its packages are themselves drafted by an agent, which adds a
+third role: the **planner** drafts the plan, the **coordinator** dispatches it,
+**workers** execute it. Planner and coordinator are often the same session —
+the session that wrote the epic starts wave 1 — but the rules differ. A planner
+produces issues, never code, and nothing dispatches until a human approves the
+epic.
+
+Three checks stand between a draft and a dispatch, in this order.
+
+**1. Mechanical validation.** Before any review, the planner checks what a
+linter would check, and reports each result:
+
+- every `allowedPaths` glob matches at least one real path;
+- no two packages marked parallelizable have overlapping `allowedPaths`;
+- every `dependsOn` entry names a branch that an existing package declares;
+- the dependency graph is acyclic;
+- every phase ends in a gate;
+- wave 1 holds at least two dependency-free packages — a plan whose first wave
+  is a single package is serialized, not parallel.
+
+A package the planner cannot write a complete `SCOPE.json` for is not ready to
+be a package; it goes back to exploration.
+
+**2. Adversarial plan review.** A second agent with no stake in the draft
+attacks it: hidden dependencies between packages marked parallelizable, gates
+that assert unit-level facts instead of integration proofs, packages sized past
+one sitting, contract surfaces left out of `forbiddenPaths`, missing work
+between phases. Findings amend the draft or open exploration follow-ups. It is
+the same adversarial pattern the model prescribes for contract-change packages,
+turned on the plan itself. It comes from a second agent because a planner
+reviewing its own plan is the self-evaluation blind spot, and it finds the
+packages it was already confident about.
+
+**3. Human approval is the gate between planning and dispatch.** The human
+reviews the epic, not each package: the phase structure, the gates, and the out
+of scope list are where planning errors are cheap to catch. Iterate on the plan
+freely — a regenerated plan costs minutes, and a mis-cut package discovered in
+wave 3 costs a blocked wave.
+
+Known failure modes of a drafted plan, and the mechanism that absorbs each:
+
+| Failure mode | Absorbed by |
+|---|---|
+| Over-scoped packages (planner optimism) | scope-down at dispatch, logged |
+| Missing work between packages | new packages opened mid-run |
+| Under-provisioned execution profiles | escalation at re-dispatch, logged |
+| Invented gaps with no evidence | the file:line evidence rule, applied at drafting |
+| Cross-package requirements discovered late | integration requirements pinned to the packages that must honor them |
+
+The plan is a live document precisely because drafting is fallible in bounded,
+recoverable ways. Those mechanisms are not workarounds; they are the
+error-correction loop that makes cheap planning safe to run. All five live in
+`coordination.md`.
+
 ## Template
 
 ````markdown

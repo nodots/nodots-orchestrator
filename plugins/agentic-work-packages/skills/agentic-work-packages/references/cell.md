@@ -52,6 +52,14 @@ A fenced `json` block, verbatim, ready to copy to disk. Full field reference in
   interfaces, migrations, dependency manifests, CI config, and the other
   subsystem's directory. These are where parallel agents collide.
 
+### Execution profile
+
+`SCOPE.json.execution` declares how the package is run: model tier, subagent
+pattern, and any named agents. The planner assigns it at cut time from the
+table in `coordination.md` §Execution profiles; the coordinator may resolve it
+differently at dispatch and logs the change on the wave entry. Field reference
+in `scope-contract.md`.
+
 ### Acceptance criteria
 
 Checkboxes, each observable by the agent without asking anyone. Prefer
@@ -99,7 +107,12 @@ is a valid and useful answer — it marks the package as first-wave.
   "allowedPaths": ["<src paths>", "<test paths>"],
   "forbiddenPaths": ["<frozen contract>", "<migrations>", "<manifests>", "<ci>"],
   "dependsOn": ["feat/<upstream-branch>"],
-  "estimatedScope": "<one line, for the coordinator's queue view>"
+  "estimatedScope": "<one line, for the coordinator's queue view>",
+  "execution": {
+    "model": "<cheapest | session default | strongest available>",
+    "pattern": "<solo | implement+review | implement+test | gate-verify>",
+    "agents": []
+  }
 }
 ```
 

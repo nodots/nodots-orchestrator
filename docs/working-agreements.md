@@ -83,7 +83,7 @@ Artifacts are not evidence. Image digests, health endpoints, bundle hashes and a
 
 ## 7. Multi-repo mechanics
 
-Where cells target several independent repos (the normal case in the source project — see the dispatch model's rule 3), sequencing is part of the plan, not an implementation detail.
+Where cells target several independent repos (the normal case in the source project — see `references/coordination.md` §Isolation), sequencing is part of the plan, not an implementation detail.
 
 - **Merge in dependency order.** Types → core → consumers → services → clients. A cell whose dependency is merged but *not released* is still blocked.
 - **A cross-repo change is not visible to consumers until it is published.** Repos consume each other as published packages; a commit is not a delivery. Cells that span repos need one PR per repo plus an explicit release step, and the release step is its own cell.
@@ -122,7 +122,7 @@ Sessions compact. Decisions, findings and measurements go into files — `HANDOF
 ## 9. Destructive commands
 
 - **Never pattern-kill a process fleet by substring.** `pkill -f '<script> generate 2'` matches `generate 200`; it killed a twenty-worker run fifty minutes in, and only the shards that had flushed survived. Kill by PID captured at launch (workers log their PID to a status file), or anchor the pattern so it cannot match a longer argument. **Always `pgrep -af` and read the matched lines before any kill.** A match count larger than expected is evidence that the pattern is too broad, not that there is more to clean up.
-- **`git stash` is banned in worker worktrees** — see dispatch rule 3 in the companion document for the mechanism. Capture a patch outside the tree instead.
+- **`git stash` is banned in worker worktrees** — see `references/coordination.md` §Isolation for the mechanism. Capture a patch outside the tree instead.
 - **Look at the target before deleting or overwriting it**, and prefer branching from the remote over juggling local state.
 
 ---
