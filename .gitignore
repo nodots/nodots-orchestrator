@@ -1,6 +1,7 @@
-# Evaluation documents derived from a client engagement; never committed.
-HARNESS_CROSS_EVALUATION.md
-HARNESS_PROPOSALS.md
-
-# Handoff note for the harness proposals; derived from the same engagement.
-HANDOFF_TO_HARNESS.md
+# Local working documents: evaluations, proposals, plans and handoff notes.
+# Some derive from a client engagement; none of them belongs in this repo.
+/HARNESS_CROSS_EVALUATION.md
+/HARNESS_PROPOSALS.md
+/HANDOFF_TO_HARNESS.md
+/IMPLEMENTATION_PLAN.md
+/CHATGPT_MULTI_MODEL_EVALUATION.md

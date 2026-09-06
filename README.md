@@ -27,6 +27,7 @@ claude plugin install agentic-work-packages@nodots-plugins
 - The plugin's `references/` are the single source for the model's rules. `docs/` is the
   long-form narrative and worked example; where the two state the same rule, the plugin copy
   governs and the doc must match it.
-- Two evaluation documents derived from a client engagement are gitignored and stay local.
+- Planning and evaluation documents are gitignored and stay local. Nothing engagement-derived
+  is committed — see `.gitignore`.
 - Every hook and script ships with its fixture test in the same PR, and CI runs them all. A
   gate that has never run is not a gate.
