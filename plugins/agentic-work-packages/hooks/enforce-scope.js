@@ -8,6 +8,36 @@
  * allowedPaths (or matching forbiddenPaths). No SCOPE.json present => no
  * restriction, so the default branch and ad-hoc work are unaffected.
  *
+ * Control header
+ * --------------
+ * Default: deny. An out-of-lane write is refused with the blocker instruction.
+ *   It is never a permission ask: an ask hands the confined worker the
+ *   click-through on its own confinement, and it wedges an unattended run on a
+ *   prompt nobody is there to answer.
+ * Fail posture: open, and loud. Any error evaluating the lane exits 0 after
+ *   one stderr line naming this hook and the error. Open, because this is a
+ *   coordination guardrail and not a security control, and a hook that cannot
+ *   evaluate must not halt a fleet. Loud, because a sensor that cannot
+ *   evaluate has to say so — a silent exit 0 is indistinguishable from "in
+ *   lane".
+ * Residue — the input classes this hook does not judge: writes mediated by
+ *   Bash (`sed -i`, `tee`, shell redirects, `python -c`), MCP filesystem
+ *   tools, and the NotebookEdit and MultiEdit tools. The matcher `Edit|Write`
+ *   contains only exact-match characters, so it matches those two tool names
+ *   and nothing else; no other tool reaches this hook at all. An agent routing
+ *   around its lane through any of these is a coordination signal, not a
+ *   threat model.
+ *
+ * Repo root
+ * ---------
+ * Resolved from the hook input's `cwd` field, via
+ * `git -C <cwd> rev-parse --show-toplevel`. Only when `cwd` is absent does the
+ * root fall back to this file's own location (`<here>/../..`), which is right
+ * for a manual `.claude/hooks/` install and wrong under a plugin install,
+ * where the file lives outside the repo entirely. In a linked worktree
+ * `--show-toplevel` returns the worktree root, which is where that worker's
+ * SCOPE.json lives, so worktree isolation is preserved.
+ *
  * SCOPE.json is resolved from, in order:
  *   1. .agentic/cells/<branch>/SCOPE.json    (branch-scoped, preferred)
  *   2. .auto-shop/cells/<branch>/SCOPE.json  (legacy branch-scoped)
@@ -23,16 +53,33 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
+const HOOK = 'enforce-scope';
 const ARTIFACTS = { scope: 'SCOPE.json', handoff: 'HANDOFF.md', blocker: 'BLOCKER.md' };
 const CELL_DIRS = ['.agentic', '.auto-shop'];
 
+// execFile, not a shell string: `dir` comes from the hook input and must never
+// be interpolated into a command line.
+function git(dir, args) {
+  return execFileSync('git', ['-C', dir, ...args], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
+}
+
+function repoRoot(cwd) {
+  if (cwd) {
+    try {
+      const top = git(cwd, ['rev-parse', '--show-toplevel']);
+      if (top) return top;
+    } catch { /* not a repo, or no git on PATH: fall through */ }
+  }
+  return path.resolve(__dirname, '..', '..'); // .claude/hooks/ -> repo root
+}
+
 function currentBranch(root) {
   try {
-    return execSync(`git -C "${root}" rev-parse --abbrev-ref HEAD`, {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    return git(root, ['rev-parse', '--abbrev-ref', 'HEAD']);
   } catch { return null; }
 }
 
@@ -98,7 +145,7 @@ process.stdin.on('end', () => {
     const filePath = event.tool_input && event.tool_input.file_path;
     if (!filePath) process.exit(0);
 
-    const root = path.resolve(__dirname, '..', '..'); // .claude/hooks/ -> repo root
+    const root = repoRoot(event.cwd);
     const branch = currentBranch(root);
     const scopePath = artifactPath(root, 'scope', branch);
     if (!fs.existsSync(scopePath)) process.exit(0); // no scope => unrestricted
@@ -114,6 +161,7 @@ process.stdin.on('end', () => {
     const forbidden = Array.isArray(scope.forbiddenPaths) && matchesAny(scope.forbiddenPaths, rel);
 
     if (!allowed || forbidden) {
+      // Deny, never ask: stderr carries the reason, exit 2 blocks the call.
       process.stderr.write(
         `Scope violation: ${rel} is outside this work package's SCOPE.json allowedPaths ` +
         `(or matches forbiddenPaths). If you genuinely need this file, stop and write BLOCKER.md ` +
@@ -122,7 +170,14 @@ process.stdin.on('end', () => {
       process.exit(2); // non-zero blocks the tool call
     }
     process.exit(0);
-  } catch {
-    process.exit(0); // fail open: never block on hook error
+  } catch (err) {
+    // Fail open, but never silently.
+    try {
+      process.stderr.write(
+        `${HOOK}: could not evaluate the scope lane, allowing this write. ` +
+        `${(err && err.message) || err}\n`
+      );
+    } catch { /* stderr gone; there is nothing further this hook can do */ }
+    process.exit(0);
   }
 });

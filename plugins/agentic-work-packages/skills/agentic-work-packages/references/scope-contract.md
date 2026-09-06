@@ -66,11 +66,71 @@ cp <skill>/assets/hooks/enforce-scope.js .claude/hooks/
 # merge assets/settings-snippet.json into .claude/settings.json
 ```
 
-Resolution order for `SCOPE.json`:
+Installing the plugin wires the same hook through its own `hooks/hooks.json`
+and needs no per-repo copy. The two copies of the hook are byte-identical, and
+CI asserts it.
+
+### The control's three fields
+
+Every control in this model states three things in one place, so a reader never
+has to infer a posture from the code. `enforce-scope.js` carries them in its
+file header:
+
+| Field | Value |
+|---|---|
+| **Default** | deny |
+| **Fail posture** | open, and loud — one stderr line naming the hook, then exit 0 |
+| **Residue** | Bash-mediated writes (`sed -i`, `tee`, shell redirects, `python -c`), MCP filesystem tools, `NotebookEdit`, `MultiEdit` |
+
+The residue is the input classes the control does not judge, and it is part of
+the control rather than a footnote to it: the matcher is `Edit|Write`, an
+exact tool-name match, so nothing else reaches the hook at all. A change to any
+of the three fields is a change to this table, not only to the code.
+
+### Deny, never ask
+
+An out-of-lane write is **denied**, with the blocker instruction, and it is
+never a permission ask. The hook emits no permission-decision object at all: it
+writes the reason to stderr and exits 2.
+
+An ask would hand the confined worker the click-through on its own confinement
+— the actor being restrained gets to lift the restraint, which is not a
+boundary. And an unattended worker has nobody to answer a prompt, so the ask
+does not slow the write down; it stalls the run at a point where no
+`BLOCKER.md` has been written and nothing has been handed off. A deny costs the
+same worker one file and produces a `BLOCKER.md` the coordinator can act on.
+
+### Hook hygiene for unattended agents
+
+Three rules. They apply to every hook in a repo that dispatches unattended
+workers, not only to this one.
+
+- **An unattended agent must never land in a permission prompt.** Every
+  permitted action is allow-by-rule; every forbidden one is deny-with-reason.
+  A prompt in an unattended run is a stall that reads as progress.
+- **A deny message never instructs a manual edit of state the hook owns.** If a
+  legitimate unblock exists, build it into the program and name it in the deny.
+  A message that says "delete the lock file to continue" has invited the agent
+  to disarm the control, and an agent that is confined enough to be blocked is
+  confined enough to take the invitation.
+- **Success is silent, failure is verbose.** A hook that cannot evaluate says so
+  loudly rather than exiting 0 quietly. A silent exit 0 from a broken sensor is
+  indistinguishable from a clean pass, and the run keeps going as if the check
+  had held.
+
+### Resolution order for `SCOPE.json`
 
 1. `.agentic/cells/<branch>/SCOPE.json` — branch-scoped, preferred
 2. `.auto-shop/cells/<branch>/SCOPE.json` — legacy branch-scoped
 3. `<repoRoot>/SCOPE.json` — fallback
+
+The repo root comes from the hook input's `cwd` field, resolved with
+`git -C <cwd> rev-parse --show-toplevel`. Only when `cwd` is absent does the
+root fall back to the hook file's own location, which is correct for a manual
+`.claude/hooks/` install and wrong under a plugin install, where the file lives
+outside the repo entirely. In a linked worktree `--show-toplevel` returns the
+worktree root, which is where that worker's `SCOPE.json` lives, so worktree
+isolation is preserved.
 
 Behaviour worth knowing before you rely on it:
 
@@ -81,11 +141,15 @@ Behaviour worth knowing before you rely on it:
 - Branch-scoped resolution needs a resolvable branch. In a repo with no commits
   yet, `git rev-parse --abbrev-ref HEAD` fails and the hook falls back to the
   root path.
-- It **fails open**: any hook error exits zero rather than blocking work. It is
-  a guardrail, not a security control.
+- It **fails open**: any hook error exits zero rather than blocking work, after
+  the one-line stderr notice. It is a guardrail, not a security control.
 - It governs `Edit` and `Write` only. Shell commands are not intercepted, so an
   agent determined to route around it can. That is a coordination signal, not a
-  threat model.
+  threat model — see the residue row above.
+
+Everything in this section is asserted by
+`assets/tests/enforce-scope.test.sh`, which runs the hook from both install
+locations and from outside the repo, the way a plugin-installed hook runs.
 
 ## Worker protocol
 
