@@ -96,6 +96,11 @@ automatically by the plugin; for a manual install, copy
   branch with neither `HANDOFF.md` nor `BLOCKER.md` written. Without it, a
   compacted worker's state is gone.
 
+Install the worker contract in the same pass: copy `assets/worker-contract.md`
+to `.claude/worker-contract.md` and import it with `@.claude/worker-contract.md`
+from the hand-authored part of the repo's `CLAUDE.md`. It is not shipped as
+`AGENTS.md` on purpose — see `references/coordination.md` §The worker contract.
+
 **7a. Brief workers on the working agreements** — `references/working-agreements.md`:
 test-first, dead gates, no silent fallbacks, boundary round-trip tests, release
 sequencing, destructive-command safety, reporting. Package acceptance criteria
@@ -128,7 +133,7 @@ uncovers work nobody planned.
       `forbiddenPaths` except the one package that owns them
 - [ ] Packages with no unmet dependencies are marked ready and queued
 - [ ] Packages needing human judgement are **not** marked agent-ready
-- [ ] Every target repo carries both hooks — scope and handoff
+- [ ] Every target repo carries both hooks — scope and handoff — and the worker contract
 
 ## Files
 
@@ -144,7 +149,9 @@ uncovers work nobody planned.
 | `references/adapter-jira.md` | Jira mechanics |
 | `assets/hooks/enforce-scope.js` | PreToolUse scope hook, no dependencies |
 | `assets/hooks/require-handoff.js` | Stop hook: no exit from a dirty lane without written state |
+| `assets/worker-contract.md` | The checked-in worker contract; install as `.claude/worker-contract.md` |
 | `assets/settings-snippet.json` | Hook wiring for `.claude/settings.json` |
 | `assets/tests/` | Fixture tests for the hooks and scripts; run in CI |
 | `assets/scripts/bootstrap-github-labels.sh` | Creates the label set in a repo |
 | `assets/scripts/sync-cells.sh` | Derives `cell:*` labels from observable state |
+| `assets/scripts/aei-epic.js` | Optional: enumerates the epic backlog for a runtime stop guard |
