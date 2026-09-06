@@ -13,4 +13,6 @@ Documented from practice, 2026-08-10 (work packages) and 2026-09-04 (working agr
 
 ## License
 
-[MIT](LICENSE). Copy the templates into your own repos, public or private, without attribution friction.
+Proprietary. Copyright (c) 2026 Nodots LLC, all rights reserved. Not licensed for use outside
+Nodots. These documents were published under MIT as `nodots/nodots-ai-workflows` before
+2026-09-06; that repository is archived and this copy is private.
