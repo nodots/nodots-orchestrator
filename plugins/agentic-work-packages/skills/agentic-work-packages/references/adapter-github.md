@@ -87,3 +87,22 @@ gh issue list --repo <owner>/<host-repo> --label cell:blocked --state open
 - Merge in dependency order across repos: contracts and types first, consumers
   after. A package whose dependency is published as an artifact needs a version
   bump and a release, not just a merged commit.
+
+## The scope hook in the target repo
+
+Every target repo carries `enforce-scope.js` before a wave dispatches into it —
+by installing the plugin, or by copying the hook into `.claude/hooks/` and
+merging `assets/settings-snippet.json`. Without it, `SCOPE.json` is a comment.
+
+The control's three fields, recorded here so a reviewer reading only the
+adapter knows what the repo's lane enforcement does and does not cover:
+
+| Field | Value |
+|---|---|
+| **Default** | deny — an out-of-lane `Edit`/`Write` exits 2 with the blocker instruction, never a permission ask |
+| **Fail posture** | open, and loud — one stderr line naming the hook, then exit 0 |
+| **Residue** | Bash-mediated writes (`sed -i`, `tee`, shell redirects), MCP filesystem tools, `NotebookEdit`, `MultiEdit` |
+
+Full rationale in `scope-contract.md` §Enforcement. The residue is why a PR diff
+is still read against the package's `allowedPaths` at review time: the hook
+bounds the tools it matches, not the agent.
