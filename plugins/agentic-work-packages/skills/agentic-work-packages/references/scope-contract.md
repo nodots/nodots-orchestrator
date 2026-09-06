@@ -20,6 +20,7 @@ Without mechanical enforcement this is a comment, and lanes will be crossed.
   "execution": {
     "model": "<cheapest | session default | strongest available>",
     "pattern": "solo | implement+review | implement+test | gate-verify",
+    "window": "<context window, or the autocompact setting>",
     "agents": ["<optional named agent types>"]
   }
 }
@@ -51,6 +52,7 @@ profile at dispatch and logs any change.
 |---|---|
 | `model` | Worker model tier. Stated as a tier, not a model name — model names go stale, and pinning one per worker belongs on the launch command, never in a settings key a `/model` call rewrites globally |
 | `pattern` | Closed vocabulary: `solo` (one worker, no reviewer), `implement+review` (the worker spawns a reviewer subagent before opening the PR), `implement+test` (an implementer/tester pair under the same `SCOPE.json`), `gate-verify` (an independent verifier proves the integration claim) |
+| `window` | The context window the worker runs with, or the autocompact setting. Choosing a model chooses a window, and the window drives cost more than the per-token price does |
 | `agents` | Optional named agent types, where the repo defines them |
 
 A package that seems to need a pattern outside that vocabulary is a signal it
@@ -179,8 +181,26 @@ locations and from outside the repo, the way a plugin-installed hook runs.
 An agent that hits a scope violation:
 
 1. **stops**;
-2. writes `BLOCKER.md` — what it needed, why, and what it proposes;
+2. writes `BLOCKER.md` — in the required form, below;
 3. does not widen `SCOPE.json`, and does not work around the block.
+
+`BLOCKER.md` carries, at minimum: the **bucket** (blocked on a merge, on a
+missing capability, on a decision, or because we stopped looking); a
+machine-readable **kind** (`tracked-task`, `human-decision`, `external`,
+`foreign-lease`, `not-before`) with its **reference**; the **alternatives
+searched** and why each fails; the **un-block condition**; the **owner**; and
+the ask in one line. The template and the kind vocabulary are in
+`coordination.md` §`BLOCKER.md`.
+
+Two consequences worth stating here, where the worker reads them:
+
+- **"I stopped looking" is a bucket with no kind.** It fails review, and any
+  tool that enumerates the backlog reads a kindless blocker as actionable
+  rather than excused. Write the alternatives you searched; if that list is
+  empty, the blocker is not ready.
+- **A blocker is not a place to park a widened lane.** Filing one and then
+  editing outside `allowedPaths` anyway is the failure the whole model exists
+  to prevent.
 
 A scope violation means the package was mis-specified. The fix is a coordinator
 decision, and usually a new package. Widening the lane silently is the single

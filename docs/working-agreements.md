@@ -30,6 +30,9 @@ This is the worker-side counterpart to the gate rule in the dispatch model: gate
 - **A compile error in a test is a test failure.** Type errors in test files get fixed, never suppressed or excluded from the run. They hide the same defects the tests were written to catch.
 - **Tests must be deterministic and order-independent.** A cell's tests run in a fleet, in parallel, on machines that are not the author's.
 - **Test the state machine from both sides.** Where a domain has symmetric actors (two players, two directions, two tenants), a test that only exercises one side will pass while the other is inverted. A whole class of production bugs in the source project was one actor's coordinates used for the other's.
+- **Classify a red before retrying it.** A *deterministic* red — the same failure shape twice, or a single failure that maps to a readable code path (a stable raise, a rejected transition, a fixed assertion) — gets **zero** re-runs. It is a diagnosis assignment, not a flake. An *infrastructure* red — missing resource, crashed worker, transient 5xx — gets **exactly one** re-run, and a second identical red retires the flake hypothesis permanently for that failure. A passing re-run does not erase the earlier failure; it narrows the question to what differed between the runs.
+- **A verifier reports the state of the code; it never authors the green.** Re-running a suite until it passes, or relaxing an assertion until it holds, produces a green that means nothing. The cost is not the wasted runs — it is that nobody can afterwards tell a witnessed green from a manufactured one.
+- **A red at a product boundary has four hypotheses, and two of them are not the worker's to settle.** The test is bad by construction, or the harness is buggy: both decidable from the artifacts alone. The product is buggy, or the feature was never implemented: both need an oracle outside the code — a spec, a prior human run, a recorded behaviour. Neither of the last two is ever handed to a worker as "make this green". A worker told to green an unimplemented feature will implement whatever makes the assertion pass, and that is how a stub acquires a passing test.
 
 ---
 
@@ -107,11 +110,26 @@ Rules written in a prompt decay; rules enforced by a hook do not. The source rep
 A worker stops and writes `BLOCKER.md` when:
 
 - it needs to edit a path outside `allowedPaths`, or a frozen config file;
-- **tests still fail after two distinct fix attempts** — and it describes both attempts;
+- a **deterministic red** resists diagnosis — not "two attempts and stop", but: the failure has been classified (§2a), it is deterministic, the code path has been read, and the cause is outside what this cell may change or is not decidable from the artifacts;
 - it faces an architectural decision with no clear answer in the cell;
 - `SCOPE.json` looks wrong or incomplete.
 
 The response to a scope violation is to stop, never to widen the lane. A cell that wants to edit its own `forbiddenPaths` is a cell that was cut wrong.
+
+**What a `BLOCKER.md` must contain.** A blocker is a request for a decision, and it is answered at the speed it can be read. Required, every time:
+
+- **Bucket** — blocked on a merge; on a missing capability; on a decision; or *because we stopped looking*.
+- **Kind**, from a closed vocabulary, plus its **reference**: `tracked-task` (the issue or cell id), `human-decision` (the person or role), `external` (the service or vendor), `foreign-lease` (the branch, worktree or lock holding the resource), `not-before` (the timestamp or event).
+- **Alternatives searched**, and why each one fails.
+- **The un-block condition** — an observable event, not a feeling.
+- **The owner** — who can clear it.
+- **The ask, in one line:** `<id>: <question, options inline> : <recommendation> : decide-by <event> : cost-of-waiting <what stalls>`.
+
+"Blocked because we stopped looking" is the one bucket with **no kind**, deliberately. It fails review, and a tool enumerating the backlog reads a kindless blocker as *actionable* rather than excused. If the alternatives-searched list is empty, the blocker is not ready to file.
+
+**Coordinator side: a complete cell blocked on something that cannot land this wave is parked as a merged, tracked artifact** — a skipped test carrying its un-skip condition in the skip message — never as an indefinitely held draft PR. A held draft falls behind its base, its review goes stale, and it is invisible to every count the coordinator's cycle report cites. A merged skip is visible to the suite, to the counts, and to whoever un-skips it.
+
+The full template and the kind vocabulary live in the plugin skill: `references/coordination.md` §`BLOCKER.md`.
 
 ### 8b. Durable state over conversational state
 
