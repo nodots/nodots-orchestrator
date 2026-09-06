@@ -84,10 +84,17 @@ exceed about six checkboxes, or `allowedPaths` spans two subsystems, split it.
 **6. File them** — `references/adapter-github.md` or `references/adapter-jira.md`
 for the tracker mechanics: parentage, labels or statuses, and the create calls.
 
-**7. Install enforcement** in every target repo — copy
-`assets/hooks/enforce-scope.js` to `.claude/hooks/` and merge
-`assets/settings-snippet.json` into `.claude/settings.json`. Without the hook,
-`SCOPE.json` is a suggestion.
+**7. Install enforcement** in every target repo. Two hooks, both wired
+automatically by the plugin; for a manual install, copy
+`assets/hooks/enforce-scope.js` and `assets/hooks/require-handoff.js` to
+`.claude/hooks/` and merge `assets/settings-snippet.json` into
+`.claude/settings.json`.
+
+- `enforce-scope.js` (`PreToolUse`) blocks an `Edit`/`Write` outside the
+  package's lane. Without it, `SCOPE.json` is a suggestion.
+- `require-handoff.js` (`Stop`) blocks a turn from ending on a dirty feature
+  branch with neither `HANDOFF.md` nor `BLOCKER.md` written. Without it, a
+  compacted worker's state is gone.
 
 **7a. Brief workers on the working agreements** — `references/working-agreements.md`:
 test-first, dead gates, no silent fallbacks, boundary round-trip tests, release
@@ -121,7 +128,7 @@ uncovers work nobody planned.
       `forbiddenPaths` except the one package that owns them
 - [ ] Packages with no unmet dependencies are marked ready and queued
 - [ ] Packages needing human judgement are **not** marked agent-ready
-- [ ] Every target repo carries the scope hook
+- [ ] Every target repo carries both hooks — scope and handoff
 
 ## Files
 
@@ -136,6 +143,8 @@ uncovers work nobody planned.
 | `references/adapter-github.md` | GitHub Issues mechanics |
 | `references/adapter-jira.md` | Jira mechanics |
 | `assets/hooks/enforce-scope.js` | PreToolUse scope hook, no dependencies |
+| `assets/hooks/require-handoff.js` | Stop hook: no exit from a dirty lane without written state |
 | `assets/settings-snippet.json` | Hook wiring for `.claude/settings.json` |
-| `assets/tests/` | Fixture tests for the hooks; run in CI |
+| `assets/tests/` | Fixture tests for the hooks and scripts; run in CI |
 | `assets/scripts/bootstrap-github-labels.sh` | Creates the label set in a repo |
+| `assets/scripts/sync-cells.sh` | Derives `cell:*` labels from observable state |
