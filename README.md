@@ -9,7 +9,8 @@ with both histories preserved.
 | path | contents |
 |---|---|
 | `.claude-plugin/marketplace.json` | the `nodots-plugins` Claude Code marketplace; this repo is the marketplace |
-| `plugins/agentic-work-packages/` | the plugin: skill, references, `SCOPE.json` enforcement hook |
+| `.github/workflows/ci.yml` | CI: the fixture tests, and the byte-identical check on the hook copies |
+| `plugins/agentic-work-packages/` | the plugin: skill, references, both hooks, scripts, fixture tests |
 | `docs/` | the long-form model docs: `agentic-work-packages.md`, `working-agreements.md` |
 | `CLAUDE.md` | project instructions |
 
@@ -27,3 +28,5 @@ claude plugin install agentic-work-packages@nodots-plugins
   long-form narrative and worked example; where the two state the same rule, the plugin copy
   governs and the doc must match it.
 - Two evaluation documents derived from a client engagement are gitignored and stay local.
+- Every hook and script ships with its fixture test in the same PR, and CI runs them all. A
+  gate that has never run is not a gate.
