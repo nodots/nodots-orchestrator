@@ -1,25 +1,30 @@
 # Implementation plan: HARNESS_CROSS_EVALUATION.md
 
-**Status:** draft, 2026-09-06. Derived from `HARNESS_CROSS_EVALUATION.md` (the evaluation) and
-grounded against the two nodots checkouts in this directory at the commits below.
+**Status:** draft, 2026-09-06; revised the same day after the two nodots repos were consolidated
+into this one. Derived from `HARNESS_CROSS_EVALUATION.md` (the evaluation), which is gitignored
+here because it derives from a client engagement.
 **Executes:** N-1 to N-16. The H- items are not executed here; section 8 records the handoff.
 
-| repo | path | default branch | branch checked out here | HEAD |
-|---|---|---|---|---|
-| A: plugin | `agentic-work-packages/` | `development` | `development` (clean) | `b6b1e6b` |
-| B: public doc | `nodots-ai-workflows/` | `main` | `docs/working-agreements` (clean, ahead of `main`, unmerged) | `8cbbcd4` |
+The evaluation names two repos. Both now live in `nodots/nodots-orchestrator` (private, default
+branch `development`) with history preserved:
 
-Neither repo has a `.github/` directory, a `scripts/` directory, a `package.json`, or any test.
-Three evaluation items require CI (N-1, N-5, N-10), so phase 0 creates it.
+| evaluation's name | now at | imported from |
+|---|---|---|
+| A: plugin (`agentic-work-packages`) | `plugins/agentic-work-packages/` | `development` @ `b6b1e6b` |
+| B: public doc (`nodots-ai-workflows`) | `docs/` | `docs/working-agreements` @ `8cbbcd4` |
+
+Paths below are written relative to those two directories; `references/` means
+`plugins/agentic-work-packages/skills/agentic-work-packages/references/`. The repo has no CI, no
+`scripts/` directory, no `package.json`, and no test. Three evaluation items require CI (N-1, N-5,
+N-10), so phase 0 creates it.
 
 ---
 
 ## 1. Ground rules carried over from the evaluation
 
-1. Feature branches only. Repo A branches from `development`; repo B from `main`. The
-   evaluation says "one PR per repo"; this plan reads that as one PR per repo per phase so a
-   reviewer never sees more than about five items in one diff. If a single PR per repo is
-   wanted, the phase branches stack.
+1. Feature branches off `development` only, never a commit on `development` itself. The
+   evaluation says "one PR per repo"; with one repo this plan reads that as one PR per phase so
+   a reviewer never sees more than about five items in one diff.
 2. Nothing from the client engagement enters either repo: no person names, no product or
    subsystem names, no board item ids, no stack ids. The N- items are already clean. Every PR
    description gets a line stating this check was done.
@@ -49,8 +54,8 @@ Found while grounding:
 
 - N-3 (`sync-cells.sh`) parses the stamp literal N-2 defines, so N-2 lands first or in the same PR.
 - N-5's third legal outcome cites N-14, so the N-5 decision (section 6) is made before phase 4.
-- N-10's `check-mirror.sh` is only useful over final text, so it is scaffolded in phase 2 and
-  turned on in CI in phase 6.
+- N-10's mirror check is now an in-repo script over `docs/` and `references/`. It is only useful
+  over final text, so it is scaffolded in phase 2 and turned on in CI in phase 6.
 - N-16 overrides N-13's filename: the worker contract must not ship as `AGENTS.md`. N-13 is
   executed with that constraint from the start rather than renamed later.
 - All doc edits (N-4, N-6, N-7, N-8, N-9, N-11) touch sections that N-10 restructures, so N-10
@@ -65,29 +70,28 @@ is merged and can run in parallel on separate branches.
 
 No evaluation item; prerequisites for everything after.
 
-1. **Repo B branch state.** Run `gh pr list --repo nodots/nodots-ai-workflows` and decide
-   whether `docs/working-agreements` merges first. N-2, N-7 and N-8 edit
-   `working-agreements.md`, which exists only on that branch. Recommendation: merge it first;
-   otherwise branch phase 3 from it.
-2. **CI skeleton, both repos.** `.github/workflows/ci.yml`: ubuntu, Node 20, runs
-   `bash tests/*.test.sh` (repo B) or
-   `bash skills/agentic-work-packages/assets/tests/*.test.sh` (repo A), and in repo A also
-   `diff hooks/enforce-scope.js skills/agentic-work-packages/assets/hooks/enforce-scope.js`.
+1. **CI skeleton.** `.github/workflows/ci.yml`: ubuntu, Node 20, runs
+   `bash plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/*.test.sh` and
+   `diff plugins/agentic-work-packages/hooks/enforce-scope.js plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/enforce-scope.js`.
    No `continue-on-error`. Ship with a trivial passing test so the workflow is proven green
    before any real test depends on it (working-agreements §3: a gate that has never run is not
    a gate).
-3. **AIQT reference clone** into the scratchpad at `52e69c6`, read-only, for N-14 and N-16.
+2. **AIQT reference clone** into the scratchpad at `52e69c6`, read-only, for N-14 and N-16.
    Nothing is copied out of it.
-4. **Branch protection** on `development` (A) and `main` (B) requiring the CI check, if not
-   already set. Verify with `gh api repos/<owner>/<repo>/branches/<branch>/protection`.
+3. **Branch protection** on `development` requiring the CI check. Verify with
+   `gh api repos/nodots/nodots-orchestrator/branches/development/protection`.
 
-Acceptance: both repos show a green CI run on the pre-flight PR.
+The evaluation's concern about the public repo's unmerged `docs/working-agreements` branch is
+settled: `docs/` was imported from that branch, so `docs/working-agreements.md` exists on
+`development`.
+
+Acceptance: a green CI run on the pre-flight PR.
 
 ---
 
-## 4. Phase 1: repo A, scope hook correctness (N-1, N-12, N-15)
+## 4. Phase 1: scope hook correctness (N-1, N-12, N-15)
 
-One PR into `development`. Plugin version 1.1.0 → 1.1.1. Highest value per hour in the whole
+One PR. Plugin version 1.1.0 → 1.1.1. Highest value per hour in the whole
 plan: every plugin-install user currently has no scope enforcement.
 
 ### N-1. Fix root resolution and prove it
@@ -133,9 +137,9 @@ carries the three fields; CI green.
 
 ## 5. Phase 2: one source per rule (N-10)
 
-One PR per repo. Repo A version bump deferred to phase 4 (docs only here).
+One PR. Plugin version bump deferred to phase 4 (docs only here).
 
-### Repo A: port what only the public doc has
+### Plugin side: port what only the long-form doc has
 
 | public doc section | lands in |
 |---|---|
@@ -146,34 +150,39 @@ One PR per repo. Repo A version bump deferred to phase 4 (docs only here).
 
 Then: `SKILL.md:40` "Six invariants" → "Seven invariants" (seven are listed; do not drop #7).
 
-### Both repos: settle `dependsOn` as branch names
+### Both sides: settle `dependsOn` as branch names
 
-Repo A already says branch names (`scope-contract.md:30`). Repo B says feature names at
-`agentic-work-packages.md:54` and the worked example at line 250 uses `"websocket-relay"`. Fix
-both to branch form and make the worked example's branch name consistent with its own §9 cell.
+The plugin already says branch names (`scope-contract.md:30`). The long-form doc says feature
+names at `docs/agentic-work-packages.md:54` and its worked example at line 250 uses
+`"websocket-relay"`. Fix both to branch form and make the worked example's branch name
+consistent with its own §9 cell.
 
 ### Mirror check
 
-- Mark each mirrored section in both repos with HTML comment fences
-  (`<!-- mirror:begin <name> -->` / `<!-- mirror:end <name> -->`).
-- New `scripts/check-mirror.sh` (repo B) extracts fenced sections from two checkouts passed
-  as arguments and diffs them, exit 1 on any difference.
-- CI placement deviates from the evaluation: repo A is `UNLICENSED` and may be private, so a
-  workflow in public repo B cannot clone it without a token. Run the check from repo A's CI,
-  which clones public repo B. Keep the script in repo B as the evaluation says; repo A's
-  workflow fetches it. Wire it in phase 6, not here, so phases 3 to 5 do not fight the check.
+Consolidation removed the cross-repo problem but not the duplication: `docs/` and `references/`
+still state the same rules twice. Two options, decide at phase start:
 
-Acceptance: `check-mirror.sh <A> <B>` exits 0 locally at the end of the phase;
+- **Delete the duplicate (recommended).** Cut the mirrored sections from
+  `docs/agentic-work-packages.md` and replace each with a one-line pointer to the plugin
+  reference file. The doc keeps what only it has: the narrative, §6 history, and the §9 worked
+  example. No script, nothing to drift.
+- **Keep both and check.** Mark each mirrored section with HTML comment fences
+  (`<!-- mirror:begin <name> -->` / `<!-- mirror:end <name> -->`); new `scripts/check-mirror.sh`
+  extracts fenced sections from `docs/` and `references/` and diffs them, exit 1 on any
+  difference. Wire it in phase 6, not here, so phases 3 to 5 do not fight the check.
+
+Acceptance: no rule stated in both places with different wording (by inspection under the first
+option, by `check-mirror.sh` exit 0 under the second);
 `grep -c '^[0-9]\.' SKILL.md` under the invariants heading matches the heading's number.
 
 ---
 
 ## 6. Phase 3: coordinator and worker rules (N-4, N-6, N-7, N-8, N-9, N-11)
 
-All S. One PR per repo. Doc-only, no version bump. Every item lands in both repos where the
-evaluation names both, inside the phase 2 mirror fences.
+All S. One PR. Doc-only, no version bump. Every item lands on both sides where the evaluation
+names both, unless phase 2 deleted the duplicate, in which case it lands in `references/` only.
 
-| item | repo A files | repo B files | what lands |
+| item | plugin files (`references/`) | `docs/` files | what lands |
 |---|---|---|---|
 | N-4 | `coordination.md` §The coordinator; `epic.md` progress-log entry format | `agentic-work-packages.md` §4 | cycle contract (three legal answers), post-compaction reconcile, stop after 3 no-movement cycles |
 | N-6 | `cell.md` execution block (from phase 2) | §4a table, §3 | "output verifiable by a tool?" column as the deciding criterion; `window`/`autocompact` field or the warning; cost per unit of delivered work, never per day |
@@ -183,22 +192,22 @@ evaluation names both, inside the phase 2 mirror fences.
 | N-11 | `cell.md`, `gate.md` templates | §3 pattern vocabulary | optional verifier restatement of acceptance criteria before the worker builds; disagreement is a package defect filed before code |
 
 `coordination.md` currently has no `BLOCKER.md` template (it has a three-row table at
-§Coordination files); N-8 adds one. The worked example in repo B §9 gets an updated blocker
-entry and cell showing the N-6 field.
+§Coordination files); N-8 adds one. The worked example in `docs/agentic-work-packages.md` §9
+gets an updated blocker entry and cell showing the N-6 field.
 
-Acceptance: the section-level checks named per item in the evaluation; `check-mirror.sh` still
-exits 0.
+Acceptance: the section-level checks named per item in the evaluation; the phase 2 mirror
+condition still holds.
 
 ---
 
 ## 7. Phase 4: evidence and handoff machinery (N-2, N-3, N-5)
 
-One PR per repo. Repo A version 1.1.1 → 1.2.0 (new hook, new script).
+One PR. Plugin version 1.1.1 → 1.2.0 (new hook, new script).
 
 ### N-2. Sha-bound evidence stamp (S)
 
-- Files: repo A `references/working-agreements.md`, `references/adapter-github.md` §Pull
-  requests; repo B `working-agreements.md`.
+- Files: `references/working-agreements.md`, `references/adapter-github.md` §Pull requests;
+  `docs/working-agreements.md`.
 - Define the literal: first line `VERIFIED: <suite or run id> @ <full head sha>`, then the
   command and its summary output. A push after the stamp voids it. `[READY]` requires a current
   stamp. Add "credit only the enforcing tool call".
@@ -222,7 +231,7 @@ One PR per repo. Repo A version 1.1.1 → 1.2.0 (new hook, new script).
 
 Three legal outcomes in the evaluation. Recommendation: ship the hook, and add one sentence
 pointing at N-14 for adopters running AIQT. Reason: N-4 and N-14 both state nodots must work
-without AIQT, and the public doc promises this hook in `working-agreements.md` §8, added by commit `8cbbcd4` on the still-unmerged `docs/working-agreements` branch. That branch is the one phase 0 decides on, so N-5 and that merge decision are linked.
+without AIQT, and `docs/working-agreements.md` §8 has promised this hook since commit `8cbbcd4`.
 
 - New `hooks/require-handoff.js`: on a non-default branch (`git symbolic-ref refs/remotes/origin/HEAD`,
   falling back to `main`/`master`/`development`), with `git status --porcelain` non-empty, and
@@ -234,7 +243,7 @@ without AIQT, and the public doc promises this hook in `working-agreements.md` �
   both hooks.
 - Test: fixture repo in four states (default branch; feature branch clean; feature branch
   dirty with `HANDOFF.md`; feature branch dirty with neither) plus `stop_hook_active: true`.
-- Repo B §8 keeps its paragraph, now true, with the AIQT sentence added.
+- `docs/working-agreements.md` §8 keeps its paragraph, now true, with the AIQT sentence added.
 
 Acceptance: fixture tests green; `hooks.json`, the settings snippet and §8 agree.
 
@@ -242,8 +251,7 @@ Acceptance: fixture tests green; `hooks.json`, the settings snippet and §8 agre
 
 ## 8. Phase 5: portability and AIQT seams (N-13, N-16, N-14)
 
-One PR per repo. Repo A 1.2.0 → 1.2.1 or folded into phase 4's bump if the branches are
-merged together.
+One PR. Plugin 1.2.0 → 1.2.1, or folded into phase 4's bump if the branches are merged together.
 
 ### N-13 under N-16's constraint (S)
 
@@ -252,8 +260,8 @@ merged together.
   `HANDOFF.md` if resuming; explore before writing; stopping conditions (N-7, N-8 forms);
   completion protocol (N-2 stamp, `HANDOFF.md`).
 - Adopter installs it as `.claude/worker-contract.md` and adds `@.claude/worker-contract.md`
-  to the hand-authored layer of `CLAUDE.md`. Document in `coordination.md`; the repo B worked
-  example shows the import line.
+  to the hand-authored layer of `CLAUDE.md`. Document in `coordination.md`; the worked example
+  in `docs/agentic-work-packages.md` shows the import line.
 
 ### N-16. Seams section (S)
 
@@ -289,14 +297,12 @@ seam (3) table is complete; the provider fixtures pass.
 
 ## 9. Phase 6: close-out
 
-1. Turn on `check-mirror.sh` in repo A's CI (phase 2 deferred it).
-2. Run every phase's acceptance check once more against `development` and `main` after all
-   merges; paste the results into a final PR that updates the `Status` field of N-1 to N-16 in
-   `HARNESS_CROSS_EVALUATION.md` with PR links. That file lives in this directory, which is not
-   a git repository; decide whether it moves into repo B (public, so it must stay clean of
-   client references, which it already is) or stays local.
-3. **Repo A README and marketplace.** Confirm `.claude-plugin/marketplace.json` carries no
-   stale version string; update the README's feature list for the Stop hook and scripts.
+1. Turn on `check-mirror.sh` in CI if phase 2 chose the keep-and-check option.
+2. Run every phase's acceptance check once more against `development` after all merges; paste
+   the results into the final PR. Update the `Status` field of N-1 to N-16 in
+   `HARNESS_CROSS_EVALUATION.md` with PR links; that file is gitignored and stays local, so the
+   status update is a local edit, not a commit.
+3. **Plugin README.** Update the feature list and layout for the Stop hook and scripts.
 4. **Handoff of the H- items.** `EMERALD_HARNESS_PROPOSALS.md` already restates H-1 to H-13
    as parked-rule rows XE-1 to XE-14 plus the five cross-doc drift corrections. They travel by
    the client repo's reviewer-pen PR path and are not edited here. The only nodots-side input
@@ -309,11 +315,13 @@ seam (3) table is complete; the provider fixtures pass.
 
 | decision | phase | recommendation |
 |---|---|---|
-| Merge `docs/working-agreements` (repo B) before phase 3, or branch from it | 0 | merge first |
-| PR granularity: one PR per repo per phase, or one per repo total | 0 | per phase |
+| Mirror handling: delete the duplicate sections from `docs/`, or keep both under a check | 2 | delete |
 | N-5 outcome: ship the Stop hook, delete the §8 claim, or point at AIQT | 4 | ship it, plus the AIQT sentence |
 | N-14 option (a) grammar or (b) provider script | 5 | (b) |
-| Where `HARNESS_CROSS_EVALUATION.md` lives once statuses are filled in | 6 | move to repo B |
+
+Settled by the consolidation on 2026-09-06: one repo, private, default branch `development`, one
+PR per phase; `docs/` imported from the `docs/working-agreements` branch; the evaluation
+documents are gitignored and stay local.
 
 ---
 
@@ -321,7 +329,7 @@ seam (3) table is complete; the provider fixtures pass.
 
 | phase | items | evaluation sizes | rough total |
 |---|---|---|---|
-| 0 | CI, branch state, clone | none stated | under an hour |
+| 0 | CI, AIQT clone, branch protection | none stated | under an hour |
 | 1 | N-1, N-12, N-15 | S, S, S | one to two hours |
 | 2 | N-10 | M | one to three hours |
 | 3 | N-4, N-6, N-7, N-8, N-9, N-11 | 6 × S | two to four hours |
