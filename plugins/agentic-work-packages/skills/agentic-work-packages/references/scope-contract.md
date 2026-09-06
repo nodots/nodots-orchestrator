@@ -16,7 +16,12 @@ Without mechanical enforcement this is a comment, and lanes will be crossed.
   "allowedPaths": ["src/routes/orders.ts", "src/middleware/**", "src/**/*.test.ts"],
   "forbiddenPaths": ["src/websocket/**", "migrations/**", "package.json", ".github/**"],
   "dependsOn": ["feat/upstream-thing"],
-  "estimatedScope": "auth middleware on mutating routes + caller-identity enforcement"
+  "estimatedScope": "auth middleware on mutating routes + caller-identity enforcement",
+  "execution": {
+    "model": "<cheapest | session default | strongest available>",
+    "pattern": "solo | implement+review | implement+test | gate-verify",
+    "agents": ["<optional named agent types>"]
+  }
 }
 ```
 
@@ -29,10 +34,28 @@ Without mechanical enforcement this is a comment, and lanes will be crossed.
 | `forbiddenPaths` | Denied even if `allowedPaths` would match. Evaluated last |
 | `dependsOn` | **Branch names**, not issue IDs — this is what tooling reads |
 | `estimatedScope` | One line, for the coordinator's queue view |
+| `execution` | The execution profile: model tier, subagent pattern, named agents. See below |
 
 The asymmetry between `dependsOn` (branches) and the issue's `Depends on` line
 (issue IDs) is intentional: one is for machines, one is for people. Both must
 express the same dependency.
+
+### The `execution` profile
+
+`execution` says how the package is run, not what it may touch. The planner
+assigns it when the package is cut, from the table in
+`coordination.md` §Execution profiles; the coordinator resolves the final
+profile at dispatch and logs any change.
+
+| Key | Meaning |
+|---|---|
+| `model` | Worker model tier. Stated as a tier, not a model name — model names go stale, and pinning one per worker belongs on the launch command, never in a settings key a `/model` call rewrites globally |
+| `pattern` | Closed vocabulary: `solo` (one worker, no reviewer), `implement+review` (the worker spawns a reviewer subagent before opening the PR), `implement+test` (an implementer/tester pair under the same `SCOPE.json`), `gate-verify` (an independent verifier proves the integration claim) |
+| `agents` | Optional named agent types, where the repo defines them |
+
+A package that seems to need a pattern outside that vocabulary is a signal it
+was cut wrong — the same signal as a package that wants to edit its own
+`forbiddenPaths`.
 
 ### Choosing allowedPaths
 

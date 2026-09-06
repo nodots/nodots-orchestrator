@@ -22,11 +22,48 @@ It:
 - dispatches waves within the WIP cap;
 - sequences merges when packages touch adjacent code;
 - resolves `BLOCKER.md` escalations, usually by filing a new package;
+- resolves each package's execution profile at dispatch (§Execution profiles);
 - maintains the epic's checkbox list and progress log.
 
 A coordinator that starts implementing loses track of the fleet, and the logs
 stop being written. That is how a run silently degrades into one agent doing
 everything.
+
+**Scope-down at dispatch is allowed, and logged.** The coordinator may shrink a
+package as it goes out — "the migration file only, no deploy" — and records the
+shrink on the wave's progress-log entry. What it may not do is widen one.
+
+**Escalation on failure is a re-dispatch, not an edit.** A package that files
+`BLOCKER.md` or fails review twice is re-dispatched one model tier up, or with
+a reviewer added to its pattern. The escalation goes in the progress log; the
+package's declared `SCOPE.json.execution` default is left alone, so the record
+shows what was planned and what it actually took. An escalation that is not
+logged is the same as no escalation: the next planner repeats the
+under-provisioning.
+
+## Execution profiles
+
+Each package declares an `execution` profile in its `SCOPE.json`: which model
+tier the worker runs on, which subagent pattern it uses, and any named agent
+types. The planner assigns the default from this table when the package is cut;
+the coordinator resolves the final profile at dispatch and logs any change.
+
+| Package type | Model | Pattern |
+|---|---|---|
+| Contract change (`cell:contract-change`) | strongest available | `implement+review` — adversarial review before the PR opens |
+| Gate (`V<phase>`) | strongest available | `gate-verify` — an independent verifier; the browser-E2E specialist for browser gates |
+| Core domain-logic feature | session default | `implement+review` |
+| UI feature | session default | `implement+test` — a UI specialist paired with the browser-E2E verifier. The browser E2E is required regardless; the profile only makes it declarative |
+| Mechanical work (migrations, renames, version bumps, doc moves) | cheapest tier | `solo` |
+| Pre-planning exploration | cheap fan-out | read-only explore agents; not a package — it runs before the epic is written |
+
+Model tiers are named as tiers, not as model names. A model name in a template
+goes stale, and per-worker pinning belongs on the launch command: a `/model`
+call writes a global settings key, so it cannot pin one worker.
+
+Deliberately excluded: per-package token budgets. The WIP cap and the wave
+cadence already bound spend, and a budget number inside `SCOPE.json` goes stale
+where the cap does not.
 
 ## Isolation
 
