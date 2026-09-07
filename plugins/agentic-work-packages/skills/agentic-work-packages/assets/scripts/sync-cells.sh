@@ -111,6 +111,7 @@ JS
 # GH_BIN exists so the collector can be exercised against a stub in the fixture
 # test. It defaults to the real gh and is not a user-facing option.
 GH="${GH_BIN:-gh}"
+PAGE_LIMIT="${SYNC_CELLS_PAGE_LIMIT:-1000}"
 
 collect_state() {
   command -v "$GH" >/dev/null 2>&1 || {
@@ -122,10 +123,25 @@ collect_state() {
   # must be relabelled cell:merged. Querying only open issues makes the merged
   # rule unreachable in a live repo, which no fixture over the state file can
   # detect.
-  "$GH" issue list --repo "$REPO" --state all --limit 500 \
+  "$GH" issue list --repo "$REPO" --state all --limit "$PAGE_LIMIT" \
      --json number,title,labels,state > "$TMP/issues.json" || exit 70
-  "$GH" pr list --repo "$TARGET" --state all --limit 500 \
+  "$GH" pr list --repo "$TARGET" --state all --limit "$PAGE_LIMIT" \
      --json number,title,body,state,headRefName,headRefOid > "$TMP/prs.json" || exit 70
+
+  # A collection that exactly fills the page is indistinguishable from a
+  # truncated one, and labels derived from half a backlog are worse than no
+  # run at all: a package whose PR fell past the cut looks branch-only and gets
+  # downgraded. Say so and stop, rather than reporting a confident partial.
+  for f in issues prs; do
+    n=$(node -e 'const a=require(process.argv[1]);process.stdout.write(String(a.length))' "$TMP/$f.json")
+    if [ "$n" -ge "$PAGE_LIMIT" ]; then
+      printf 'sync-cells: the %s query returned %s rows, filling the page limit of %s.\n' \
+        "$f" "$n" "$PAGE_LIMIT" >&2
+      printf '  The collection is truncated, so any label derived from it would be wrong.\n' >&2
+      printf '  Raise the limit with SYNC_CELLS_PAGE_LIMIT and run again.\n' >&2
+      exit 75
+    fi
+  done
   "$GH" api "repos/$TARGET/branches?per_page=100" --paginate \
      --jq '[.[].name]' > "$TMP/branches.json" 2>/dev/null || echo '[]' > "$TMP/branches.json"
 
@@ -142,6 +158,16 @@ const prs = read('prs.json');
 const branches = read('branches.json');
 
 const packageId = title => (String(title).trim().split(/\s+/)[0] || '').replace(/[^\w.\-]+$/, '');
+
+// A branch carries the package id, but not necessarily its case or its dot:
+// package M1.3 lives on feat/m1-3-validation as often as on feat/M1.3-....
+// Match case-insensitively, treat . and - as the same separator, and require a
+// boundary so M1.3 never claims M1.30's branch.
+const idMatcher = id => {
+  const esc = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sep = esc.replace(/\\\./g, '[.\\-]');
+  return new RegExp(`(^|[^a-z0-9])${sep}([^a-z0-9]|$)`, 'i');
+};
 const refsIssue = (pr, n) => new RegExp(`#${n}(?!\\d)`).test(`${pr.title || ''}\n${pr.body || ''}`);
 
 const out = { repo, target, issues: [] };
@@ -153,7 +179,7 @@ for (const issue of issues) {
           || (id && prs.find(p => String(p.title).includes(id)))
           || null;
   const branch = pr ? pr.headRefName
-                    : (id ? branches.find(b => b.includes(id)) : null) || null;
+                    : (id ? branches.find(b => idMatcher(id).test(b)) : null) || null;
   out.issues.push({
     number: issue.number,
     title: issue.title,
