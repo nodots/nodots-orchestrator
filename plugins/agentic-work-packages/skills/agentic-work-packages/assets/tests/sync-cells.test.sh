@@ -178,4 +178,68 @@ assert_not_contains "$row2" "awaiting-review" "an open PR without evidence is ne
 first=$(printf '%s' "$OUT" | grep -E '^#' | head -1)
 assert_contains "$first" "#1" "rows are listed in issue order"
 
+# --- branch matching must survive real-world branch names -------------------
+# The numbering rules require the package id in the branch name, but they do
+# not require the branch to preserve the id's case or its dot. Real branches
+# are lower-case and hyphenated: feat/m1-3-validation for package M1.3.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 11, "title": "M1.3 Server-side validation", "state": "OPEN",
+   "labels": [{"name": "cell:queued"}]},
+  {"number": 12, "title": "M1.30 Later package", "state": "OPEN",
+   "labels": [{"name": "cell:queued"}]}
+]
+JSON
+    ;;
+  "pr list") echo '[]' ;;
+  "api repos"*|"api "*)
+    case "$*" in
+      *"/branches"*) echo '["development","feat/m1-3-validation"]' ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) echo '[]' ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>/dev/null)
+r11=$(printf '%s' "$OUT" | grep -E '^#11 ' || true)
+r12=$(printf '%s' "$OUT" | grep -E '^#12 ' || true)
+assert_contains "$r11" "cell:active" "a lower-case hyphenated branch matches its package id (M1.3 -> feat/m1-3-...)"
+assert_contains "$r12" "unchanged"   "M1.30 does not steal M1.3's branch (no unbounded substring match)"
+
+# --- a truncated collection must fail loudly, never derive from partial state
+# Deriving labels from half a backlog is worse than not running: a package
+# whose PR is beyond the cut looks branch-only and gets downgraded.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    # Emit exactly as many issues as the requested --limit, which is what a
+    # truncated page looks like from the outside.
+    lim=1000
+    for a in "$@"; do [ "$prev" = "--limit" ] && lim="$a"; prev="$a"; done
+    printf '['
+    i=1
+    while [ "$i" -le "$lim" ]; do
+      [ "$i" -gt 1 ] && printf ','
+      printf '{"number":%d,"title":"M%d.1 pkg","state":"OPEN","labels":[{"name":"cell:queued"}]}' "$i" "$i"
+      i=$((i + 1))
+    done
+    printf ']'
+    ;;
+  "pr list") echo '[]' ;;
+  *) echo '[]' ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>&1); EXIT=$?
+assert_ne 0 "$EXIT" "a collection that fills the page limit fails rather than deriving from partial state"
+assert_contains "$OUT" "truncat" "the truncation is named in the failure"
+
 finish
