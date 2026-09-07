@@ -18,11 +18,15 @@
 # review. See references/working-agreements.md §Evidence stamps.
 #
 # Usage:
-#   sync-cells.sh --repo <owner/repo> [--target <owner/repo>] [--apply]
+#   sync-cells.sh --repo <owner/repo> [--target <owner/repo>]... [--apply]
 #   sync-cells.sh --state <file.json> [--apply]
 #
 #   --repo    the host repo holding the issue graph
-#   --target  the repo holding the branches and PRs (default: --repo)
+#   --target  a repo holding branches and PRs. Repeatable: pass one per target
+#             repo in the program. Defaults to --repo for a single-repo setup.
+#             Each package names its own repo on its header line
+#             (**Repo:** `owner/repo`), and a package naming a repo that was
+#             not passed fails the run rather than being reported unchanged.
 #   --state   read collected state from a file instead of calling gh; the gh
 #             collector writes exactly this shape, so the derivation runs over
 #             a fixture and over a live repo through one code path
@@ -35,14 +39,14 @@ set -uo pipefail
 APPLY=0
 STATE=""
 REPO=""
-TARGET=""
+TARGETS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=1; shift ;;
     --state) STATE="${2:-}"; shift 2 ;;
     --repo) REPO="${2:-}"; shift 2 ;;
-    --target) TARGET="${2:-}"; shift 2 ;;
+    --target) TARGETS+=("${2:-}"); shift 2 ;;
     -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     *) printf 'sync-cells: unknown argument: %s\n' "$1" >&2; exit 64 ;;
   esac
@@ -52,7 +56,7 @@ if [ -z "$STATE" ] && [ -z "$REPO" ]; then
   printf 'sync-cells: one of --state or --repo is required.\n' >&2
   exit 64
 fi
-[ -n "$TARGET" ] || TARGET="$REPO"
+[ ${#TARGETS[@]} -gt 0 ] || TARGETS=("$REPO")
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -123,35 +127,59 @@ collect_state() {
   # must be relabelled cell:merged. Querying only open issues makes the merged
   # rule unreachable in a live repo, which no fixture over the state file can
   # detect.
+  # body is needed: each package names its target repo in its header line, and
+  # that is what routes it to the right repo's branches and PRs.
   "$GH" issue list --repo "$REPO" --state all --limit "$PAGE_LIMIT" \
-     --json number,title,labels,state > "$TMP/issues.json" || exit 70
-  "$GH" pr list --repo "$TARGET" --state all --limit "$PAGE_LIMIT" \
-     --json number,title,body,state,headRefName,headRefOid > "$TMP/prs.json" || exit 70
+     --json number,title,body,labels,state > "$TMP/issues.json" || exit 70
+
+  # One collection per target repo, each row tagged with the repo it came from.
+  printf '[]' > "$TMP/prs.json"
+  printf '[]' > "$TMP/branches.json"
+  for t in "${TARGETS[@]}"; do
+    "$GH" pr list --repo "$t" --state all --limit "$PAGE_LIMIT" \
+       --json number,title,body,state,headRefName,headRefOid > "$TMP/prs.one.json" || exit 70
+    n=$(node -e 'const a=require(process.argv[1]);process.stdout.write(String(a.length))' "$TMP/prs.one.json")
+    if [ "$n" -ge "$PAGE_LIMIT" ]; then
+      printf 'sync-cells: the pr query for %s returned %s rows, filling the page limit of %s.\n' \
+        "$t" "$n" "$PAGE_LIMIT" >&2
+      printf '  The collection is truncated, so any label derived from it would be wrong.\n' >&2
+      printf '  Raise the limit with SYNC_CELLS_PAGE_LIMIT and run again.\n' >&2
+      exit 75
+    fi
+    "$GH" api "repos/$t/branches?per_page=100" --paginate \
+       --jq '[.[].name]' > "$TMP/branches.one.json" 2>/dev/null || printf '[]' > "$TMP/branches.one.json"
+    node - "$TMP" "$t" <<'JS' || exit 70
+'use strict';
+const fs = require('fs'), path = require('path');
+const [dir, repo] = process.argv.slice(2);
+const rd = f => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+const prs = rd('prs.json').concat(rd('prs.one.json').map(p => ({ ...p, repo })));
+const br = rd('branches.json').concat(rd('branches.one.json').map(name => ({ name, repo })));
+fs.writeFileSync(path.join(dir, 'prs.json'), JSON.stringify(prs));
+fs.writeFileSync(path.join(dir, 'branches.json'), JSON.stringify(br));
+JS
+  done
 
   # A collection that exactly fills the page is indistinguishable from a
   # truncated one, and labels derived from half a backlog are worse than no
   # run at all: a package whose PR fell past the cut looks branch-only and gets
   # downgraded. Say so and stop, rather than reporting a confident partial.
-  for f in issues prs; do
-    n=$(node -e 'const a=require(process.argv[1]);process.stdout.write(String(a.length))' "$TMP/$f.json")
-    if [ "$n" -ge "$PAGE_LIMIT" ]; then
-      printf 'sync-cells: the %s query returned %s rows, filling the page limit of %s.\n' \
-        "$f" "$n" "$PAGE_LIMIT" >&2
-      printf '  The collection is truncated, so any label derived from it would be wrong.\n' >&2
-      printf '  Raise the limit with SYNC_CELLS_PAGE_LIMIT and run again.\n' >&2
-      exit 75
-    fi
-  done
-  "$GH" api "repos/$TARGET/branches?per_page=100" --paginate \
-     --jq '[.[].name]' > "$TMP/branches.json" 2>/dev/null || echo '[]' > "$TMP/branches.json"
+  n=$(node -e 'const a=require(process.argv[1]);process.stdout.write(String(a.length))' "$TMP/issues.json")
+  if [ "$n" -ge "$PAGE_LIMIT" ]; then
+    printf 'sync-cells: the issues query returned %s rows, filling the page limit of %s.\n' \
+      "$n" "$PAGE_LIMIT" >&2
+    printf '  The collection is truncated, so any label derived from it would be wrong.\n' >&2
+    printf '  Raise the limit with SYNC_CELLS_PAGE_LIMIT and run again.\n' >&2
+    exit 75
+  fi
 
   # One pass in node: match PRs to issues by the issue reference in the PR, and
   # branches to issues by the package id, which the numbering rules require to
   # appear in the issue title, the branch name and the PR title alike.
-  node - "$TMP" "$REPO" "$TARGET" <<'JS' > "$TMP/state.json" || exit 70
+  node - "$TMP" "$REPO" "${TARGETS[@]}" <<'JS' > "$TMP/state.json" || exit 70
 'use strict';
 const fs = require('fs'), path = require('path');
-const [dir, repo, target] = process.argv.slice(2);
+const [dir, repo, ...targets] = process.argv.slice(2);
 const read = f => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
 const issues = read('issues.json');
 const prs = read('prs.json');
@@ -170,25 +198,64 @@ const idMatcher = id => {
 };
 const refsIssue = (pr, n) => new RegExp(`#${n}(?!\\d)`).test(`${pr.title || ''}\n${pr.body || ''}`);
 
-const out = { repo, target, issues: [] };
+// Each package names its target repo on its header line:
+//   **Part of** #1 · **Phase 1 · name** · **Repo:** `owner/repo`
+// A bare name is qualified with the host's owner, so `backgammon-core` and
+// `nodots/backgammon-core` mean the same thing.
+const owner = String(repo).split('/')[0];
+const qualify = r => (r.includes('/') ? r : `${owner}/${r}`);
+const declaredRepo = body => {
+  const m = /\*\*Repo:\*\*\s*`?([A-Za-z0-9_.\-]+(?:\/[A-Za-z0-9_.\-]+)?)`?/.exec(String(body || ''));
+  return m ? qualify(m[1]) : null;
+};
+
+const out = { repo, targets, issues: [] };
+const uncovered = [];
 for (const issue of issues) {
   const label = (issue.labels || []).map(l => l.name).find(n => /^cell:/.test(n));
   if (!label) continue;                       // not a package
   const id = packageId(issue.title);
-  const pr = prs.find(p => refsIssue(p, issue.number))
-          || (id && prs.find(p => String(p.title).includes(id)))
+  const declared = declaredRepo(issue.body);
+
+  // A package that names a repo nobody collected cannot be judged. Record it;
+  // the run fails rather than reporting it as "unchanged", which is
+  // indistinguishable from a package that genuinely has nothing.
+  if (declared && !targets.includes(declared)) {
+    uncovered.push({ number: issue.number, id: id || String(issue.number), repo: declared });
+    continue;
+  }
+
+  // Search only the package's own repo when it names one.
+  const inScope = x => !declared || x.repo === undefined || x.repo === declared;
+  const prPool = prs.filter(inScope);
+  const brPool = branches.filter(inScope);
+
+  const pr = prPool.find(p => refsIssue(p, issue.number))
+          || (id && prPool.find(p => String(p.title).includes(id)))
           || null;
-  const branch = pr ? pr.headRefName
-                    : (id ? branches.find(b => idMatcher(id).test(b)) : null) || null;
+  const brMatch = pr ? null : (id ? brPool.find(b => idMatcher(id).test(b.name)) : null);
+  const branch = pr ? pr.headRefName : (brMatch ? brMatch.name : null);
+
   out.issues.push({
     number: issue.number,
     title: issue.title,
     label,
+    repo: declared || (pr && pr.repo) || (brMatch && brMatch.repo) || targets[0],
     branch,
-    branchExists: Boolean(branch && (branches.includes(branch) || pr)),
+    branchExists: Boolean(branch && (brMatch || pr)),
     blockerOnBranch: false,                   // filled in by the shell below
     pr: pr ? { number: pr.number, state: pr.state, headSha: pr.headRefOid, comments: [] } : null,
   });
+}
+if (uncovered.length) {
+  const repos = [...new Set(uncovered.map(u => u.repo))];
+  process.stderr.write(
+    `sync-cells: ${uncovered.length} package(s) name a target repo that was not collected.\n` +
+    uncovered.map(u => `  #${u.number} ${u.id} -> ${u.repo}\n`).join('') +
+    `  Nothing was derived for them, and a partial run would report them as\n` +
+    `  unchanged, which is indistinguishable from having nothing to do.\n` +
+    `  Add: ${repos.map(r => `--target ${r}`).join(' ')}\n`);
+  process.exit(76);
 }
 process.stdout.write(JSON.stringify(out, null, 2));
 JS
@@ -196,20 +263,22 @@ JS
   # BLOCKER.md presence and the PR comment bodies need one call each; do them
   # here rather than in node so the whole script keeps to gh + node builtins.
   local numbers
+  # Each row carries its own repo, so a blocker or an evidence stamp is looked
+  # up where that package actually lives.
   numbers=$(node -e '
     const s = require("'"$TMP"'/state.json");
-    process.stdout.write(s.issues.map((i, k) => [k, i.branch || "", i.pr ? i.pr.number : ""].join("\t")).join("\n"));
+    process.stdout.write(s.issues.map((i, k) => [k, i.repo || "", i.branch || "", i.pr ? i.pr.number : ""].join("\t")).join("\n"));
   ')
   : > "$TMP/facts.tsv"
-  while IFS=$'\t' read -r idx branch prnum; do
+  while IFS=$'\t' read -r idx irepo branch prnum; do
     [ -n "${idx:-}" ] || continue
     local blocker="false" comments="[]"
-    if [ -n "$branch" ] && "$GH" api "repos/$TARGET/contents/BLOCKER.md?ref=$branch" \
+    if [ -n "$branch" ] && "$GH" api "repos/$irepo/contents/BLOCKER.md?ref=$branch" \
          --silent >/dev/null 2>&1; then
       blocker="true"
     fi
     if [ -n "$prnum" ]; then
-      comments=$("$GH" api "repos/$TARGET/issues/$prnum/comments" --paginate \
+      comments=$("$GH" api "repos/$irepo/issues/$prnum/comments" --paginate \
                    --jq '[.[].body]' 2>/dev/null || echo '[]')
     fi
     printf '%s\t%s\t%s\n' "$idx" "$blocker" "$comments" >> "$TMP/facts.tsv"

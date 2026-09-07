@@ -129,9 +129,36 @@ Dry run is the default. `--state <file.json>` runs the same derivation over a
 saved state file, which is how the fixture test exercises every rule without
 touching a network.
 
+### Several target repos
+
+`--target` is repeatable, one per repo the program touches. The issue graph
+lives in the host repo; the branches and PRs live wherever each package says
+they do:
+
+```bash
+assets/scripts/sync-cells.sh --repo <owner>/<host-repo> \
+  --target <owner>/<core-repo> \
+  --target <owner>/<api-repo> \
+  --target <owner>/<client-repo>
+```
+
+Each package is routed by the **Repo:** on its own header line, so a package is
+only ever matched against branches and PRs in its own repo — two repos can hold
+a `feat/session-store` branch without confusing each other. A bare name is
+qualified with the host's owner.
+
+**A package naming a repo you did not pass fails the run**, naming the package
+and the missing repo. It does not report that package as unchanged: with no
+collection to judge it against, "unchanged" would be indistinguishable from
+"nothing to do", and the label would silently rot. Add the `--target` it asks
+for and run again.
+
 The script matches a PR to an issue by the `#<number>` reference in the PR, and
 a branch to an issue by the package ID — which is why the numbering rules
 require that ID in the issue title, the branch name and the PR title alike.
+Branch matching ignores case and treats `.` and `-` alike, so package `M1.3`
+finds `feat/m1-3-validation`, but it is bounded: `M1.3` never claims `M1.30`'s
+branch.
 
 ## The scope hook in the target repo
 
