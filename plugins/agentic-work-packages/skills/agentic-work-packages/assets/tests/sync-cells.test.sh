@@ -108,4 +108,74 @@ OUT4=$(bash "$SCRIPT" 2>&1); EXIT4=$?
 assert_ne 0 "$EXIT4" "no arguments is an error"
 assert_contains "$OUT4" "required" "the usage error says what is required"
 
+
+# --- the gh collector itself, against a stub -------------------------------
+# Regression for a defect the state-file fixtures structurally could not catch:
+# the collector queried `gh issue list --state open`, but a package whose PR
+# merged with "Closes #N" has had its issue CLOSED by GitHub. That package is
+# precisely the one that must become cell:merged, and it was invisible.
+STUB="$TMP/stub"
+mkdir -p "$STUB"
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+# Minimal gh stub. Records the issue-list arguments so the test can assert on
+# them, and answers each query from a canned fixture.
+case "$1 $2" in
+  "issue list")
+    printf '%s
+' "$*" >> "$STUB_CALLS"
+    # The merged package's issue is CLOSED, as GitHub leaves it.
+    cat <<'JSON'
+[
+  {"number": 1, "title": "M0.1 Freeze protocol", "state": "CLOSED",
+   "labels": [{"name": "cell:queued"}]},
+  {"number": 2, "title": "M1.1 Session store", "state": "OPEN",
+   "labels": [{"name": "cell:queued"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[
+  {"number": 7, "title": "[READY]: M0.1", "body": "Closes #1", "state": "MERGED",
+   "headRefName": "feat/M0.1-freeze", "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  {"number": 8, "title": "[READY]: M1.1", "body": "Closes #2", "state": "OPEN",
+   "headRefName": "feat/M1.1-store", "headRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+]
+JSON
+    ;;
+  "api repos"*|"api "*)
+    case "$*" in
+      *"/branches"*) echo '["development","feat/M0.1-freeze","feat/M1.1-store"]' ;;
+      *"BLOCKER.md"*) exit 1 ;;                      # no blocker on any branch
+      *"/comments"*) echo '[]' ;;                    # no evidence stamp
+      *) echo '[]' ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+export STUB_CALLS="$TMP/gh-calls.txt"
+: > "$STUB_CALLS"
+
+OUT=$(GH_BIN="$STUB/gh" STUB_CALLS="$STUB_CALLS" bash "$SCRIPT" --repo example/host 2>"$TMP/err2")
+EXIT=$?
+assert_eq 0 "$EXIT" "the collector runs end to end against a stub gh"
+
+calls=$(cat "$STUB_CALLS")
+assert_contains "$calls" "--state all" "the issue query asks for every issue, not just open ones"
+assert_not_contains "$calls" "--state open" "the issue query does not filter to open issues"
+
+assert_contains "$OUT" "cell:merged" "a merged PR whose issue GitHub closed still becomes cell:merged"
+row1=$(printf '%s' "$OUT" | grep -E '^#1 ' || true)
+assert_contains "$row1" "cell:merged" "issue #1 (closed by the merge) is relabelled, not skipped"
+row2=$(printf '%s' "$OUT" | grep -E '^#2 ' || true)
+assert_contains "$row2" "unchanged" "issue #2 (open PR, no current stamp) is left alone"
+assert_not_contains "$row2" "awaiting-review" "an open PR without evidence is never promoted to review"
+
+# Rows are reported in issue order, so a coordinator can read the queue.
+first=$(printf '%s' "$OUT" | grep -E '^#' | head -1)
+assert_contains "$first" "#1" "rows are listed in issue order"
+
 finish

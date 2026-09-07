@@ -108,16 +108,25 @@ process.stdout.write(rows.join('\n') + (rows.length ? '\n' : ''));
 JS
 
 # --- collect live state into the fixture shape ------------------------------
+# GH_BIN exists so the collector can be exercised against a stub in the fixture
+# test. It defaults to the real gh and is not a user-facing option.
+GH="${GH_BIN:-gh}"
+
 collect_state() {
-  command -v gh >/dev/null 2>&1 || {
-    printf 'sync-cells: gh is not on PATH; use --state for an offline run.\n' >&2
+  command -v "$GH" >/dev/null 2>&1 || {
+    printf 'sync-cells: %s is not on PATH; use --state for an offline run.\n' "$GH" >&2
     exit 69
   }
-  gh issue list --repo "$REPO" --state open --limit 500 \
-     --json number,title,labels > "$TMP/issues.json" || exit 70
-  gh pr list --repo "$TARGET" --state all --limit 500 \
+  # --state all, NOT --state open. A package whose PR merged with "Closes #N"
+  # has had its issue closed by GitHub, and that is exactly the package which
+  # must be relabelled cell:merged. Querying only open issues makes the merged
+  # rule unreachable in a live repo, which no fixture over the state file can
+  # detect.
+  "$GH" issue list --repo "$REPO" --state all --limit 500 \
+     --json number,title,labels,state > "$TMP/issues.json" || exit 70
+  "$GH" pr list --repo "$TARGET" --state all --limit 500 \
      --json number,title,body,state,headRefName,headRefOid > "$TMP/prs.json" || exit 70
-  gh api "repos/$TARGET/branches?per_page=100" --paginate \
+  "$GH" api "repos/$TARGET/branches?per_page=100" --paginate \
      --jq '[.[].name]' > "$TMP/branches.json" 2>/dev/null || echo '[]' > "$TMP/branches.json"
 
   # One pass in node: match PRs to issues by the issue reference in the PR, and
@@ -169,12 +178,12 @@ JS
   while IFS=$'\t' read -r idx branch prnum; do
     [ -n "${idx:-}" ] || continue
     local blocker="false" comments="[]"
-    if [ -n "$branch" ] && gh api "repos/$TARGET/contents/BLOCKER.md?ref=$branch" \
+    if [ -n "$branch" ] && "$GH" api "repos/$TARGET/contents/BLOCKER.md?ref=$branch" \
          --silent >/dev/null 2>&1; then
       blocker="true"
     fi
     if [ -n "$prnum" ]; then
-      comments=$(gh api "repos/$TARGET/issues/$prnum/comments" --paginate \
+      comments=$("$GH" api "repos/$TARGET/issues/$prnum/comments" --paginate \
                    --jq '[.[].body]' 2>/dev/null || echo '[]')
     fi
     printf '%s\t%s\t%s\n' "$idx" "$blocker" "$comments" >> "$TMP/facts.tsv"
@@ -212,17 +221,17 @@ while IFS=$'\t' read -r number from to action why; do
     if [ "$APPLY" = "1" ]; then
       [ -n "$REPO" ] || { printf 'sync-cells: --apply needs --repo.\n' >&2; exit 64; }
       if [ -n "$from" ]; then
-        gh issue edit "$number" --repo "$REPO" --remove-label "$from" --add-label "$to" >/dev/null \
+        "$GH" issue edit "$number" --repo "$REPO" --remove-label "$from" --add-label "$to" >/dev/null \
           || printf '  ! failed to relabel #%s\n' "$number" >&2
       else
-        gh issue edit "$number" --repo "$REPO" --add-label "$to" >/dev/null \
+        "$GH" issue edit "$number" --repo "$REPO" --add-label "$to" >/dev/null \
           || printf '  ! failed to label #%s\n' "$number" >&2
       fi
     fi
   else
     printf '#%s  %s   (unchanged: %s)\n' "$number" "${from:-none}" "$why"
   fi
-done < "$TMP/rows.tsv"
+done < <(sort -t"#" -k1 -n "$TMP/rows.tsv")
 
 if [ "$APPLY" = "1" ]; then
   printf '\n%d label(s) written.\n' "$changes"
