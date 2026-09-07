@@ -242,4 +242,69 @@ OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>&1); EXIT=$?
 assert_ne 0 "$EXIT" "a collection that fills the page limit fails rather than deriving from partial state"
 assert_contains "$OUT" "truncat" "the truncation is named in the failure"
 
+# --- several target repos in one run ----------------------------------------
+# The model puts the issue graph in one host repo while PRs open against the
+# target repo each package names. A program spanning fifteen sibling repos must
+# not need fifteen runs, and must never report a confident partial for the
+# repos it did not look at.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+# Answers per --repo, so one stub serves a host and two target repos.
+repo=""; prev=""
+for a in "$@"; do [ "$prev" = "--repo" ] && repo="$a"; prev="$a"; done
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 21, "title": "A1.1 core change", "state": "CLOSED",
+   "body": "**Part of** #1 · **Phase 1** · **Repo:** `example/code-a`",
+   "labels": [{"name": "cell:queued"}]},
+  {"number": 22, "title": "B1.1 client change", "state": "OPEN",
+   "body": "**Part of** #1 · **Phase 1** · **Repo:** `example/code-b`",
+   "labels": [{"name": "cell:queued"}]}
+]
+JSON
+    ;;
+  "pr list")
+    case "$repo" in
+      example/code-a) cat <<'JSON'
+[{"number": 31, "title": "[READY]: A1.1", "body": "Closes #21", "state": "MERGED",
+  "headRefName": "feat/a1-1", "headRefOid": "1111111111111111111111111111111111111111"}]
+JSON
+        ;;
+      *) echo '[]' ;;
+    esac
+    ;;
+  "api "*)
+    case "$*" in
+      *"code-a/branches"*) echo '["development","feat/a1-1"]' ;;
+      *"code-b/branches"*) echo '["development","feat/b1-1-client"]' ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) echo '[]' ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host         --target example/code-a --target example/code-b 2>"$TMP/err3")
+EXIT=$?
+assert_eq 0 "$EXIT" "two target repos are collected in one run"
+r21=$(printf '%s' "$OUT" | grep -E '^#21 ' || true)
+r22=$(printf '%s' "$OUT" | grep -E '^#22 ' || true)
+assert_contains "$r21" "cell:merged" "a package in the first target repo derives from its own PR"
+assert_contains "$r22" "cell:active" "a package in the second target repo derives from its own branch"
+
+# --- a package whose repo was not covered must fail loudly ------------------
+# The silent-partial failure this replaces: with only one target given, a
+# package living in another repo matched no PR and no branch, and was reported
+# as "unchanged" — indistinguishable from a package with genuinely nothing.
+OUT2=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host --target example/code-a 2>&1)
+EXIT2=$?
+assert_ne 0 "$EXIT2" "a package whose target repo was not supplied fails the run"
+assert_contains "$OUT2" "example/code-b" "the uncovered repo is named"
+assert_contains "$OUT2" "B1.1" "the package that needs it is named"
+assert_not_contains "$OUT2" "0 label(s) would change" "an uncovered repo never reports a clean result"
+
 finish
