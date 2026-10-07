@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 # Create the work-package label set in a GitHub repo.
-# Usage: ./bootstrap-github-labels.sh <owner>/<repo> [program-label]
+# Usage: ./bootstrap-github-labels.sh <owner>/<repo> [program-label] [worker-id...]
+# Each worker-id creates worker:<id>, the ownership label for multi-account runs.
 set -euo pipefail
 
-REPO="${1:?usage: $0 <owner>/<repo> [program-label]}"
+REPO="${1:?usage: $0 <owner>/<repo> [program-label] [worker-id...]}"
 PROGRAM="${2:-}"
+WORKERS=("${@:3}")
+
+# Validate every id before creating anything, so a bad id cannot leave a partial set.
+for w in ${WORKERS[@]+"${WORKERS[@]}"}; do
+  case "$w" in
+    ''|*[!A-Za-z0-9_-]*) echo "invalid worker id [$w]; use letters, digits, _ and - only." >&2; exit 64 ;;
+  esac
+done
 
 create() {
   local name="$1" color="$2" desc="$3"
@@ -28,6 +37,10 @@ create "cell:contract-change" "e99695" "Modifies a frozen contract - never runs 
 if [ -n "$PROGRAM" ]; then
   create "$PROGRAM" "c5def5" "Program label"
 fi
+
+for w in ${WORKERS[@]+"${WORKERS[@]}"}; do
+  create "worker:$w" "bfd4f2" "Owned by worker account $w; written only by the coordinator"
+done
 
 echo
 echo "Done. Label the epic 'epic' + '$PROGRAM', and first-wave packages"

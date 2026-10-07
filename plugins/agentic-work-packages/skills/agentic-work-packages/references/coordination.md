@@ -29,6 +29,9 @@ A coordinator that starts implementing loses track of the fleet, and the logs
 stop being written. That is how a run silently degrades into one agent doing
 everything.
 
+The coordinator and the workers need not share a Claude account. When they do
+not, dispatch goes through the tracker alone: see `multi-account.md`.
+
 **Scope-down at dispatch is allowed, and logged.** The coordinator may shrink a
 package as it goes out — "the migration file only, no deploy" — and records the
 shrink on the wave's progress-log entry. What it may not do is widen one.
