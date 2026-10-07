@@ -49,6 +49,10 @@ carry it.
 
 Only the coordinator changes `cell:*` labels. Workers do not self-promote.
 
+When workers run on other Claude accounts, a package also carries at most one
+`worker:<id>` label naming its owner, written only by
+`assets/scripts/assign-cells.sh`. See `multi-account.md`.
+
 ## Filing
 
 ```bash

@@ -108,7 +108,9 @@ should name the failing test, and UI packages the browser E2E.
 
 **8. Dispatch and coordinate** — `references/coordination.md`: waves, the WIP
 cap, worktrees, `BLOCKER.md` / `HANDOFF.md`, and what to do when a package
-uncovers work nobody planned.
+uncovers work nobody planned. When the workers run on other Claude accounts
+than the coordinator, add `references/multi-account.md`: the tracker is the bus,
+and `worker:<id>` labels say who owns what.
 
 ## Numbering rules
 
@@ -144,6 +146,7 @@ uncovers work nobody planned.
 | `references/gate.md` | Gate anatomy and template |
 | `references/scope-contract.md` | `SCOPE.json` spec, enforcement, worker protocol |
 | `references/coordination.md` | Dispatch, waves, logs, anti-patterns |
+| `references/multi-account.md` | One account coordinates, others implement: `worker:<id>` labels, assignment, reassignment |
 | `references/working-agreements.md` | Proof of done: test-first, dead gates, boundaries, release order, reporting |
 | `references/adapter-github.md` | GitHub Issues mechanics |
 | `references/adapter-jira.md` | Jira mechanics |
@@ -154,4 +157,5 @@ uncovers work nobody planned.
 | `assets/tests/` | Fixture tests for the hooks and scripts; run in CI |
 | `assets/scripts/bootstrap-github-labels.sh` | Creates the label set in a repo |
 | `assets/scripts/sync-cells.sh` | Derives `cell:*` labels from observable state |
+| `assets/scripts/assign-cells.sh` | Coordinator: assigns queued packages to worker accounts as `worker:<id>` labels |
 | `assets/scripts/aei-epic.js` | Optional: enumerates the epic backlog for a runtime stop guard |
