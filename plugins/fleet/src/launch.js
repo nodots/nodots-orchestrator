@@ -100,8 +100,25 @@ function prepareWorktree(cfg, tracker, { target, id, sc }) {
     // Adopt only a worktree that is on this branch; anything else is a collision.
     const b = g(['rev-parse', '--abbrev-ref', 'HEAD'], worktree);
     if (b.status !== 0 || b.stdout.trim() !== sc.branch) return { ok: false, stage: 'worktree', error: `${worktree} exists and is not on ${sc.branch}` };
+    // The issue is the source of truth for the lane. If the coordinator re-cut
+    // it (a parked package whose lane was wrong), the committed copy follows,
+    // as its own commit, so the hook enforces the lane that was decided.
+    const rel = path.join('.agentic', 'cells', ...sc.branch.split('/'), 'SCOPE.json');
+    const want = JSON.stringify(sc, null, 2) + '\n';
+    let have = null; try { have = fs.readFileSync(path.join(worktree, rel), 'utf8'); } catch { /* absent */ }
+    let recut = false;
+    if (have !== want) {
+      fs.mkdirSync(path.dirname(path.join(worktree, rel)), { recursive: true });
+      fs.writeFileSync(path.join(worktree, rel), want);
+      const a = g(['add', '--', rel], worktree);
+      const c = a.status === 0 ? g(['-c', 'user.name=fleet', '-c', 'user.email=fleet@nodots.invalid', 'commit', '-q', '-m', `${id}: scope re-cut`], worktree) : a;
+      if (c.status !== 0) return { ok: false, stage: 'recut', error: c.error || c.stderr.trim() };
+      const p = g(['push', 'origin', sc.branch], worktree);
+      if (p.status !== 0) return { ok: false, stage: 'push', error: p.error || p.stderr.trim(), worktree };
+      recut = true;
+    }
     const h = g(['rev-parse', 'HEAD'], worktree);
-    return { ok: true, worktree, headSha: h.stdout.trim(), created: false, adopted: true, remoteExisted: exists.exists };
+    return { ok: true, worktree, headSha: h.stdout.trim(), created: false, adopted: true, recut, remoteExisted: exists.exists };
   }
 
   if (exists.exists) return { ok: false, stage: 'claim', error: `branch ${sc.branch} already exists on origin and no local worktree holds it; another worker may own it` };
@@ -175,7 +192,8 @@ function launch(cfg, tracker, store, req, persist) {
   record.status = 'running';
   persist(record);
   record.adopted = Boolean(prep.adopted);
-  return { ok: true, session: record, args, adopted: Boolean(prep.adopted) };
+  record.recut = Boolean(prep.recut);
+  return { ok: true, session: record, args, adopted: Boolean(prep.adopted), recut: Boolean(prep.recut) };
 }
 
 // A worktree this machine already holds on the package branch: a launch that

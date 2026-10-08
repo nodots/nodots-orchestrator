@@ -198,13 +198,42 @@ assert_not_contains "$(ls "$TMP/claude-log")" "T1.3.3" "no third attempt is laun
 assert_contains "$OUT" '"outcome": "alarm"' "an escalation cap with nothing else moving is an alarm"
 assert_contains "$OUT" '"streak": 1' "a no-movement cycle with no live session starts the streak"
 
+# --- E2. a parked package resumes once the coordinator re-cuts the lane and removes the blocker
+# The decision is recorded in the issue (SCOPE.json widened), the BLOCKER.md is
+# removed, and the next cycle relaunches at the same tier with a re-cut scope
+# commit on the branch. Until then, nothing relaunches.
+OUT=$(fleet cycle --apply --json 2>/dev/null)
+assert_not_contains "$(ls "$TMP/claude-log")" "T1.4.2" "a parked package with its BLOCKER.md still present is not relaunched"
+node - "$TMP/gh/issues.json" <<'JS'
+const fs = require('fs'); const f = process.argv[2]; const issues = JSON.parse(fs.readFileSync(f, 'utf8'));
+const i = issues.find(x => x.number === 13);
+i.body = i.body.replace('"allowedPaths":["src/**"]', '"allowedPaths":["src/**","docs/**"]');
+fs.writeFileSync(f, JSON.stringify(issues, null, 2));
+JS
+rm -f "$TMP/worktrees/api-t1-4/BLOCKER.md"
+export CLAUDE_STUB_MODE_T1_4=silent
+OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
+assert_contains "$OUT" '"outcome": "unparked"' "the parked session is reaped as unparked once the blocker is gone"
+assert_contains "$OUT" '"recut": true' "the relaunch re-cuts the committed SCOPE.json from the issue"
+wait_exit 13-2 && _pass "the unparked relaunch ran" || _fail "the unparked relaunch ran" "no exit file 13-2"
+assert_contains "$(git --git-dir "$TMP/remote.git" log --format=%s feat/t1-4-blocker | head -1)" "T1.4: scope re-cut" "the re-cut scope is committed and pushed on the branch"
+assert_contains "$(git --git-dir "$TMP/remote.git" show feat/t1-4-blocker:.agentic/cells/feat/t1-4-blocker/SCOPE.json)" 'docs/**' "the committed lane is the widened one"
+ARGV4=$(cat "$TMP/claude-log/T1.4.2.argv")
+assert_not_contains "$ARGV4" "--model" "an unparked relaunch keeps its tier (no escalation)"
+assert_contains "$ARGV4" "attempt 2" "the unparked relaunch is attempt 2"
+assert_eq "2" "$(node -e "console.log(require('$TMP/state/state.json').dispatches['T1.4'].length)")" "unparking is a new dispatch"
+assert_contains "$(node -e "console.log(JSON.stringify(require('$TMP/state/state.json').dispatches['T1.4'][1]))")" '"reason":"unparked"' "the dispatch records why"
+# Settle: attempt 2 was silent; with maxEscalations 1 it hits the cap, so the fleet is idle from here.
+OUT=$(fleet cycle --apply --json 2>/dev/null)
+assert_contains "$OUT" '"code": "escalation-cap"' "the unparked package's silent run hits the escalation cap"
+
 # --- F. idle cycles: no label writes, latch at the limit ---------------------
 BEFORE=$(edits)
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_eq "$BEFORE" "$(edits)" "an idle cycle writes no labels"
 assert_contains "$OUT" '"outcome": "exhaustion"' "an idle cycle is exhaustion, with counts"
 assert_contains "$OUT" '"wipFree"' "exhaustion carries the free-slot count"
-assert_contains "$OUT" '"streak": 2' "the streak counts up"
+assert_contains "$OUT" '"streak": 2' "the streak counts up from the last movement"
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_eq 78 "$EXIT" "the cycle that reaches the limit exits 78"
 assert_contains "$OUT" '"latched"' "the state is latched"
@@ -222,7 +251,7 @@ assert_ne 0 "$EXIT" "resume without --reason is refused"
 # --- G. status is read-only and reflects the sessions -------------------------
 OUT=$(fleet status 2>&1)
 assert_contains "$OUT" "T1.1" "status lists the sessions"
-assert_contains "$OUT" "parked" "status shows the parked one"
+assert_contains "$OUT" "attempt 2" "status shows the relaunched attempt"
 
 # --- H. a truncated sync launches nothing ------------------------------------
 BEFORE=$(edits); NLOG=$(ls "$TMP/claude-log" | wc -l | tr -d ' ')
