@@ -31,6 +31,12 @@
  * cannot wedge the session. Claude Code independently overrides a Stop hook
  * after 8 consecutive blocks.
  *
+ * TaskCompleted (opt-in): the same check, run when a task is being marked
+ * complete. It blocks with exit 2 and the reason on stderr, which is how
+ * TaskCompleted blocks, and it does not read `stop_hook_active`, which belongs
+ * to Stop. The plugin does not register it; wire it by hand from
+ * assets/settings-snippet-optional.json.
+ *
  * Wire it up in .claude/settings.json:
  *   { "hooks": { "Stop": [ { "hooks": [ { "type": "command",
  *       "command": "node .claude/hooks/require-handoff.js" } ] } ] } }
@@ -102,8 +108,10 @@ process.stdin.on('end', () => {
   try {
     const event = JSON.parse(input);
 
+    const completion = event.hook_event_name === 'TaskCompleted';
+
     // Already continuing because of a stop hook: never block twice.
-    if (event.stop_hook_active) process.exit(0);
+    if (!completion && event.stop_hook_active) process.exit(0);
 
     const root = repoRoot(event.cwd);
     const branch = git(root, ['rev-parse', '--abbrev-ref', 'HEAD']);
@@ -117,9 +125,7 @@ process.stdin.on('end', () => {
 
     if (hasWrittenState(root, branch)) process.exit(0);
 
-    process.stdout.write(JSON.stringify({
-      decision: 'block',
-      reason:
+    const reason =
         `This worktree is on ${branch} with uncommitted changes and neither ` +
         `${HANDOFF} nor ${BLOCKER} written. Before ending the turn, write one of them ` +
         `at the repo root or in this branch's cell directory: ${HANDOFF} if the work ` +
@@ -127,8 +133,13 @@ process.stdin.on('end', () => {
         `${BLOCKER} if it stopped and needs a decision (bucket, kind and reference, ` +
         `alternatives searched, un-block condition, owner, and the one-line ask). ` +
         `Committing or stashing the changes is not the alternative — the point is the ` +
-        `written state, not the clean tree.`,
-    }));
+        `written state, not the clean tree.`;
+
+    if (completion) {
+      process.stderr.write(reason + '\n');
+      process.exit(2); // exit 2 blocks TaskCompleted; stderr is the feedback
+    }
+    process.stdout.write(JSON.stringify({ decision: 'block', reason }));
     process.exit(0);
   } catch (err) {
     try {

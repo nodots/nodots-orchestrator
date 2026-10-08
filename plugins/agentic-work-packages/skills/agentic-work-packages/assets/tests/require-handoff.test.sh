@@ -103,6 +103,33 @@ OUT=$(cd "$TMPROOT" && printf '%s' "$json" | node "$PLUGIN" 2>"$ERRFILE"); EXIT=
 assert_eq 0 "$EXIT" "outside a git repo: exit 0"
 assert_empty "$OUT" "outside a git repo: no block"
 
+# --- 7. TaskCompleted (opt-in): same check, blocks by exit 2 -----------------
+# The repo is on feat/thing with wip.txt uncommitted and no written state.
+run_task_completed() {
+  local json
+  json=$(printf '{"hook_event_name":"TaskCompleted","cwd":"%s","stop_hook_active":true}' "$REPO")
+  OUT=$(cd "$TMPROOT" && printf '%s' "$json" | node "$PLUGIN" 2>"$ERRFILE")
+  EXIT=$?
+  ERR=$(cat "$ERRFILE")
+}
+
+run_task_completed
+assert_eq 2 "$EXIT" "TaskCompleted, dirty, no written state: exit 2 blocks"
+assert_empty "$OUT" "TaskCompleted blocks through stderr, not a JSON decision"
+assert_contains "$ERR" "HANDOFF.md" "TaskCompleted feedback names HANDOFF.md"
+assert_contains "$ERR" "BLOCKER.md" "TaskCompleted feedback names BLOCKER.md"
+assert_contains "$ERR" "feat/thing" "TaskCompleted feedback names the branch"
+
+printf '# handoff\n' > "$REPO/HANDOFF.md"
+run_task_completed
+assert_eq 0 "$EXIT" "TaskCompleted with HANDOFF.md present: allowed"
+rm -f "$REPO/HANDOFF.md"
+
+git -C "$REPO" checkout -q development
+run_task_completed
+assert_eq 0 "$EXIT" "TaskCompleted on the default branch: allowed"
+git -C "$REPO" checkout -q feat/thing
+
 # --- the two shipped copies must not drift -----------------------------------
 if diff -q "$HOOK" ../../../../hooks/require-handoff.js >/dev/null 2>&1; then
   _pass "the plugin and asset copies of the hook are byte-identical"
