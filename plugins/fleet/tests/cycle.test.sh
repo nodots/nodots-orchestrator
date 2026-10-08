@@ -123,7 +123,8 @@ OUT=$(FLEET_ONLY_ISSUE=10 fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_eq 0 "$EXIT" "the recovery cycle exits 0"
 assert_contains "$OUT" '"outcome": "relaunch"' "a launching record with no process is classified relaunch, not escalate"
 assert_contains "$OUT" '"adopted": true' "the relaunch adopts the existing worktree"
-assert_eq "1" "$(git --git-dir "$TMP/remote.git" rev-list --count main..feat/t1-1-first)" "recovery pushes nothing new"
+# The stub worker may already have pushed its own commit; count only scope commits.
+assert_eq "1" "$(git --git-dir "$TMP/remote.git" log --format=%s main..feat/t1-1-first | grep -c 'scope')" "recovery pushes no second scope commit and no re-cut"
 assert_eq "1" "$(node -e "const s=require('$TMP/state/state.json'); console.log(Object.keys(s.sessions).length)")" "exactly one session record after recovery"
 assert_eq "1" "$(node -e "const s=require('$TMP/state/state.json'); console.log((s.dispatches['T1.1']||[]).length)")" "a relaunch after a crash is not a new dispatch"
 assert_contains "$(cat "$TMP/state/state.json")" '"status": "running"' "the recovered session is running"
