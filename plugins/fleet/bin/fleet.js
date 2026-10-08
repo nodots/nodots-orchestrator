@@ -129,7 +129,7 @@ function main() {
     check(fs.existsSync(path.join(cfg.scriptsDir, 'assign-cells.sh')), 'assign-cells.sh', cfg.scriptsDir);
     check(fs.existsSync(cfg.contractPath), 'worker-contract.md', cfg.contractPath);
     const emit = run('bash', [path.join(cfg.scriptsDir, 'sync-cells.sh'), '--help'], { timeoutMs: 15000 });
-    check(/--emit-state/.test(emit.stdout), 'sync-cells.sh supports --emit-state', 'needs agentic-work-packages >= 1.4.0');
+    check(/--emit-state/.test(emit.stdout), 'sync-cells.sh supports --emit-state', 'needs agentic-work-packages >= 1.4.1');
     for (const t of cfg.targets) {
       check(fs.existsSync(t.localPath), `clone ${t.repo}`, t.localPath);
       const settings = path.join(t.localPath, '.claude', 'settings.json');
