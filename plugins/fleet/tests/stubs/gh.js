@@ -76,8 +76,8 @@ if (a === 'api') {
     out(names.join('\n') + '\n'); process.exit(0);   // one name per line, as --jq '.[].name' prints
   }
   let m;
-  if ((m = /contents\/BLOCKER\.md\?ref=(.+)$/.exec(ep))) {
-    try { execFileSync('git', ['--git-dir', REMOTE, 'cat-file', '-e', `${m[1]}:BLOCKER.md`], { stdio: 'ignore' }); process.exit(0); } catch { process.exit(1); }
+  if ((m = /contents\/(.+?BLOCKER\.md)\?ref=(.+)$/.exec(ep))) {
+    try { execFileSync('git', ['--git-dir', REMOTE, 'cat-file', '-e', `${m[2]}:${m[1]}`], { stdio: 'ignore' }); process.exit(0); } catch { process.exit(1); }
   }
   if ((m = /issues\/(\d+)\/comments/.exec(ep))) {
     const all = rd('comments.json', {});

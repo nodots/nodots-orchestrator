@@ -284,9 +284,14 @@ JS
   while IFS=$'\t' read -r idx irepo branch prnum; do
     [ -n "${idx:-}" ] || continue
     local blocker="false" comments="[]"
-    if [ -n "$branch" ] && "$GH" api "repos/$irepo/contents/BLOCKER.md?ref=$branch" \
-         --silent >/dev/null 2>&1; then
-      blocker="true"
+    # BLOCKER.md lives at the repo root or in the branch's cell directory,
+    # the same three places the hooks and the worker contract allow.
+    if [ -n "$branch" ]; then
+      for bp in "BLOCKER.md" ".agentic/cells/$branch/BLOCKER.md" ".auto-shop/cells/$branch/BLOCKER.md"; do
+        if "$GH" api "repos/$irepo/contents/$bp?ref=$branch" --silent >/dev/null 2>&1; then
+          blocker="true"; break
+        fi
+      done
     fi
     if [ -n "$prnum" ]; then
       # Same pagination rule as the branches: one JSON-encoded body per line.
