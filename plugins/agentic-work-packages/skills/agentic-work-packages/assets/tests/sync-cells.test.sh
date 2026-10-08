@@ -169,9 +169,9 @@ JSON
     ;;
   "api repos"*|"api "*)
     case "$*" in
-      *"/branches"*) echo '["development","feat/M0.1-freeze","feat/M1.1-store"]' ;;
+      *"/branches"*) printf '%s\n' development feat/M0.1-freeze feat/M1.1-store ;;
       *"BLOCKER.md"*) exit 1 ;;                      # no blocker on any branch
-      *"/comments"*) echo '[]' ;;                    # no evidence stamp
+      *"/comments"*) : ;;                             # no comments, so no lines
       *) echo '[]' ;;
     esac
     ;;
@@ -221,7 +221,7 @@ JSON
   "pr list") echo '[]' ;;
   "api repos"*|"api "*)
     case "$*" in
-      *"/branches"*) echo '["development","feat/m1-3-validation"]' ;;
+      *"/branches"*) printf '%s\n' development feat/m1-3-validation ;;
       *"BLOCKER.md"*) exit 1 ;;
       *) echo '[]' ;;
     esac
@@ -300,8 +300,8 @@ JSON
     ;;
   "api "*)
     case "$*" in
-      *"code-a/branches"*) echo '["development","feat/a1-1"]' ;;
-      *"code-b/branches"*) echo '["development","feat/b1-1-client"]' ;;
+      *"code-a/branches"*) printf '%s\n' development feat/a1-1 ;;
+      *"code-b/branches"*) printf '%s\n' development feat/b1-1-client ;;
       *"BLOCKER.md"*) exit 1 ;;
       *) echo '[]' ;;
     esac

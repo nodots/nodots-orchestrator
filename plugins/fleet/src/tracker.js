@@ -38,12 +38,11 @@ class Tracker {
   }
 
   listComments(repo, number) {
-    const r = runJson(this.gh, ['api', `repos/${repo}/issues/${number}/comments`, '--paginate', '--jq', '[.[] | {id, body, created_at}]']);
-    if (r.json === null) return { ok: false, error: r.error || r.stderr.trim(), comments: [] };
-    // --paginate with --jq emits one array per page.
-    const text = r.stdout.trim();
-    let all = [];
-    for (const chunk of text.split(/\n(?=\[)/)) { try { all = all.concat(JSON.parse(chunk)); } catch { /* skip */ } }
+    // --paginate emits one result per page; one JSON value per line survives that.
+    const r = run(this.gh, ['api', `repos/${repo}/issues/${number}/comments`, '--paginate', '--jq', '.[] | {id, body, created_at} | @json']);
+    if (r.status !== 0) return { ok: false, error: r.error || r.stderr.trim(), comments: [] };
+    const all = [];
+    for (const line of r.stdout.split('\n')) { if (!line.trim()) continue; try { all.push(JSON.parse(line)); } catch { /* skip */ } }
     return { ok: true, comments: all };
   }
 
