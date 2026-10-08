@@ -12,6 +12,11 @@
       "description": "Epic/package/gate decomposition for autonomous agent fleets, plus SCOPE.json enforcement hook."
     },
     {
+      "name": "fleet",
+      "source": "./plugins/fleet",
+      "description": "Coordinator runtime for agentic-work-packages: one-pass `fleet cycle` that syncs labels, promotes, assigns, launches local worker sessions in worktrees, reaps them, and reports Movement, Exhaustion or Alarm to the epic."
+    },
+    {
       "name": "backgammon-rules",
       "source": {
         "source": "github",

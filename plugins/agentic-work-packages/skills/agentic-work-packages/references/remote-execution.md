@@ -1,76 +1,86 @@
 # Running a worker remotely
 
-Use this when a worker runs with `claude --remote` on a hosted virtual machine
-instead of on the operator's machine. That offloads compute and avoids
-contention with local services such as Docker. The worker, its `SCOPE.json` and
-its hooks behave as they do locally (unverified here: confirm that
-repository-committed hooks run on the VM before relying on them); what differs
-is that the VM starts from a fresh checkout with
-no dependencies installed and no `gh` login. This file covers the prerequisites,
-the session-start dependency install, and a checklist to run before launching.
+Use this when a worker runs as a Claude Code cloud session (`claude --cloud`)
+on a hosted virtual machine instead of on the operator's machine. That offloads
+compute and avoids contention with local services such as Docker. The VM clones
+the repository's GitHub remote at the current branch, so the package branch and
+its scope commit must be pushed first; it starts with no dependencies installed.
+This file covers the prerequisites, the session-start dependency install, and a
+checklist to run before launching.
+
+Facts below marked "(docs)" come from the Claude Code documentation,
+`code.claude.com/docs/en/claude-code-on-the-web`, read 2026-10-07. Facts
+marked "(unverified)" have not been confirmed against a live cloud session and
+must be before a runtime depends on them.
 
 ## Prerequisites
 
 ### 1. Claude Code version
 
-Remote execution needs a recent Claude Code. This guidance was written against
-v2.1.63 as the minimum; confirm the current minimum in the Claude Code
-documentation.
+`--remote` is a deprecated alias for `--cloud` (docs). Use `--cloud`. Check the
+installed version before relying on any flag named here:
 
 ```bash
 claude --version
 npm install -g @anthropic-ai/claude-code@latest   # if older
 ```
 
-### 2. GitHub CLI authentication
+### 2. GitHub access for the cloud session
 
-Remote VMs have no `gh auth login`. The `gh` CLI, and a worker's `curl`
-fallback, read a `GH_TOKEN` environment variable.
+Cloud sessions reach GitHub through one of two connections (docs):
 
-One-time setup:
+- **The Claude GitHub App**, installed on the repositories the packages
+  target. An organization owner installs it once from Claude.ai (Settings,
+  Integrations, GitHub) or from the GitHub App page, choosing the
+  organization and the repositories.
+- **`/web-setup`**, run in a local terminal session, which sends the local
+  `gh` token to the Claude account. Sessions can then reach any repository
+  that token can, whether or not the App is installed.
 
-1. Create a GitHub personal access token with read and write access to the
-   repos the packages target. Prefer a short expiration; 90 days was used
-   in practice. Use a fine-grained token scoped to those repos where GitHub
-   offers one for your organization, and check which permissions it needs for
-   issues and pull requests.
-2. Add `GH_TOKEN=<token>` as an environment variable in the cloud environment
-   settings on Claude.ai.
-3. If `gh` is not pre-installed on the VM, add its installation to the cloud
-   environment setup script. For a Debian-based VM:
+In Anthropic-hosted environments the credential never enters the VM: git and
+`gh` operations go through a GitHub proxy that attaches it server side (docs).
+There is no `GH_TOKEN` to set, and nothing to paste into an environment
+variable. Earlier versions of this guidance said otherwise; they were wrong
+for current cloud sessions.
 
-   ```bash
-   type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-   sudo apt update && sudo apt install gh -y
-   ```
+Whether `gh` is preinstalled on the VM, and whether a worker's `gh issue view`
+and `gh pr create` work through the proxy without further setup, is
+(unverified). If `gh` is absent, the cloud environment's setup script can
+install it; keep that script in the environment settings, not in the repo.
 
-Without `GH_TOKEN` and `gh`, a worker cannot read issues or open PRs. Do not
-paste the token into a transcript, an issue or a file in the repo.
+### 3. Cloud environment
 
-### 3. The Claude GitHub Application
-
-The VM needs read access to the repo to check out the code. An organization
-owner installs the Claude GitHub Application once:
-
-1. Open Claude.ai, Settings, Integrations, GitHub, and choose Connect GitHub.
-2. Select the organization (not a personal account).
-3. Under repository access, choose all repositories or only the repos the
-   packages target.
-4. Install.
-
-After that, a `claude --remote` session targeting a repo in that organization
-can clone it.
+Every cloud session runs in a saved cloud environment that sets network
+access, environment variables and a setup script (docs). The default
+environment is created at onboarding. A program that needs a particular
+network level or a build toolchain gets its own environment.
 
 ## Launching
 
-Replace the local invocation with the remote one:
+From a checkout of the target repository, on the package branch, after the
+scope commit is pushed:
 
 ```bash
-claude            # local
-claude --remote   # on a hosted VM
+claude --cloud "Execute work package <ID>: follow .claude/worker-contract.md; read the package with gh issue view <n> --repo <host>"
 ```
+
+The VM clones the current directory's GitHub remote at the current branch
+(docs), not the local checkout, so an unpushed commit is invisible to it.
+Each `--cloud` call creates its own independent session, so a fleet is several
+calls (docs). Whether the command returns as soon as the session is created or
+stays attached while it provisions is (unverified); the CLI shows a setup
+checklist while the container starts (docs).
+
+A follow-up message to a running cloud session, from any machine logged into
+the same account:
+
+```bash
+claude -p "<message>" --cloud <session-id> --output-format json   # {ok, session_id, url}
+```
+
+It queues the message and exits without waiting (docs). There is no documented
+CLI to list or stop cloud sessions; progress is observed on claude.ai/code, or
+through the tracker: the branch, the PR and `BLOCKER.md` (`coordination.md`).
 
 ## Session start: dependency installation
 
@@ -109,23 +119,28 @@ git push -u origin chore/worker-infrastructure
 ```
 
 For the plugin's two hooks, the manual install in `SKILL.md` §Procedure step 7
-produces that committed `.claude/` content. Whether a plugin-level install is
-present on a remote VM is unverified, so do not rely on it: confirm it, or
-commit the manual install.
+produces that committed `.claude/` content. Cloud sessions read the
+repository's committed `.claude/settings.json` and `.claude/agents/` (docs);
+the documentation does not say that a plugin installed on the operator's
+machine is present on the VM, so do not rely on it: commit the manual install.
+That the committed hooks fire inside a cloud session as they do locally is
+(unverified).
 
 ## Validation checklist
 
-Before launching a remote session:
+Before launching a cloud session:
 
-- [ ] `claude --version` reports v2.1.63 or later
-- [ ] The Claude GitHub Application is installed with access to the target repo
-- [ ] `GH_TOKEN` is set in the cloud environment settings
-- [ ] `gh` is available on the VM, or the worker can use `curl` with `GH_TOKEN`
+- [ ] `claude --version` is current and `--cloud` is accepted
+- [ ] The Claude GitHub App is installed on the target repo, or `/web-setup`
+      has been run from a terminal logged into the same account
+- [ ] The cloud environment has the network access and setup script the repo
+      needs
 - [ ] `.claude/settings.json` in the target repo has the `PreToolUse` and
       `Stop` hooks, plus a `SessionStart` entry if the repo needs one, and
-      the hook scripts are committed
+      the hook scripts and `.claude/worker-contract.md` are committed
 - [ ] `SCOPE.json` exists for the package's branch (resolution order in
-      `scope-contract.md` §Resolution order for `SCOPE.json`)
+      `scope-contract.md` §Resolution order for `SCOPE.json`) and the branch
+      with its scope commit is pushed
 
 ## Checking native compilation
 
@@ -133,10 +148,7 @@ For a repo with a native addon, verify the VM can build it:
 
 ```bash
 git checkout <feature-branch>
-claude --remote
-
-# Inside the remote session, after the session-start install:
-ls <addon-dir>/build/Release/*.node    # the compiled addon should exist
+claude --cloud "Run the session-start install, then list <addon-dir>/build/Release and report whether the compiled addon exists"
 ```
 
 If compilation fails, check that the VM has the system build tools. The repo's
@@ -168,6 +180,10 @@ install can surface later as build or test errors in the worker.
 3. If the cause is a network or registry failure, retry the session; a
    transient failure may clear.
 
-### `claude --remote` is not recognized
+### `claude --cloud` is refused
 
-The CLI is older than v2.1.63. Update it as in the prerequisites.
+The documented causes (docs): the CLI is signed in with an API key rather than
+a claude.ai account (`claude auth login`), Claude Code is configured for a
+third-party provider such as Bedrock, or the organization's
+`allow_remote_sessions` policy is off. An old CLI that knows only `--remote`
+still works, since `--remote` is the deprecated alias, but update it.

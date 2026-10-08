@@ -31,6 +31,11 @@
 #             collector writes exactly this shape, so the derivation runs over
 #             a fixture and over a live repo through one code path
 #   --apply   write the labels. Without it, nothing is written.
+#   --emit-state <file>
+#             after collecting (or reading --state), write the state JSON the
+#             derivation ran over to <file>. A runtime that drives this script
+#             reads its decisions from that file rather than parsing the rows,
+#             so there is one derivation and one shape.
 #
 # Dependencies: bash, node (builtins only), and gh — gh only when --state is
 # absent.
@@ -39,6 +44,7 @@ set -uo pipefail
 APPLY=0
 STATE=""
 REPO=""
+EMIT=""
 TARGETS=()
 
 while [ $# -gt 0 ]; do
@@ -47,7 +53,8 @@ while [ $# -gt 0 ]; do
     --state) STATE="${2:-}"; shift 2 ;;
     --repo) REPO="${2:-}"; shift 2 ;;
     --target) TARGETS+=("${2:-}"); shift 2 ;;
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    --emit-state) EMIT="${2:-}"; shift 2 ;;
+    -h|--help) sed -n '2,37p' "$0"; exit 0 ;;
     *) printf 'sync-cells: unknown argument: %s\n' "$1" >&2; exit 64 ;;
   esac
 done
@@ -304,6 +311,12 @@ JS
 
 [ -n "$STATE" ] || collect_state
 [ -f "$STATE" ] || { printf 'sync-cells: no such state file: %s\n' "$STATE" >&2; exit 66; }
+
+if [ -n "$EMIT" ]; then
+  # Write to a sibling and rename, so a reader never sees a half-written file.
+  cp "$STATE" "$EMIT.tmp" && mv "$EMIT.tmp" "$EMIT" \
+    || { printf 'sync-cells: could not write --emit-state %s\n' "$EMIT" >&2; exit 70; }
+fi
 
 node "$TMP/derive.js" "$STATE" > "$TMP/rows.tsv" || exit 70
 

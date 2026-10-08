@@ -94,6 +94,29 @@ assert_not_contains "$OUT" "label(s) written" "the default run does not claim a 
 stale=$(row 103)
 assert_contains "$stale" "cell:active" "the stale-stamp package keeps the label it had"
 
+# --emit-state writes out exactly the state the derivation ran over, and the
+# row format a driving runtime parses for its report is pinned here.
+OUT_E=$(bash "$SCRIPT" --state "$TMP/state.json" --emit-state "$TMP/emitted.json" 2>&1); EXIT_E=$?
+assert_eq 0 "$EXIT_E" "--emit-state over a fixture exits 0"
+assert_file "$TMP/emitted.json" "--emit-state writes the file"
+if cmp -s "$TMP/state.json" "$TMP/emitted.json"; then
+  _pass "--emit-state over --state emits the same bytes"
+else
+  _fail "--emit-state over --state emits the same bytes" "files differ"
+fi
+assert_file "$TMP/emitted.json" "no .tmp residue is left beside the emitted file"
+[ -e "$TMP/emitted.json.tmp" ] && _fail "no .tmp residue is left beside the emitted file" "emitted.json.tmp exists"
+r101=$(printf '%s' "$OUT_E" | grep -E '^#101 ' || true)
+case "$r101" in
+  "#101  cell:awaiting-review -> cell:merged   (PR #201 merged)") _pass "a change row has the pinned shape: '#N  from -> to   (why)'" ;;
+  *) _fail "a change row has the pinned shape: '#N  from -> to   (why)'" "got [$r101]" ;;
+esac
+r106=$(printf '%s' "$OUT_E" | grep -E '^#106 ' || true)
+case "$r106" in
+  "#106  cell:queued   (unchanged: no rule matched)") _pass "an unchanged row has the pinned shape: '#N  label   (unchanged: why)'" ;;
+  *) _fail "an unchanged row has the pinned shape: '#N  label   (unchanged: why)'" "got [$r106]" ;;
+esac
+
 # --apply without --repo must refuse rather than half-run.
 OUT2=$(bash "$SCRIPT" --state "$TMP/state.json" --apply 2>&1)
 assert_contains "$OUT2" "--apply needs --repo" "--apply over a bare fixture refuses"
