@@ -1,0 +1,73 @@
+'use strict';
+
+/*
+ * Runs the plugin's own scripts and reads their results. The label derivation
+ * lives in sync-cells.sh and the assignment logic in assign-cells.sh; fleet
+ * does not re-implement either. It reads sync's decisions from the state file
+ * that --emit-state writes, and both scripts' human rows for the report.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { run } = require('./exec');
+
+// "#101  cell:active -> cell:merged   (PR #201 merged)"
+// "#106  cell:queued   (unchanged: no rule matched)"
+const SYNC_CHANGE = /^#(\d+)\s+(\S+) -> (\S+)\s+\((.*)\)$/;
+const SYNC_KEEP = /^#(\d+)\s+(\S+)\s+\(unchanged: (.*)\)$/;
+// "#12  assign -> worker:a   (least loaded: a=0 b=1)"
+// "#13  hold   (WIP cap reached (4/4 in flight))"
+// "#14  !      carries worker:a and worker:b; one owner only."
+const ASSIGN_ROW = /^#(\d+)\s+(assign -> worker:(\S+)|hold|!)\s+(?:\((.*)\)|(.*))$/;
+const LOAD_LINE = /^load: (.*); (.*)$/;
+
+function parseSyncRows(stdout) {
+  const rows = [];
+  for (const line of stdout.split('\n')) {
+    let m;
+    if ((m = SYNC_CHANGE.exec(line))) rows.push({ number: Number(m[1]), from: m[2] === 'none' ? null : m[2], to: m[3], changed: true, why: m[4] });
+    else if ((m = SYNC_KEEP.exec(line))) rows.push({ number: Number(m[1]), from: m[2] === 'none' ? null : m[2], to: m[2] === 'none' ? null : m[2], changed: false, why: m[3] });
+  }
+  return rows;
+}
+
+function parseAssignRows(stdout) {
+  const rows = [];
+  let load = null;
+  for (const line of stdout.split('\n')) {
+    let m;
+    if ((m = ASSIGN_ROW.exec(line))) {
+      const action = m[2].startsWith('assign') ? 'assign' : m[2] === 'hold' ? 'hold' : 'warn';
+      rows.push({ number: Number(m[1]), action, worker: m[3] || null, why: (m[4] !== undefined ? m[4] : m[5] || '').trim() });
+    } else if ((m = LOAD_LINE.exec(line))) {
+      load = { perWorker: m[1], inFlight: m[2] };
+    }
+  }
+  return { rows, load };
+}
+
+function runSync(cfg, { apply, emitPath }) {
+  const script = path.join(cfg.scriptsDir, 'sync-cells.sh');
+  const args = [script, '--repo', cfg.repo];
+  for (const t of cfg.targets) args.push('--target', t.repo);
+  if (emitPath) args.push('--emit-state', emitPath);
+  if (apply) args.push('--apply');
+  const env = { ...process.env, GH_BIN: cfg.bins.gh };
+  const r = run('bash', args, { env, timeoutMs: 10 * 60 * 1000 });
+  let state = null;
+  if (emitPath && fs.existsSync(emitPath)) { try { state = JSON.parse(fs.readFileSync(emitPath, 'utf8')); } catch { state = null; } }
+  const failedWrites = (r.stderr.match(/! failed to (?:re)?label #\d+/g) || []).length;
+  return { status: r.status, error: r.error, stdout: r.stdout, stderr: r.stderr, rows: parseSyncRows(r.stdout), state, failedWrites };
+}
+
+function runAssign(cfg, { apply }) {
+  const script = path.join(cfg.scriptsDir, 'assign-cells.sh');
+  const args = [script, '--repo', cfg.repo, '--workers', cfg.workerIds.join(','), '--wip-cap', String(cfg.wipCap)];
+  if (apply) args.push('--apply');
+  const env = { ...process.env, GH_BIN: cfg.bins.gh };
+  const r = run('bash', args, { env, timeoutMs: 10 * 60 * 1000 });
+  const parsed = parseAssignRows(r.stdout);
+  return { status: r.status, error: r.error, stdout: r.stdout, stderr: r.stderr, rows: parsed.rows, load: parsed.load };
+}
+
+module.exports = { runSync, runAssign, parseSyncRows, parseAssignRows };

@@ -11,6 +11,7 @@ with both histories preserved.
 | `.claude-plugin/marketplace.json` | the `nodots-plugins` Claude Code marketplace; this repo is the marketplace |
 | `.github/workflows/ci.yml` | CI: the fixture tests, and the byte-identical check on the hook copies |
 | `plugins/agentic-work-packages/` | the plugin: skill, references, both hooks, scripts, fixture tests |
+| `plugins/fleet/` | the coordinator runtime: `fleet cycle` syncs, promotes, assigns, launches local worker sessions in worktrees, reaps and reports; fixture tests |
 | `docs/` | the long-form model docs: `agentic-work-packages.md`, `working-agreements.md` |
 | `CLAUDE.md` | project instructions |
 
