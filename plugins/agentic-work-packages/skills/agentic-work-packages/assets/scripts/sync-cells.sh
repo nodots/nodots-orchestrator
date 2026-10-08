@@ -153,8 +153,12 @@ collect_state() {
       printf '  Raise the limit with SYNC_CELLS_PAGE_LIMIT and run again.\n' >&2
       exit 75
     fi
-    "$GH" api "repos/$t/branches?per_page=100" --paginate \
-       --jq '[.[].name]' > "$TMP/branches.one.json" 2>/dev/null || printf '[]' > "$TMP/branches.one.json"
+    # One name per line, reassembled in node: --paginate with a --jq array emits
+    # one array PER PAGE, so a repo past 100 branches produced two arrays in one
+    # file and JSON.parse failed. Lines survive pagination; arrays do not.
+    "$GH" api "repos/$t/branches?per_page=100" --paginate --jq '.[].name' 2>/dev/null \
+      | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.stringify(s.split("\n").filter(Boolean))))' \
+      > "$TMP/branches.one.json" || printf '[]' > "$TMP/branches.one.json"
     node - "$TMP" "$t" <<'JS' || exit 70
 'use strict';
 const fs = require('fs'), path = require('path');
@@ -280,13 +284,20 @@ JS
   while IFS=$'\t' read -r idx irepo branch prnum; do
     [ -n "${idx:-}" ] || continue
     local blocker="false" comments="[]"
-    if [ -n "$branch" ] && "$GH" api "repos/$irepo/contents/BLOCKER.md?ref=$branch" \
-         --silent >/dev/null 2>&1; then
-      blocker="true"
+    # BLOCKER.md lives at the repo root or in the branch's cell directory,
+    # the same three places the hooks and the worker contract allow.
+    if [ -n "$branch" ]; then
+      for bp in "BLOCKER.md" ".agentic/cells/$branch/BLOCKER.md" ".auto-shop/cells/$branch/BLOCKER.md"; do
+        if "$GH" api "repos/$irepo/contents/$bp?ref=$branch" --silent >/dev/null 2>&1; then
+          blocker="true"; break
+        fi
+      done
     fi
     if [ -n "$prnum" ]; then
-      comments=$("$GH" api "repos/$irepo/issues/$prnum/comments" --paginate \
-                   --jq '[.[].body]' 2>/dev/null || echo '[]')
+      # Same pagination rule as the branches: one JSON-encoded body per line.
+      comments=$("$GH" api "repos/$irepo/issues/$prnum/comments" --paginate --jq '.[].body | @json' 2>/dev/null \
+        | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const o=[];for(const l of s.split("\n")){if(!l.trim())continue;try{o.push(JSON.parse(l))}catch{}}process.stdout.write(JSON.stringify(o))})' \
+        || echo '[]')
     fi
     printf '%s\t%s\t%s\n' "$idx" "$blocker" "$comments" >> "$TMP/facts.tsv"
   done <<< "$numbers"

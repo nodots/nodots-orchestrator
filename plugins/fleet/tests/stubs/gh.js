@@ -73,16 +73,19 @@ if (a === 'api') {
   const ep = b;
   if (/\/branches/.test(ep)) {
     const names = execFileSync('git', ['--git-dir', REMOTE, 'for-each-ref', '--format=%(refname:short)', 'refs/heads'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
-    out(names); process.exit(0);
+    out(names.join('\n') + '\n'); process.exit(0);   // one name per line, as --jq '.[].name' prints
   }
   let m;
-  if ((m = /contents\/BLOCKER\.md\?ref=(.+)$/.exec(ep))) {
-    try { execFileSync('git', ['--git-dir', REMOTE, 'cat-file', '-e', `${m[1]}:BLOCKER.md`], { stdio: 'ignore' }); process.exit(0); } catch { process.exit(1); }
+  if ((m = /contents\/(.*?BLOCKER\.md)\?ref=(.+)$/.exec(ep))) {
+    try { execFileSync('git', ['--git-dir', REMOTE, 'cat-file', '-e', `${m[2]}:${m[1]}`], { stdio: 'ignore' }); process.exit(0); } catch { process.exit(1); }
   }
   if ((m = /issues\/(\d+)\/comments/.exec(ep))) {
     const all = rd('comments.json', {});
     const list = all[Number(m[1])] || [];
-    out(argv.includes('--jq') && /\[\.\[\]\.body\]/.test(flag('--jq')) ? list.map(c => c.body) : list.map(c => ({ id: c.id, body: c.body, created_at: c.created_at })));
+    // One JSON value per line, as --paginate --jq '... | @json' prints.
+    const jq = flag('--jq') || '';
+    const rows = /\.body/.test(jq) && !/id/.test(jq) ? list.map(c => c.body) : list.map(c => ({ id: c.id, body: c.body, created_at: c.created_at }));
+    out(rows.map(v => JSON.stringify(v)).join('\n') + (rows.length ? '\n' : ''));
     process.exit(0);
   }
   out('[]'); process.exit(0);
