@@ -96,6 +96,12 @@ automatically by the plugin; for a manual install, copy
   branch with neither `HANDOFF.md` nor `BLOCKER.md` written. Without it, a
   compacted worker's state is gone.
 
+Three more are opt-in, because the plugin cannot safely register them for every
+repository: the same handoff check as a `TaskCompleted` hook,
+`session-start-install-deps.sh` for remote sessions (`references/remote-execution.md`),
+and `enforce-scope-staged.js` as a git pre-commit check. Wire the first two from
+`assets/settings-snippet-optional.json`.
+
 Install the worker contract in the same pass: copy `assets/worker-contract.md`
 to `.claude/worker-contract.md` and import it with `@.claude/worker-contract.md`
 from the hand-authored part of the repo's `CLAUDE.md`. It is not shipped as
@@ -111,6 +117,13 @@ cap, worktrees, `BLOCKER.md` / `HANDOFF.md`, and what to do when a package
 uncovers work nobody planned. When the workers run on other Claude accounts
 than the coordinator, add `references/multi-account.md`: the tracker is the bus,
 and `worker:<id>` labels say who owns what.
+
+For the recurring work around dispatch, use `references/coordinator-checklists.md`
+and `references/merge-procedure.md`. A change to a frozen shared interface follows
+`references/contract-change.md`, a feature spanning repositories follows
+`references/cross-repo.md`, and a worker on a hosted VM follows
+`references/remote-execution.md`. Design each lane with `references/scope-design.md`
+before filing the package.
 
 ## Numbering rules
 
@@ -147,11 +160,25 @@ and `worker:<id>` labels say who owns what.
 | `references/scope-contract.md` | `SCOPE.json` spec, enforcement, worker protocol |
 | `references/coordination.md` | Dispatch, waves, logs, anti-patterns |
 | `references/multi-account.md` | One account coordinates, others implement: `worker:<id>` labels, assignment, reassignment |
+| `references/scope-design.md` | Designing `allowedPaths` and `forbiddenPaths`: heuristics, worked path sets, failure patterns |
+| `references/coordinator-checklists.md` | The coordinator's recurring checklists: opening a wave, reviewing blocked work, release order |
+| `references/merge-procedure.md` | Pre-merge checklist and merge sequence, per branch flow |
+| `references/contract-change.md` | Changing a frozen shared interface: request, review, rebase, merge |
+| `references/cross-repo.md` | A feature that spans repositories: ordering, migrations, PR template, merge chain |
+| `references/remote-execution.md` | Running a worker on a hosted VM with `claude --remote` |
+| `references/context-management.md` | What belongs in a file rather than in a session's context |
+| `references/agent-teams.md` | Running a package with an agent team inside one lane |
 | `references/working-agreements.md` | Proof of done: test-first, dead gates, boundaries, release order, reporting |
 | `references/adapter-github.md` | GitHub Issues mechanics |
 | `references/adapter-jira.md` | Jira mechanics |
 | `assets/hooks/enforce-scope.js` | PreToolUse scope hook, no dependencies |
-| `assets/hooks/require-handoff.js` | Stop hook: no exit from a dirty lane without written state |
+| `assets/hooks/require-handoff.js` | Stop hook: no exit from a dirty lane without written state; also runs as an opt-in `TaskCompleted` hook |
+| `assets/hooks/enforce-scope-staged.js` | Opt-in git pre-commit check: staged files against the lane, so it also catches shell-mediated writes |
+| `assets/hooks/session-start-install-deps.sh` | Opt-in `SessionStart` hook for remote sessions: installs dependencies and flags a wrong-repository checkout |
+| `assets/settings-snippet-optional.json` | Wiring for the opt-in `TaskCompleted` and `SessionStart` hooks |
+| `assets/github-issue-templates/` | GitHub issue templates: work package, blocker, contract change |
+| `assets/retrospective-template.md` | Template for a per-program retrospective |
+| `../../agents/cell-worker.md` | The `cell-worker` agent: runs one package under the worker contract |
 | `assets/worker-contract.md` | The checked-in worker contract; install as `.claude/worker-contract.md` |
 | `assets/settings-snippet.json` | Hook wiring for `.claude/settings.json` |
 | `assets/tests/` | Fixture tests for the hooks and scripts; run in CI |

@@ -16,6 +16,18 @@ Claude Code plugin bundling the Nodots agentic development workflow:
   Both fail open and say so on stderr: a repo with no `SCOPE.json` and a
   session on the default branch are unaffected, so enabling the plugin
   globally is safe.
+
+  Three more ship as opt-in assets, not registered by the plugin, because
+  running them in every repository is not a default to inherit:
+  `require-handoff.js` also runs as a `TaskCompleted` hook,
+  `session-start-install-deps.sh` prepares a remote session, and
+  `enforce-scope-staged.js` is a git pre-commit check. See
+  `assets/settings-snippet-optional.json`.
+- **Agent** `cell-worker` — runs one work package under the worker contract.
+- **Process references** — scope design, coordinator checklists, merge
+  procedure, contract changes, cross-repo features, remote execution, context
+  management and agent teams, plus GitHub issue templates and a retrospective
+  template.
 - **Scripts** — `sync-cells.sh` derives each package's `cell:*` label from
   observable state (merged PRs, current evidence stamps, blockers on branches)
   rather than trusting a hand-set one; `aei-epic.js` optionally enumerates an
@@ -49,6 +61,7 @@ skills/agentic-work-packages/    the skill (SKILL.md + references + assets)
   assets/scripts/                bootstrap-github-labels.sh, sync-cells.sh, aei-epic.js
   assets/tests/                  fixture tests for the hooks and scripts
   assets/worker-contract.md      the checked-in worker contract
+agents/cell-worker.md            the cell-worker agent
 hooks/hooks.json                 wires both hooks
 hooks/enforce-scope.js           SCOPE.json path-lane enforcement (PreToolUse)
 hooks/require-handoff.js         written state before a turn ends (Stop)
