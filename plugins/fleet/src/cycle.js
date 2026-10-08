@@ -125,11 +125,24 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // another account; only a reap request may relaunch it.
     const synced = new Map(sync.state.issues.map(i => [i.number, i]));
     const untouched = n => { const s = synced.get(n); return !s || (!s.branchExists && !s.pr); };
-    const launchable = issues.filter(i => String(i.state).toUpperCase() === 'OPEN' && i.labels.includes('cell:queued')
+    // ...unless the branch is one this machine pushed and then lost track of: a
+    // local worktree on the package branch with no session record is a launch
+    // that crashed between its push and its record, and it is adopted.
+    const orphaned = i => {
+      const s = synced.get(i.number);
+      if (!s || s.pr) return false;
+      const d = scope.describe(i); if (d.problems.length) return false;
+      const target = launchMod.targetFor(cfg, i); if (!target) return false;
+      return Boolean(launchMod.localWorktreeOnBranch(cfg, target, d.id, d.scope.branch));
+    };
+    // Sync has already relabeled an orphan cell:active (its branch exists), so
+    // adoption accepts that label; a fresh launch still needs cell:queued.
+    const launchable = issues.filter(i => String(i.state).toUpperCase() === 'OPEN'
       && (only === null || i.number === only)
       && i.labels.some(l => l.startsWith('worker:') && cfg.ownedIds.includes(l.slice(7)))
-      && untouched(i.number)
-      && !state.sessions[i.number]);
+      && !state.sessions[i.number]
+      && ((i.labels.includes('cell:queued') && untouched(i.number))
+        || ((i.labels.includes('cell:queued') || i.labels.includes('cell:active')) && orphaned(i))));
     let dispatchable = launchable.length;
 
     const requests = [];
@@ -166,10 +179,12 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       const out = launchMod.launch(cfg, tracker, store, { ...q, dryRun: !apply }, persist);
       if (!out.ok) { alarm(`launch-${out.stage}`, out.error, q.issue.number); continue; }
       slots -= 1;
-      r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null });
-      if (!q.relaunch) {
-        if (!state.dispatches[q.id]) state.dispatches[q.id] = [];
-        state.dispatches[q.id].push({ n: q.attempt, tier: q.tier, reason: q.reason, runId: out.session.sessionId || null, ts: at });
+      r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null, adopted: Boolean(out.adopted) });
+      // A relaunch repeats a dispatch rather than adding one, except when the
+      // original's record was lost to a crash before it was written.
+      if (!state.dispatches[q.id]) state.dispatches[q.id] = [];
+      if (!q.relaunch || state.dispatches[q.id].length < q.attempt) {
+        state.dispatches[q.id].push({ n: q.attempt, tier: q.tier, reason: q.reason, runId: out.session.sessionId || null, ts: at, recovered: Boolean(q.relaunch) || undefined });
       }
       if (!out.dryRun) r.movement.push({ package: q.id, issue: q.issue.number, artifact: { type: 'dispatch', ref: q.sc.branch, detail: `attempt ${q.attempt}` } });
     }
