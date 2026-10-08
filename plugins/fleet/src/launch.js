@@ -18,6 +18,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { run, spawnDetached, processStart } = require('./exec');
 const scope = require('./scope');
+const trust = require('./trust');
 
 const TIERS = ['cheapest', 'default', 'strongest'];
 
@@ -127,6 +128,9 @@ function launch(cfg, tracker, store, req, persist) {
 
   const target = targetFor(cfg, req.issue);
   if (!target) return { ok: false, stage: 'target', error: `package names a repo that is not in targets: ${declaredRepo(req.issue.body, cfg.repo)}` };
+
+  const t = trust.isTrusted(cfg.bins.git, target.localPath);
+  if (!t.trusted) return { ok: false, stage: 'trust', error: `${target.localPath} is not a trusted workspace, so the worker's permissions.allow rules would be ignored under -p and it could not commit, push or open a PR; ${trust.howToTrust(t)}${t.error ? ` (${t.error})` : ''}` };
 
   if (req.dryRun) {
     return { ok: true, dryRun: true, session: { issue: req.issue.number, id: req.id, branch: req.sc.branch, worktree: scope.worktreePath(cfg.worktreesDir, target.repo, req.id), target: target.repo, tier: req.tier || 'default', mode } };

@@ -25,6 +25,7 @@ const { runCycle, EXIT } = require('../src/cycle');
 const reapMod = require('../src/reap');
 const report = require('../src/report');
 const { run, isAlive } = require('../src/exec');
+const trust = require('../src/trust');
 
 function parse(argv) {
   const out = { _: [], flags: {} };
@@ -135,6 +136,8 @@ function main() {
       let hooks = false;
       try { const s = JSON.parse(fs.readFileSync(settings, 'utf8')); hooks = JSON.stringify(s).includes('enforce-scope') && JSON.stringify(s).includes('require-handoff'); } catch { /* absent */ }
       check(hooks, `scope + handoff hooks committed in ${t.repo}`, hooks ? settings : `${settings} lacks enforce-scope/require-handoff; a cloud worker sees only committed hooks`);
+      const tr = trust.isTrusted(cfg.bins.git, t.localPath);
+      check(tr.trusted, `workspace trusted for -p permission rules: ${t.repo}`, tr.trusted ? tr.key : `not trusted; ${trust.howToTrust(tr)}`);
       const contract = path.join(t.localPath, '.claude', 'worker-contract.md');
       check(fs.existsSync(contract), `worker contract installed in ${t.repo}`, contract);
     }

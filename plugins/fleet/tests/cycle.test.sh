@@ -39,6 +39,9 @@ printf '#!/usr/bin/env bash\nexec node "%s/gh.js" "$@"\n' "$STUB" > "$STUB/gh"; 
 cp "$HERE/stubs/claude.sh" "$STUB/claude"; chmod +x "$STUB/claude"
 export GH_STUB_DIR="$TMP/gh" GH_STUB_REMOTE="$TMP/remote.git" CLAUDE_STUB_LOG="$TMP/claude-log" CLAUDE_STUB_TARGET="acme/api"
 export GH_BIN="$STUB/gh" CLAUDE_BIN="$STUB/claude"
+# Trust lives in ~/.claude.json keyed by the main clone; the fixture uses its own file.
+export CLAUDE_CONFIG_FILE="$TMP/claude.json"
+node -e "require('fs').writeFileSync('$TMP/claude.json', JSON.stringify({projects:{['$TMP/clone']:{hasTrustDialogAccepted:true}}}))"
 unset CLAUDECODE; export CLAUDECODE=1    # the launcher must strip this
 
 scope_body() { # branch deps-json
@@ -87,6 +90,15 @@ assert_eq "0" "$(markers)" "dry run posts no report"
 assert_contains "$OUT" '"dryRun": true' "dry run says so in JSON"
 assert_contains "$OUT" '"id": "T1.2"' "dry run computes the promotion of T1.2 (its dependency merged)"
 assert_contains "$(cat "$TMP/errA")" "fleet cycle" "the one-line summary goes to stderr"
+
+# --- A2. an untrusted clone refuses to launch, before any worktree is made ----
+OUT=$(CLAUDE_CONFIG_FILE="$TMP/untrusted.json" fleet cycle --apply --json 2>/dev/null); EXIT=$?
+assert_contains "$OUT" '"code": "launch-trust"' "an untrusted workspace is refused at launch with a trust alarm"
+assert_contains "$OUT" 'hasTrustDialogAccepted' "the alarm says how to trust the workspace"
+[ -d "$TMP/worktrees" ] && _fail "no worktree is created for a refused launch" "worktrees dir exists" || _pass "no worktree is created for a refused launch"
+assert_contains "$(grep '^edit 11' "$TMP/gh/writes.log")" "+cell:queued" "promotion still happened before the refusal (labels are tracker state, not launch state)"
+rm -rf "$TMP/state"
+printf '{}' > "$TMP/gh/comments.json"   # the refusal posted its own alarm report; B counts from zero
 
 # --- B. first applied cycle: promote, assign, launch, report -----------------
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
