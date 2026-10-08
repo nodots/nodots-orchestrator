@@ -213,8 +213,31 @@ fs.writeFileSync(f, JSON.stringify(issues, null, 2));
 JS
 rm -f "$TMP/worktrees/api-t1-4/BLOCKER.md"
 export CLAUDE_STUB_MODE_T1_4=silent
+# First, a lane the coordinator re-cut wrong: docs/** allowed but also forbidden. Refused, and retried next cycle.
+node - "$TMP/gh/issues.json" <<'JS'
+const fs = require('fs'); const f = process.argv[2]; const issues = JSON.parse(fs.readFileSync(f, 'utf8'));
+const i = issues.find(x => x.number === 13);
+i.body = i.body.replace('"forbiddenPaths":["contracts/**"]', '"forbiddenPaths":["contracts/**","docs/**"]');
+fs.writeFileSync(f, JSON.stringify(issues, null, 2));
+JS
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_contains "$OUT" '"outcome": "unparked"' "the parked session is reaped as unparked once the blocker is gone"
+assert_contains "$OUT" '"code": "unlaunchable"' "a re-cut lane that contradicts itself is refused, not launched"
+assert_not_contains "$(ls "$TMP/claude-log")" "T1.4.2" "nothing launched into the refused lane"
+assert_eq "retry" "$(node -e "console.log(require('$TMP/state/state.json').sessions[13].status)")" "the refused relaunch is held for retry, not lost"
+node - "$TMP/gh/issues.json" <<'JS'
+const fs = require('fs'); const f = process.argv[2]; const issues = JSON.parse(fs.readFileSync(f, 'utf8'));
+const i = issues.find(x => x.number === 13);
+i.body = i.body.replace('"forbiddenPaths":["contracts/**","docs/**"]', '"forbiddenPaths":["contracts/**"]');
+fs.writeFileSync(f, JSON.stringify(issues, null, 2));
+JS
+# The refused cycle was the third without movement, so the fleet latched (correct: the queue
+# was handed back). The coordinator resumes after recording the lane fix.
+OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
+assert_eq 78 "$EXIT" "with a retry pending and three idle cycles the fleet is latched"
+fleet resume --reason "fixture: lane re-cut, forbiddenPaths corrected" >/dev/null 2>&1
+OUT=$(fleet cycle --apply --json 2>"$TMP/fixlane.err"); EXIT=$?
+assert_eq 0 "$EXIT" "after resume the cycle after the lane fix exits 0 (stderr: $(head -c 200 "$TMP/fixlane.err" | tr '\n' ' '))"
 assert_contains "$OUT" '"recut": true' "the relaunch re-cuts the committed SCOPE.json from the issue"
 wait_exit 13-2 && _pass "the unparked relaunch ran" || _fail "the unparked relaunch ran" "no exit file 13-2"
 assert_contains "$(git --git-dir "$TMP/remote.git" log --format=%s feat/t1-4-blocker | head -1)" "T1.4: scope re-cut" "the re-cut scope is committed and pushed on the branch"

@@ -159,10 +159,10 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       const iss = issues.find(i => i.number === s.issue);
       if (!iss) continue;
       const d = scope.describe(iss);
-      if (d.problems.length) { alarm('unlaunchable', d.problems.join('; '), s.issue); continue; }
+      if (d.problems.length) { alarm('unlaunchable', d.problems.join('; '), s.issue); s.status = 'retry'; s.retry = { next: q.next, reason: q.reason, why: d.problems.join('; ') }; continue; }
       const prior = state.dispatches[s.id] || [];
       if (q.next === 'unpark') {
-        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt + 1, tier: s.tier, reason: 'unparked' });
+        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt + 1, tier: s.tier, reason: 'unparked', from: s, next: 'unpark' });
         dispatchable += 1;
         continue;
       }
@@ -171,9 +171,9 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
         if (escalations >= cfg.maxEscalations) { alarm('escalation-cap', `${s.id} has been escalated ${escalations} time(s); last: ${q.reason}. Holding.`, s.issue); continue; }
         const to = launchMod.tierUp(s.tier);
         r.escalations.push({ package: s.id, issue: s.issue, n: escalations + 1, from: s.tier, to, reason: q.reason });
-        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt + 1, tier: to, reason: q.reason });
+        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt + 1, tier: to, reason: q.reason, from: s, next: 'escalate' });
       } else {
-        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt, tier: s.tier, reason: q.reason, relaunch: true });
+        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt, tier: s.tier, reason: q.reason, relaunch: true, from: s, next: 'relaunch' });
       }
       dispatchable += 1;
     }
@@ -181,9 +181,18 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     const liveNow = reaped.live.length;
     let slots = Math.max(0, cfg.wipCap - liveNow);
     for (const q of requests) {
-      if (slots <= 0) { alarm('wip-cap', `${q.id} waits: ${liveNow} live session(s) already fill the cap`, q.issue.number); continue; }
+      if (slots <= 0) {
+        alarm('wip-cap', `${q.id} waits: ${liveNow} live session(s) already fill the cap`, q.issue.number);
+        if (q.from) { q.from.status = 'retry'; q.from.retry = { next: q.next, reason: q.reason, why: 'wip-cap' }; }
+        continue;
+      }
       const out = launchMod.launch(cfg, tracker, store, { ...q, dryRun: !apply }, persist);
-      if (!out.ok) { alarm(`launch-${out.stage}`, out.error, q.issue.number); continue; }
+      if (!out.ok) {
+        alarm(`launch-${out.stage}`, out.error, q.issue.number);
+        if (q.from) { q.from.status = 'retry'; q.from.retry = { next: q.next, reason: q.reason, why: `launch-${out.stage}: ${out.error}` }; }
+        continue;
+      }
+      if (q.from && q.from.status === 'retry') { q.from.status = 'closed'; delete q.from.retry; }
       slots -= 1;
       r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null, adopted: Boolean(out.adopted), recut: Boolean(out.recut) });
       // A relaunch repeats a dispatch rather than adding one, except when the

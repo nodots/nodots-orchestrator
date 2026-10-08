@@ -93,6 +93,13 @@ function reap(cfg, state, pulls, now = Date.now(), blockerOnBranch = null) {
   const graceMs = cfg.killGraceSeconds * 1000;
 
   for (const session of Object.values(state.sessions)) {
+    // A relaunch the last cycle could not make (lane refused, workspace
+    // untrusted, push rejected) is asked for again, so a package is never
+    // stranded behind a one-time failure.
+    if (session.status === 'retry' && session.retry) {
+      requests.push({ session, next: session.retry.next, reason: session.retry.reason, retry: true });
+      continue;
+    }
     // A parked package resumes when the coordinator has recorded the decision
     // and removed BLOCKER.md: no blocker in the worktree and none on the branch
     // head (sync's blockerOnBranch). The relaunch keeps the tier; it is a new
