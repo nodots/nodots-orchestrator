@@ -238,6 +238,7 @@ assert_contains "$OUT" '"streak": 2' "the streak counts up from the last movemen
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_eq 78 "$EXIT" "the cycle that reaches the limit exits 78"
 assert_contains "$OUT" '"latched"' "the state is latched"
+assert_contains "$OUT" 'consecutive cycles without movement' "the latch reason states the count"
 OUT=$(fleet cycle --apply --json 2>"$TMP/errL"); EXIT=$?
 assert_eq 78 "$EXIT" "a latched fleet refuses to run another cycle"
 assert_contains "$OUT" '"code": "latched"' "the refusal names the latch"
