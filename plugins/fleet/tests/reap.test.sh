@@ -48,7 +48,8 @@ assert_eq "null" "$(js "console.log(r.blockerFor($S))")" "no BLOCKER.md anywhere
 # --- PR matching: branch first, then issue ref, then id in title; bounded ----
 PULLS="[{number:1,title:'[READY]: T1.20 other',body:'Closes #120',headRefName:'feat/t1-20'},{number:2,title:'fix stuff',body:'Closes #12',headRefName:'other'},{number:3,title:'[READY]: T1.2 thing',body:'',headRefName:'feat/t1-2-x'}]"
 assert_eq "3" "$(js "console.log(r.prFor($S,$PULLS).number)")" "the PR on the package branch wins"
-assert_eq "2" "$(js "console.log(r.prFor($S,[{number:1,title:'[READY]: T1.20 other',body:'Closes #120',headRefName:'feat/t1-20'},{number:2,title:'fix stuff',body:'Closes #12',headRefName:'other'}]).number)")" "without a branch match the issue reference wins"
+assert_eq "2" "$(js "console.log(r.prFor($S,[{number:1,title:'[READY]: T1.20 other',body:'Closes #120',headRefName:'feat/t1-20'},{number:2,title:'fix stuff',body:'Closes #12',headRefName:'other'}]).number)")" "without a branch match a closing keyword wins"
+assert_eq "null" "$(js "console.log(r.prFor($S,[{number:9,title:'[READY]: T1.9 other',body:'see also #12 for the follow-up',headRefName:'feat/t1-9'}]))")" "a bare mention of #12 in another PR's body is not a claim"
 assert_eq "null" "$(js "console.log(r.prFor($S,[{number:1,title:'[READY]: T1.20 other',body:'Closes #120',headRefName:'feat/t1-20'}]))")" "T1.20 does not satisfy T1.2 (bounded id match, bounded issue ref)"
 assert_eq "4" "$(js "console.log(r.prFor($S,[{number:4,title:'[READY]: t1-2 lower-hyphen',body:'',headRefName:'z'}]).number)")" "a lower-case hyphenated id in the title still matches"
 

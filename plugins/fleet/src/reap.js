@@ -51,9 +51,12 @@ function prFor(session, pulls) {
   const id = session.id;
   const esc = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\./g, '[.\\-]');
   const idRe = new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`, 'i');
-  const refRe = new RegExp(`#${session.issue}(?!\\d)`);
+  // Same rule as sync-cells.sh: the issue reference in the title, or a closing
+  // keyword in the body. A bare mention is not a claim.
+  const refTitle = new RegExp(`#${session.issue}(?!\\d)`);
+  const refClose = new RegExp(`\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s*:?\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#${session.issue}(?!\\d)`, 'i');
   return (pulls || []).find(p => p.headRefName === session.branch)
-    || (pulls || []).find(p => refRe.test(`${p.title || ''}\n${p.body || ''}`))
+    || (pulls || []).find(p => refTitle.test(p.title || '') || refClose.test(p.body || ''))
     || (pulls || []).find(p => idRe.test(p.title || ''))
     || null;
 }
