@@ -1,0 +1,24 @@
+{
+  "repo": "acme/program-host",
+  "epic": 1,
+  "targets": [
+    { "repo": "acme/api", "localPath": "../api", "defaultBranch": "main" }
+  ],
+  "workers": {
+    "a": { "mode": "local" },
+    "b": { "mode": "local" },
+    "c": { "mode": "external" }
+  },
+  "wipCap": 4,
+  "worktreesDir": "../api-worktrees",
+  "stateDir": "../api-worktrees/.fleet",
+  "permissionMode": "acceptEdits",
+  "permissionPrompts": "none",
+  "maxBudgetUsd": 25,
+  "sessionTimeoutMinutes": 120,
+  "killGraceSeconds": 60,
+  "maxEscalations": 2,
+  "noMovementLimit": 3,
+  "maxCycleMinutes": 30,
+  "models": { "cheapest": "haiku", "default": null, "strongest": "opus" }
+}

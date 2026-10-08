@@ -94,6 +94,29 @@ assert_not_contains "$OUT" "label(s) written" "the default run does not claim a 
 stale=$(row 103)
 assert_contains "$stale" "cell:active" "the stale-stamp package keeps the label it had"
 
+# --emit-state writes out exactly the state the derivation ran over, and the
+# row format a driving runtime parses for its report is pinned here.
+OUT_E=$(bash "$SCRIPT" --state "$TMP/state.json" --emit-state "$TMP/emitted.json" 2>&1); EXIT_E=$?
+assert_eq 0 "$EXIT_E" "--emit-state over a fixture exits 0"
+assert_file "$TMP/emitted.json" "--emit-state writes the file"
+if cmp -s "$TMP/state.json" "$TMP/emitted.json"; then
+  _pass "--emit-state over --state emits the same bytes"
+else
+  _fail "--emit-state over --state emits the same bytes" "files differ"
+fi
+assert_file "$TMP/emitted.json" "no .tmp residue is left beside the emitted file"
+[ -e "$TMP/emitted.json.tmp" ] && _fail "no .tmp residue is left beside the emitted file" "emitted.json.tmp exists"
+r101=$(printf '%s' "$OUT_E" | grep -E '^#101 ' || true)
+case "$r101" in
+  "#101  cell:awaiting-review -> cell:merged   (PR #201 merged)") _pass "a change row has the pinned shape: '#N  from -> to   (why)'" ;;
+  *) _fail "a change row has the pinned shape: '#N  from -> to   (why)'" "got [$r101]" ;;
+esac
+r106=$(printf '%s' "$OUT_E" | grep -E '^#106 ' || true)
+case "$r106" in
+  "#106  cell:queued   (unchanged: no rule matched)") _pass "an unchanged row has the pinned shape: '#N  label   (unchanged: why)'" ;;
+  *) _fail "an unchanged row has the pinned shape: '#N  label   (unchanged: why)'" "got [$r106]" ;;
+esac
+
 # --apply without --repo must refuse rather than half-run.
 OUT2=$(bash "$SCRIPT" --state "$TMP/state.json" --apply 2>&1)
 assert_contains "$OUT2" "--apply needs --repo" "--apply over a bare fixture refuses"
@@ -146,9 +169,9 @@ JSON
     ;;
   "api repos"*|"api "*)
     case "$*" in
-      *"/branches"*) echo '["development","feat/M0.1-freeze","feat/M1.1-store"]' ;;
+      *"/branches"*) printf '%s\n' development feat/M0.1-freeze feat/M1.1-store ;;
       *"BLOCKER.md"*) exit 1 ;;                      # no blocker on any branch
-      *"/comments"*) echo '[]' ;;                    # no evidence stamp
+      *"/comments"*) : ;;                             # no comments, so no lines
       *) echo '[]' ;;
     esac
     ;;
@@ -198,7 +221,7 @@ JSON
   "pr list") echo '[]' ;;
   "api repos"*|"api "*)
     case "$*" in
-      *"/branches"*) echo '["development","feat/m1-3-validation"]' ;;
+      *"/branches"*) printf '%s\n' development feat/m1-3-validation ;;
       *"BLOCKER.md"*) exit 1 ;;
       *) echo '[]' ;;
     esac
@@ -212,6 +235,41 @@ r11=$(printf '%s' "$OUT" | grep -E '^#11 ' || true)
 r12=$(printf '%s' "$OUT" | grep -E '^#12 ' || true)
 assert_contains "$r11" "cell:active" "a lower-case hyphenated branch matches its package id (M1.3 -> feat/m1-3-...)"
 assert_contains "$r12" "unchanged"   "M1.30 does not steal M1.3's branch (no unbounded substring match)"
+
+# --- BLOCKER.md in the cell directory counts ---------------------------------
+# The hooks and the worker contract let a worker write BLOCKER.md at the repo
+# root or in .agentic/cells/<branch>/. A sync that looked only at the root
+# reported such a package cell:active, and the coordinator never saw the stop.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 31, "title": "N1.1 Cell-dir blocker", "state": "OPEN", "labels": [{"name": "cell:active"}]},
+  {"number": 32, "title": "N1.2 Root blocker", "state": "OPEN", "labels": [{"name": "cell:active"}]},
+  {"number": 33, "title": "N1.3 No blocker", "state": "OPEN", "labels": [{"name": "cell:active"}]}
+]
+JSON
+    ;;
+  "pr list") echo '[]' ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development feat/n1-1-x feat/n1-2-y feat/n1-3-z ;;
+      *"contents/.agentic/cells/feat/n1-1-x/BLOCKER.md"*) exit 0 ;;
+      *"contents/BLOCKER.md?ref=feat/n1-2-y"*) exit 0 ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>/dev/null)
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#31 ' || true)" "cell:blocked" "a BLOCKER.md in .agentic/cells/<branch>/ blocks the package"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#32 ' || true)" "cell:blocked" "a BLOCKER.md at the repo root still blocks the package"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#33 ' || true)" "unchanged" "no BLOCKER.md anywhere leaves an active package alone"
 
 # --- a truncated collection must fail loudly, never derive from partial state
 # Deriving labels from half a backlog is worse than not running: a package
@@ -277,8 +335,8 @@ JSON
     ;;
   "api "*)
     case "$*" in
-      *"code-a/branches"*) echo '["development","feat/a1-1"]' ;;
-      *"code-b/branches"*) echo '["development","feat/b1-1-client"]' ;;
+      *"code-a/branches"*) printf '%s\n' development feat/a1-1 ;;
+      *"code-b/branches"*) printf '%s\n' development feat/b1-1-client ;;
       *"BLOCKER.md"*) exit 1 ;;
       *) echo '[]' ;;
     esac
