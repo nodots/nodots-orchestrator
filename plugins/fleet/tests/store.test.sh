@@ -18,7 +18,8 @@ js() { node -e "const {Store,bootId}=require('$SRC'); const s=new Store('$TMP/st
 OUT=$(js "const st=s.load(); st.streak=2; st.sessions[7]={issue:7,status:'running'}; s.save(st); const back=s.load(); console.log(back.streak, back.sessions[7].status, Object.keys(back).sort().join(','))")
 assert_eq "2 running dispatches,lastCycleId,latched,sessions,streak,unposted,version" "$OUT" "state round-trips and the shape is complete"
 [ -e "$TMP/state/state.json.tmp" ] && _fail "no .tmp residue after save" "state.json.tmp exists" || _pass "no .tmp residue after save"
-perm=$(stat -f '%Lp' "$TMP/state/state.json" 2>/dev/null || stat -c '%a' "$TMP/state/state.json")
+# node, not stat: `stat -f` means "filesystem" on GNU and "format" on BSD.
+perm=$(node -e "console.log((require('fs').statSync('$TMP/state/state.json').mode & 0o777).toString(8))")
 assert_eq "600" "$perm" "state.json is 0600"
 
 # --- a half-written tmp file never replaces the state ------------------------
