@@ -207,7 +207,15 @@ const idMatcher = id => {
   const sep = esc.replace(/\\\./g, '[.\\-]');
   return new RegExp(`(^|[^a-z0-9])${sep}([^a-z0-9]|$)`, 'i');
 };
-const refsIssue = (pr, n) => new RegExp(`#${n}(?!\\d)`).test(`${pr.title || ''}\n${pr.body || ''}`);
+// A PR belongs to an issue when its title carries the reference or its body
+// closes it (GitHub's closing keywords). A bare mention in the body does not
+// count: "skips two routes (T5.1d, #363, must delete the list)" is a note
+// about #363, not #363's PR, and matching it would relabel a package merged
+// on the strength of someone else's PR.
+const CLOSES = 'close[sd]?|fix(?:e[sd])?|resolve[sd]?';
+const refsIssue = (pr, n) =>
+  new RegExp(`#${n}(?!\\d)`).test(pr.title || '') ||
+  new RegExp(`\\b(?:${CLOSES})\\s*:?\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#${n}(?!\\d)`, 'i').test(pr.body || '');
 
 // Each package names its target repo on its header line:
 //   **Part of** #1 · **Phase 1 · name** · **Repo:** `owner/repo`

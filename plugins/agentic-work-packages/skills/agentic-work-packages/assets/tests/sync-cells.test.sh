@@ -271,6 +271,50 @@ assert_contains "$(printf '%s' "$OUT" | grep -E '^#31 ' || true)" "cell:blocked"
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#32 ' || true)" "cell:blocked" "a BLOCKER.md at the repo root still blocks the package"
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#33 ' || true)" "unchanged" "no BLOCKER.md anywhere leaves an active package alone"
 
+# --- a PR that merely mentions an issue is not that issue's PR -------------
+# Regression from nodots-tms: T5.1c's PR body said "skips two routes (T5.1d,
+# #363, must delete the list)", and sync relabelled #363 cell:merged on the
+# strength of T5.1c's merge. Only a title reference or a closing keyword counts.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 41, "title": "P1.1 Contracts", "state": "CLOSED", "labels": [{"name": "cell:active"}]},
+  {"number": 42, "title": "P1.2 Wire it", "state": "OPEN", "labels": [{"name": "cell:queued"}]},
+  {"number": 43, "title": "P1.3 Fixed by keyword", "state": "CLOSED", "labels": [{"name": "cell:active"}]},
+  {"number": 44, "title": "P1.4 In the title", "state": "CLOSED", "labels": [{"name": "cell:active"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[
+  {"number": 51, "title": "[READY]: P1.1 contracts", "body": "Closes #41\n\nNotes: skips two routes (P1.2, #42, must delete the list).", "state": "MERGED", "headRefName": "feat/p1-1", "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  {"number": 53, "title": "[READY]: fix the thing", "body": "Fixes: acme/host#43", "state": "MERGED", "headRefName": "feat/p1-3", "headRefOid": "cccccccccccccccccccccccccccccccccccccccc"},
+  {"number": 54, "title": "[READY]: P1.4 (#44)", "body": "no keyword here", "state": "MERGED", "headRefName": "feat/p1-4", "headRefOid": "dddddddddddddddddddddddddddddddddddddddd"}
+]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development feat/p1-1 feat/p1-3 feat/p1-4 ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo acme/host 2>/dev/null)
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#41 ' || true)" "cell:merged" "Closes #41 in the body claims the PR"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#42 ' || true)" "unchanged"   "a bare mention of #42 in another PR's body does not claim it"
+assert_not_contains "$(printf '%s' "$OUT" | grep -E '^#42 ' || true)" "merged" "the mentioned package is not relabelled merged"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#43 ' || true)" "cell:merged" "Fixes: owner/repo#43 claims the PR"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#44 ' || true)" "cell:merged" "#44 in the PR title claims the PR"
+
 # --- a truncated collection must fail loudly, never derive from partial state
 # Deriving labels from half a backlog is worse than not running: a package
 # whose PR is beyond the cut looks branch-only and gets downgraded.

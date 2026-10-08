@@ -51,9 +51,12 @@ function prFor(session, pulls) {
   const id = session.id;
   const esc = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\./g, '[.\\-]');
   const idRe = new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`, 'i');
-  const refRe = new RegExp(`#${session.issue}(?!\\d)`);
+  // Same rule as sync-cells.sh: the issue reference in the title, or a closing
+  // keyword in the body. A bare mention is not a claim.
+  const refTitle = new RegExp(`#${session.issue}(?!\\d)`);
+  const refClose = new RegExp(`\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s*:?\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#${session.issue}(?!\\d)`, 'i');
   return (pulls || []).find(p => p.headRefName === session.branch)
-    || (pulls || []).find(p => refRe.test(`${p.title || ''}\n${p.body || ''}`))
+    || (pulls || []).find(p => refTitle.test(p.title || '') || refClose.test(p.body || ''))
     || (pulls || []).find(p => idRe.test(p.title || ''))
     || null;
 }
@@ -85,7 +88,7 @@ function classify(session, facts) {
 // reap(cfg, state, pulls, now) -> { live, reaped[], requests[] }
 // Mutates session records in state (status, outcome, termSentAt). Does not
 // save; the cycle saves once at the end.
-function reap(cfg, state, pulls, now = Date.now()) {
+function reap(cfg, state, pulls, now = Date.now(), blockerOnBranch = null) {
   const live = [];
   const reaped = [];
   const requests = [];     // { session, next, reason }
@@ -93,6 +96,26 @@ function reap(cfg, state, pulls, now = Date.now()) {
   const graceMs = cfg.killGraceSeconds * 1000;
 
   for (const session of Object.values(state.sessions)) {
+    // A relaunch the last cycle could not make (lane refused, workspace
+    // untrusted, push rejected) is asked for again, so a package is never
+    // stranded behind a one-time failure.
+    if (session.status === 'retry' && session.retry) {
+      requests.push({ session, next: session.retry.next, reason: session.retry.reason, retry: true });
+      continue;
+    }
+    // A parked package resumes when the coordinator has recorded the decision
+    // and removed BLOCKER.md: no blocker in the worktree and none on the branch
+    // head (sync's blockerOnBranch). The relaunch keeps the tier; it is a new
+    // dispatch with reason "unparked", not an escalation.
+    if (session.status === 'parked') {
+      const onBranch = blockerOnBranch ? blockerOnBranch(session) : false;
+      if (!blockerFor(session) && !onBranch) {
+        session.status = 'closed'; session.outcome = 'unparked'; session.endedAt = new Date(now).toISOString();
+        reaped.push({ issue: session.issue, id: session.id, attempt: session.attempt, tier: session.tier, outcome: 'unparked', detail: 'BLOCKER.md removed; resuming', next: 'unpark' });
+        requests.push({ session, next: 'unpark', reason: 'unparked' });
+      }
+      continue;
+    }
     if (!['launching', 'running'].includes(session.status)) continue;
 
     const alive = session.pid && isAlive(session.pid) && (!session.procStart || processStart(session.pid) === session.procStart);

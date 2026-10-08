@@ -37,11 +37,22 @@ function fail(msg) {
   throw e;
 }
 
-function defaultPluginRoot() {
-  // The two plugins ship side by side in nodots-orchestrator. When fleet is
-  // installed from the marketplace the sibling is there too.
-  const sibling = path.resolve(__dirname, '..', '..', 'agentic-work-packages');
-  return fs.existsSync(sibling) ? sibling : null;
+// The two plugins ship side by side, in two layouts:
+//   repo:      <root>/plugins/fleet/src  ->  <root>/plugins/agentic-work-packages
+//   installed: <cache>/<marketplace>/fleet/<ver>/src -> <cache>/<marketplace>/agentic-work-packages/<highest ver>
+// A directory counts only when it holds .claude-plugin/plugin.json.
+function isPlugin(dir) { return fs.existsSync(path.join(dir, '.claude-plugin', 'plugin.json')); }
+function highestVersionDir(parent) {
+  let dirs = [];
+  try { dirs = fs.readdirSync(parent).filter(d => /^\d+\.\d+\.\d+/.test(d) && isPlugin(path.join(parent, d))); } catch { return null; }
+  dirs.sort((a, b) => { const pa = a.split(/[.-]/).map(Number), pb = b.split(/[.-]/).map(Number); for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return (pb[i] || 0) - (pa[i] || 0); return 0; });
+  return dirs.length ? path.join(parent, dirs[0]) : null;
+}
+function defaultPluginRoot(fromDir = __dirname) {
+  const sibling = path.resolve(fromDir, '..', '..', 'agentic-work-packages');
+  if (isPlugin(sibling)) return sibling;
+  const installed = path.resolve(fromDir, '..', '..', '..', 'agentic-work-packages');
+  return highestVersionDir(installed);
 }
 
 function loadConfig(file) {
@@ -104,4 +115,4 @@ function validate(raw, baseDir) {
   return c;
 }
 
-module.exports = { loadConfig, validate, DEFAULTS, MODES };
+module.exports = { loadConfig, validate, defaultPluginRoot, DEFAULTS, MODES };

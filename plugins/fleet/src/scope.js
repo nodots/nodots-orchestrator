@@ -56,6 +56,21 @@ function validate(scope) {
   if (!Array.isArray(scope.allowedPaths) || scope.allowedPaths.length === 0) problems.push('allowedPaths is empty: a worker that may edit nothing cannot finish');
   if (scope.forbiddenPaths !== undefined && !Array.isArray(scope.forbiddenPaths)) problems.push('forbiddenPaths must be an array');
   if (scope.dependsOn !== undefined && !Array.isArray(scope.dependsOn)) problems.push('dependsOn must be an array of branch names');
+  // A lane whose allowedPaths are also forbidden cannot be worked: the hook
+  // denies every write and the worker ends in a BLOCKER.md it cannot resolve.
+  // Exact duplicates and a forbidden "<dir>/**" that covers an allowed
+  // "<dir>/..." are the two shapes seen in practice; wider glob algebra is not
+  // attempted.
+  if (Array.isArray(scope.allowedPaths) && Array.isArray(scope.forbiddenPaths)) {
+    for (const a of scope.allowedPaths) {
+      for (const f of scope.forbiddenPaths) {
+        const dir = /^(.*?)\/\*\*$/.exec(f);
+        if (a === f || (dir && (a === dir[1] || a.startsWith(dir[1] + '/')))) {
+          problems.push(`allowedPaths [${a}] is covered by forbiddenPaths [${f}]; the lane cannot be worked`);
+        }
+      }
+    }
+  }
   const ex = scope.execution || {};
   if (ex.pattern !== undefined && !PATTERNS.has(ex.pattern)) problems.push(`execution.pattern [${ex.pattern}] is not one of ${[...PATTERNS].join(', ')}`);
   if (ex.model !== undefined && !TIERS.has(ex.model)) problems.push(`execution.model [${ex.model}] is not one of ${[...TIERS].join(', ')}`);

@@ -21,9 +21,14 @@ no-movement streak.
 ## Running it
 
 ```bash
-node "$CLAUDE_PLUGIN_ROOT/bin/fleet.js" cycle --config fleet.config.json          # dry run: nothing written
-node "$CLAUDE_PLUGIN_ROOT/bin/fleet.js" cycle --config fleet.config.json --apply  # one real pass
+FLEET=$(ls -d ~/.claude/plugins/cache/*/fleet/*/bin/fleet.js | sort -V | tail -1)   # the installed copy
+node "$FLEET" cycle --config fleet.config.json          # dry run: nothing written
+node "$FLEET" cycle --config fleet.config.json --apply  # one real pass
 ```
+
+`$CLAUDE_PLUGIN_ROOT` is set only inside the plugin's own hooks, not in a
+coordinator session, so resolve the path as above or from a checkout of
+`nodots-orchestrator` (`plugins/fleet/bin/fleet.js`).
 
 `fleet.config.json` lives with the program (see `fleet.config.example.json` in
 this plugin). `fleet doctor` checks binaries, the plugin scripts, labels, the
@@ -63,9 +68,28 @@ Every cycle ends in exactly one outcome (the cycle contract):
 
 **Parked** packages are workers that stopped with a `BLOCKER.md` carrying a
 known `Kind`. They are yours to resolve per `coordination.md` §`BLOCKER.md`;
-the runtime will not relaunch them. When the decision is recorded, remove the
-`BLOCKER.md` on the branch (or close the package and file a new one) and the
-next sync re-derives the label.
+the runtime will not relaunch them while the file exists. To resume one:
+
+1. Record the decision on the epic (decisions log).
+2. If the lane was cut wrong, re-cut it **in the package issue's `### SCOPE.json`
+   block**. The issue is the source of truth; on relaunch the runtime copies that
+   block over the committed `SCOPE.json` and pushes it as `<ID>: scope re-cut`.
+   Check `forbiddenPaths` as well as `allowedPaths`: a path that is in both
+   cannot be worked, and the runtime now refuses such a lane as `unlaunchable`
+   instead of launching a worker that the hook will deny.
+3. Remove the `BLOCKER.md` from the branch (it may be at the repo root or in
+   `.agentic/cells/<branch>/`) with a commit and a plain push.
+4. The next `cycle --apply` reaps the session as `unparked` and relaunches it
+   at the same tier, as a new dispatch with reason `unparked`. In the JSON
+   report the launch carries `"adopted": true` (existing worktree) and
+   `"recut": true` when the scope was rewritten.
+
+A package that stops again with a new `BLOCKER.md` is parked again and needs a
+second decision; nothing escalates it for you.
+
+Parked packages count as no movement. A fleet with nothing but parked work
+latches after `noMovementLimit` cycles, and the latch reason names them; that
+is the runtime handing the queue back to you, not a fault.
 
 ## Rules the runtime enforces, and the ones it leaves to you
 
