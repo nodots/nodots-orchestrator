@@ -54,6 +54,14 @@ assert_contains "$OUT" "execution.model" "an unknown model tier is refused"
 OUT=$(js "console.log(s.validate({branch:'feat/ok',allowedPaths:['x'],execution:{mode:'cloud',pattern:'implement+test',model:'strongest'}}).length)")
 assert_eq "0" "$OUT" "a full execution block with known values passes"
 
+# A lane that is also forbidden cannot be worked.
+OUT=$(js "console.log(s.validate({branch:'feat/ok',allowedPaths:['src/**','tests/**'],forbiddenPaths:['src/**']}).join('|'))")
+assert_contains "$OUT" "allowedPaths [src/**] is covered by forbiddenPaths [src/**]" "an allowed pattern that is also forbidden is refused"
+OUT=$(js "console.log(s.validate({branch:'feat/ok',allowedPaths:['src/portal/**'],forbiddenPaths:['src/**']}).join('|'))")
+assert_contains "$OUT" "covered by forbiddenPaths [src/**]" "an allowed subtree under a forbidden dir/** is refused"
+OUT=$(js "console.log(s.validate({branch:'feat/ok',allowedPaths:['src/**'],forbiddenPaths:['src/secret/**','contracts/**']}).length)")
+assert_eq "0" "$OUT" "a forbidden subtree inside an allowed lane is fine (that is what forbiddenPaths is for)"
+
 # A fenced block without the json tag, and a block before any heading, still parse.
 OUT=$(js "console.log(s.extract('### SCOPE.json\n\`\`\`\n{\"branch\":\"feat/a\",\"allowedPaths\":[\"a\"]}\n\`\`\`').scope.branch)")
 assert_eq "feat/a" "$OUT" "an untagged fence under the heading parses"

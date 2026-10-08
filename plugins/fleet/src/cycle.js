@@ -210,7 +210,10 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     if (apply) {
       if (r.outcome === 'movement') state.streak = 0;
       else if (liveAfter === 0) state.streak += 1;
-      if (state.streak >= cfg.noMovementLimit && !state.latched) state.latched = { at, streak: state.streak, reason: `${state.streak} consecutive cycles without movement` };
+      if (state.streak >= cfg.noMovementLimit && !state.latched) {
+        const parked = Object.values(state.sessions).filter(s => s.status === 'parked').map(s => `${s.id} (#${s.issue})`);
+        state.latched = { at, streak: state.streak, reason: `${state.streak} consecutive cycles without movement${parked.length ? `; parked and waiting on a decision: ${parked.join(', ')}` : ''}` };
+      }
       state.lastCycleId = id;
       state.unposted = [...(state.unposted || []), id];
       store.save(state);
