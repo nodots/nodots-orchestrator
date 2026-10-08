@@ -22,6 +22,16 @@ const trust = require('./trust');
 
 const TIERS = ['cheapest', 'default', 'strongest'];
 
+// FLEET_CRASH_AT=<stage> kills the process at a chosen point so the fixture
+// tests can prove recovery. Honored only with FLEET_TEST_HOOKS=1, so a stray
+// variable in a real environment cannot stop a launch.
+function crashPoint(stage) {
+  if (process.env.FLEET_TEST_HOOKS === '1' && process.env.FLEET_CRASH_AT === stage) {
+    process.stderr.write(`fleet: FLEET_CRASH_AT=${stage}, exiting\n`);
+    process.exit(70);
+  }
+}
+
 function tierUp(tier) {
   const i = TIERS.indexOf(tier || 'default');
   return TIERS[Math.min(i + 1, TIERS.length - 1)];
@@ -90,8 +100,25 @@ function prepareWorktree(cfg, tracker, { target, id, sc }) {
     // Adopt only a worktree that is on this branch; anything else is a collision.
     const b = g(['rev-parse', '--abbrev-ref', 'HEAD'], worktree);
     if (b.status !== 0 || b.stdout.trim() !== sc.branch) return { ok: false, stage: 'worktree', error: `${worktree} exists and is not on ${sc.branch}` };
+    // The issue is the source of truth for the lane. If the coordinator re-cut
+    // it (a parked package whose lane was wrong), the committed copy follows,
+    // as its own commit, so the hook enforces the lane that was decided.
+    const rel = path.join('.agentic', 'cells', ...sc.branch.split('/'), 'SCOPE.json');
+    const want = JSON.stringify(sc, null, 2) + '\n';
+    let have = null; try { have = fs.readFileSync(path.join(worktree, rel), 'utf8'); } catch { /* absent */ }
+    let recut = false;
+    if (have !== want) {
+      fs.mkdirSync(path.dirname(path.join(worktree, rel)), { recursive: true });
+      fs.writeFileSync(path.join(worktree, rel), want);
+      const a = g(['add', '--', rel], worktree);
+      const c = a.status === 0 ? g(['-c', 'user.name=fleet', '-c', 'user.email=fleet@nodots.invalid', 'commit', '-q', '-m', `${id}: scope re-cut`], worktree) : a;
+      if (c.status !== 0) return { ok: false, stage: 'recut', error: c.error || c.stderr.trim() };
+      const p = g(['push', 'origin', sc.branch], worktree);
+      if (p.status !== 0) return { ok: false, stage: 'push', error: p.error || p.stderr.trim(), worktree };
+      recut = true;
+    }
     const h = g(['rev-parse', 'HEAD'], worktree);
-    return { ok: true, worktree, headSha: h.stdout.trim(), created: false, remoteExisted: exists.exists };
+    return { ok: true, worktree, headSha: h.stdout.trim(), created: false, adopted: true, recut, remoteExisted: exists.exists };
   }
 
   if (exists.exists) return { ok: false, stage: 'claim', error: `branch ${sc.branch} already exists on origin and no local worktree holds it; another worker may own it` };
@@ -113,6 +140,7 @@ function prepareWorktree(cfg, tracker, { target, id, sc }) {
   const p = g(['push', '-u', 'origin', sc.branch], worktree);
   if (p.status !== 0) return { ok: false, stage: 'push', error: p.error || p.stderr.trim(), worktree };
 
+  crashPoint('after-push');
   const h = g(['rev-parse', 'HEAD'], worktree);
   return { ok: true, worktree, headSha: h.stdout.trim(), created: true, remoteExisted: false };
 }
@@ -156,13 +184,25 @@ function launch(cfg, tracker, store, req, persist) {
     status: 'launching', outcome: null, termSentAt: null,
   };
   persist(record);
+  crashPoint('after-persist');
 
   const { pid } = spawnDetached(cfg.bins.claude, args, { cwd: prep.worktree, env: workerEnv(req), logPath: record.logPath, exitPath: record.exitPath });
   record.pid = pid;
   record.procStart = processStart(pid);
   record.status = 'running';
   persist(record);
-  return { ok: true, session: record, args };
+  record.adopted = Boolean(prep.adopted);
+  record.recut = Boolean(prep.recut);
+  return { ok: true, session: record, args, adopted: Boolean(prep.adopted), recut: Boolean(prep.recut) };
 }
 
-module.exports = { launch, prepareWorktree, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS };
+// A worktree this machine already holds on the package branch: a launch that
+// crashed between its push and its record left one behind, and it is ours to adopt.
+function localWorktreeOnBranch(cfg, target, id, branch) {
+  const wt = scope.worktreePath(cfg.worktreesDir, target.repo, id);
+  if (!fs.existsSync(wt)) return null;
+  const r = run(cfg.bins.git, ['-C', wt, 'rev-parse', '--abbrev-ref', 'HEAD'], { timeoutMs: 15000 });
+  return r.status === 0 && r.stdout.trim() === branch ? wt : null;
+}
+
+module.exports = { localWorktreeOnBranch, launch, prepareWorktree, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS };

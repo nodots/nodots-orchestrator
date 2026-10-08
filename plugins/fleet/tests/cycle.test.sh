@@ -100,12 +100,44 @@ assert_contains "$(grep '^edit 11' "$TMP/gh/writes.log")" "+cell:queued" "promot
 rm -rf "$TMP/state"
 printf '{}' > "$TMP/gh/comments.json"   # the refusal posted its own alarm report; B counts from zero
 
+# --- A3. crash recovery: a launch that dies after its push, then after its record
+# FLEET_CRASH_AT is honored only with FLEET_TEST_HOOKS=1. The package is T1.1
+# alone (FLEET_ONLY_ISSUE), so the rest of the fixture is untouched.
+OUT=$(FLEET_TEST_HOOKS=1 FLEET_CRASH_AT=after-push FLEET_ONLY_ISSUE=10 fleet cycle --apply --json 2>"$TMP/crash1.err"); EXIT=$?
+assert_ne 0 "$EXIT" "a crash after the push exits non-zero"
+assert_contains "$(cat "$TMP/crash1.err")" "FLEET_CRASH_AT=after-push" "the crash point is named"
+[ -d "$TMP/worktrees/api-t1-1" ] && _pass "the worktree was created before the crash" || _fail "the worktree was created before the crash" "missing"
+assert_contains "$(git --git-dir "$TMP/remote.git" for-each-ref --format='%(refname:short)' refs/heads)" "feat/t1-1-first" "the scope branch was pushed before the crash"
+[ -f "$TMP/state/state.json" ] && assert_not_contains "$(cat "$TMP/state/state.json")" '"issue": 10' "no session record exists for the crashed launch" || _pass "no session record exists for the crashed launch"
+[ -f "$TMP/state/cycle.lock" ] && _pass "a hard crash leaves the lock behind (the next cycle must take it over)" || _fail "a hard crash leaves the lock behind (the next cycle must take it over)" "no cycle.lock"
+
+OUT=$(FLEET_TEST_HOOKS=1 FLEET_CRASH_AT=after-persist FLEET_ONLY_ISSUE=10 fleet cycle --apply --json 2>"$TMP/crash2.err"); EXIT=$?
+assert_contains "$(cat "$TMP/crash2.err")" "stale lock" "the next cycle takes over the dead cycle's lock"
+assert_ne 0 "$EXIT" "a crash after the record exits non-zero"
+assert_contains "$(grep '^edit 10' "$TMP/gh/writes.log" | tail -1)" "+cell:active" "sync relabeled the orphan cell:active before adoption, and adoption still happened"
+assert_contains "$(cat "$TMP/state/state.json")" '"status": "launching"' "the record was written as launching before the crash"
+N=$(git --git-dir "$TMP/remote.git" rev-list --count main..feat/t1-1-first)
+assert_eq "1" "$N" "the orphaned worktree was adopted: still exactly one scope commit on the branch, no second push"
+
+OUT=$(FLEET_ONLY_ISSUE=10 fleet cycle --apply --json 2>/dev/null); EXIT=$?
+assert_eq 0 "$EXIT" "the recovery cycle exits 0"
+assert_contains "$OUT" '"outcome": "relaunch"' "a launching record with no process is classified relaunch, not escalate"
+assert_contains "$OUT" '"adopted": true' "the relaunch adopts the existing worktree"
+# The stub worker may already have pushed its own commit; count only scope commits.
+assert_eq "1" "$(git --git-dir "$TMP/remote.git" log --format=%s main..feat/t1-1-first | grep -c 'scope')" "recovery pushes no second scope commit and no re-cut"
+assert_eq "1" "$(node -e "const s=require('$TMP/state/state.json'); console.log(Object.keys(s.sessions).length)")" "exactly one session record after recovery"
+assert_eq "1" "$(node -e "const s=require('$TMP/state/state.json'); console.log((s.dispatches['T1.1']||[]).length)")" "a relaunch after a crash is not a new dispatch"
+assert_contains "$(cat "$TMP/state/state.json")" '"status": "running"' "the recovered session is running"
+printf '{}' > "$TMP/gh/comments.json"   # the crash cycles posted reports; B counts from zero
+unset FLEET_ONLY_ISSUE
+
 # --- B. first applied cycle: promote, assign, launch, report -----------------
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_eq 0 "$EXIT" "applied cycle exits 0"
 assert_contains "$OUT" '"outcome": "movement"' "launching is movement"
 assert_contains "$(grep '^edit 11' "$TMP/gh/writes.log")" "+cell:queued" "T1.2 was promoted in the tracker"
 assert_eq "1" "$(markers)" "one report posted to the epic"
+assert_contains "$(grep '^edit 10' "$TMP/gh/writes.log" | tail -1)" "+cell:active" "sync derived cell:active for the package A3 pushed"
 for s in t1-1 t1-3 t1-4; do
   [ -d "$TMP/worktrees/api-$s" ] && _pass "worktree api-$s created" || _fail "worktree api-$s created" "missing"
 done
@@ -143,7 +175,9 @@ wait_exit 10-1 && wait_exit 12-1 && wait_exit 13-1 && _pass "all three workers e
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_eq 0 "$EXIT" "second cycle exits 0"
 assert_contains "$OUT" '"outcome": "movement"' "a reaped PR is movement"
-assert_contains "$OUT" '"type": "pr"' "the PR artifact is named"
+# T1.1's stub may have finished before B or before D; the PR is named in whichever cycle reaped it.
+assert_contains "$(cat "$TMP"/state/cycles/*.json)" '"type": "pr"' "the PR artifact is named in the cycle that reaped it"
+assert_eq "pr" "$(node -e "console.log(require('$TMP/state/state.json').sessions[10].outcome)")" "T1.1's session outcome is pr"
 assert_contains "$OUT" '"outcome": "parked"' "the BLOCKER.md package is parked"
 assert_contains "$OUT" 'kind=human-decision' "the Kind is surfaced"
 assert_contains "$OUT" '"reason": "silent"' "the silent run is escalated with reason silent"
@@ -165,13 +199,42 @@ assert_not_contains "$(ls "$TMP/claude-log")" "T1.3.3" "no third attempt is laun
 assert_contains "$OUT" '"outcome": "alarm"' "an escalation cap with nothing else moving is an alarm"
 assert_contains "$OUT" '"streak": 1' "a no-movement cycle with no live session starts the streak"
 
+# --- E2. a parked package resumes once the coordinator re-cuts the lane and removes the blocker
+# The decision is recorded in the issue (SCOPE.json widened), the BLOCKER.md is
+# removed, and the next cycle relaunches at the same tier with a re-cut scope
+# commit on the branch. Until then, nothing relaunches.
+OUT=$(fleet cycle --apply --json 2>/dev/null)
+assert_not_contains "$(ls "$TMP/claude-log")" "T1.4.2" "a parked package with its BLOCKER.md still present is not relaunched"
+node - "$TMP/gh/issues.json" <<'JS'
+const fs = require('fs'); const f = process.argv[2]; const issues = JSON.parse(fs.readFileSync(f, 'utf8'));
+const i = issues.find(x => x.number === 13);
+i.body = i.body.replace('"allowedPaths":["src/**"]', '"allowedPaths":["src/**","docs/**"]');
+fs.writeFileSync(f, JSON.stringify(issues, null, 2));
+JS
+rm -f "$TMP/worktrees/api-t1-4/BLOCKER.md"
+export CLAUDE_STUB_MODE_T1_4=silent
+OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
+assert_contains "$OUT" '"outcome": "unparked"' "the parked session is reaped as unparked once the blocker is gone"
+assert_contains "$OUT" '"recut": true' "the relaunch re-cuts the committed SCOPE.json from the issue"
+wait_exit 13-2 && _pass "the unparked relaunch ran" || _fail "the unparked relaunch ran" "no exit file 13-2"
+assert_contains "$(git --git-dir "$TMP/remote.git" log --format=%s feat/t1-4-blocker | head -1)" "T1.4: scope re-cut" "the re-cut scope is committed and pushed on the branch"
+assert_contains "$(git --git-dir "$TMP/remote.git" show feat/t1-4-blocker:.agentic/cells/feat/t1-4-blocker/SCOPE.json)" 'docs/**' "the committed lane is the widened one"
+ARGV4=$(cat "$TMP/claude-log/T1.4.2.argv")
+assert_not_contains "$ARGV4" "--model" "an unparked relaunch keeps its tier (no escalation)"
+assert_contains "$ARGV4" "attempt 2" "the unparked relaunch is attempt 2"
+assert_eq "2" "$(node -e "console.log(require('$TMP/state/state.json').dispatches['T1.4'].length)")" "unparking is a new dispatch"
+assert_contains "$(node -e "console.log(JSON.stringify(require('$TMP/state/state.json').dispatches['T1.4'][1]))")" '"reason":"unparked"' "the dispatch records why"
+# Settle: attempt 2 was silent; with maxEscalations 1 it hits the cap, so the fleet is idle from here.
+OUT=$(fleet cycle --apply --json 2>/dev/null)
+assert_contains "$OUT" '"code": "escalation-cap"' "the unparked package's silent run hits the escalation cap"
+
 # --- F. idle cycles: no label writes, latch at the limit ---------------------
 BEFORE=$(edits)
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_eq "$BEFORE" "$(edits)" "an idle cycle writes no labels"
 assert_contains "$OUT" '"outcome": "exhaustion"' "an idle cycle is exhaustion, with counts"
 assert_contains "$OUT" '"wipFree"' "exhaustion carries the free-slot count"
-assert_contains "$OUT" '"streak": 2' "the streak counts up"
+assert_contains "$OUT" '"streak": 2' "the streak counts up from the last movement"
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_eq 78 "$EXIT" "the cycle that reaches the limit exits 78"
 assert_contains "$OUT" '"latched"' "the state is latched"
@@ -189,7 +252,7 @@ assert_ne 0 "$EXIT" "resume without --reason is refused"
 # --- G. status is read-only and reflects the sessions -------------------------
 OUT=$(fleet status 2>&1)
 assert_contains "$OUT" "T1.1" "status lists the sessions"
-assert_contains "$OUT" "parked" "status shows the parked one"
+assert_contains "$OUT" "attempt 2" "status shows the relaunched attempt"
 
 # --- H. a truncated sync launches nothing ------------------------------------
 BEFORE=$(edits); NLOG=$(ls "$TMP/claude-log" | wc -l | tr -d ' ')

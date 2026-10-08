@@ -106,10 +106,12 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       if (iss && !iss.labels.includes(`worker:${a.worker}`)) iss.labels.push(`worker:${a.worker}`);
     }
 
+    const synced = new Map(sync.state.issues.map(i => [i.number, i]));
+
     // 4. reap first, so a slot freed this cycle can be refilled below.
     const pulls = [];
     for (const t of cfg.targets) { const p = tracker.listPulls(t.repo); if (p.ok) pulls.push(...p.pulls.map(x => ({ ...x, repo: t.repo }))); else alarm('pulls-failed', p.error); }
-    const reaped = reapMod.reap(cfg, state, pulls);
+    const reaped = reapMod.reap(cfg, state, pulls, Date.now(), s => { const x = synced.get(s.issue); return Boolean(x && x.blockerOnBranch); });
     r.reaped = reaped.reaped;
     for (const x of reaped.reaped) {
       if (x.outcome === 'pr') r.movement.push({ package: x.id, issue: x.issue, artifact: { type: 'pr', ref: x.artifact.ref, detail: x.detail } });
@@ -123,13 +125,25 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     const only = process.env.FLEET_ONLY_ISSUE ? Number(process.env.FLEET_ONLY_ISSUE) : null;
     // A package with a branch or a PR already has a worker on it, here or on
     // another account; only a reap request may relaunch it.
-    const synced = new Map(sync.state.issues.map(i => [i.number, i]));
     const untouched = n => { const s = synced.get(n); return !s || (!s.branchExists && !s.pr); };
-    const launchable = issues.filter(i => String(i.state).toUpperCase() === 'OPEN' && i.labels.includes('cell:queued')
+    // ...unless the branch is one this machine pushed and then lost track of: a
+    // local worktree on the package branch with no session record is a launch
+    // that crashed between its push and its record, and it is adopted.
+    const orphaned = i => {
+      const s = synced.get(i.number);
+      if (!s || s.pr) return false;
+      const d = scope.describe(i); if (d.problems.length) return false;
+      const target = launchMod.targetFor(cfg, i); if (!target) return false;
+      return Boolean(launchMod.localWorktreeOnBranch(cfg, target, d.id, d.scope.branch));
+    };
+    // Sync has already relabeled an orphan cell:active (its branch exists), so
+    // adoption accepts that label; a fresh launch still needs cell:queued.
+    const launchable = issues.filter(i => String(i.state).toUpperCase() === 'OPEN'
       && (only === null || i.number === only)
       && i.labels.some(l => l.startsWith('worker:') && cfg.ownedIds.includes(l.slice(7)))
-      && untouched(i.number)
-      && !state.sessions[i.number]);
+      && !state.sessions[i.number]
+      && ((i.labels.includes('cell:queued') && untouched(i.number))
+        || ((i.labels.includes('cell:queued') || i.labels.includes('cell:active')) && orphaned(i))));
     let dispatchable = launchable.length;
 
     const requests = [];
@@ -147,6 +161,11 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       const d = scope.describe(iss);
       if (d.problems.length) { alarm('unlaunchable', d.problems.join('; '), s.issue); continue; }
       const prior = state.dispatches[s.id] || [];
+      if (q.next === 'unpark') {
+        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt + 1, tier: s.tier, reason: 'unparked' });
+        dispatchable += 1;
+        continue;
+      }
       if (q.next === 'escalate') {
         const escalations = Math.max(0, prior.length - 1);
         if (escalations >= cfg.maxEscalations) { alarm('escalation-cap', `${s.id} has been escalated ${escalations} time(s); last: ${q.reason}. Holding.`, s.issue); continue; }
@@ -166,10 +185,12 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       const out = launchMod.launch(cfg, tracker, store, { ...q, dryRun: !apply }, persist);
       if (!out.ok) { alarm(`launch-${out.stage}`, out.error, q.issue.number); continue; }
       slots -= 1;
-      r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null });
-      if (!q.relaunch) {
-        if (!state.dispatches[q.id]) state.dispatches[q.id] = [];
-        state.dispatches[q.id].push({ n: q.attempt, tier: q.tier, reason: q.reason, runId: out.session.sessionId || null, ts: at });
+      r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null, adopted: Boolean(out.adopted), recut: Boolean(out.recut) });
+      // A relaunch repeats a dispatch rather than adding one, except when the
+      // original's record was lost to a crash before it was written.
+      if (!state.dispatches[q.id]) state.dispatches[q.id] = [];
+      if (!q.relaunch || state.dispatches[q.id].length < q.attempt) {
+        state.dispatches[q.id].push({ n: q.attempt, tier: q.tier, reason: q.reason, runId: out.session.sessionId || null, ts: at, recovered: Boolean(q.relaunch) || undefined });
       }
       if (!out.dryRun) r.movement.push({ package: q.id, issue: q.issue.number, artifact: { type: 'dispatch', ref: q.sc.branch, detail: `attempt ${q.attempt}` } });
     }

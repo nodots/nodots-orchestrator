@@ -85,7 +85,7 @@ function classify(session, facts) {
 // reap(cfg, state, pulls, now) -> { live, reaped[], requests[] }
 // Mutates session records in state (status, outcome, termSentAt). Does not
 // save; the cycle saves once at the end.
-function reap(cfg, state, pulls, now = Date.now()) {
+function reap(cfg, state, pulls, now = Date.now(), blockerOnBranch = null) {
   const live = [];
   const reaped = [];
   const requests = [];     // { session, next, reason }
@@ -93,6 +93,19 @@ function reap(cfg, state, pulls, now = Date.now()) {
   const graceMs = cfg.killGraceSeconds * 1000;
 
   for (const session of Object.values(state.sessions)) {
+    // A parked package resumes when the coordinator has recorded the decision
+    // and removed BLOCKER.md: no blocker in the worktree and none on the branch
+    // head (sync's blockerOnBranch). The relaunch keeps the tier; it is a new
+    // dispatch with reason "unparked", not an escalation.
+    if (session.status === 'parked') {
+      const onBranch = blockerOnBranch ? blockerOnBranch(session) : false;
+      if (!blockerFor(session) && !onBranch) {
+        session.status = 'closed'; session.outcome = 'unparked'; session.endedAt = new Date(now).toISOString();
+        reaped.push({ issue: session.issue, id: session.id, attempt: session.attempt, tier: session.tier, outcome: 'unparked', detail: 'BLOCKER.md removed; resuming', next: 'unpark' });
+        requests.push({ session, next: 'unpark', reason: 'unparked' });
+      }
+      continue;
+    }
     if (!['launching', 'running'].includes(session.status)) continue;
 
     const alive = session.pid && isAlive(session.pid) && (!session.procStart || processStart(session.pid) === session.procStart);
