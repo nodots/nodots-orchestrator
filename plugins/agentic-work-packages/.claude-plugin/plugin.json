@@ -1,7 +1,7 @@
 {
   "name": "agentic-work-packages",
   "description": "Decompose work into agent-executable issue hierarchies \u2014 epics, path-scoped work packages, blocking gates \u2014 with a PreToolUse hook that enforces SCOPE.json path lanes, plus the working agreements (test-first, dead gates, boundary tests) that define proof of done.",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "author": {
     "name": "Ken Riley",
     "email": "kenr@nodots.com"
