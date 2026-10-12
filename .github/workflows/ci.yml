@@ -37,6 +37,26 @@ jobs:
           done
           exit $status
 
+      - name: Installed worker hooks and contract match the plugin copies
+        run: |
+          plugin=plugins/agentic-work-packages
+          status=0
+          for name in enforce-scope.js require-handoff.js; do
+            if [ ! -f ".claude/hooks/$name" ]; then
+              echo "Missing installed hook: .claude/hooks/$name"
+              status=1
+              continue
+            fi
+            diff ".claude/hooks/$name" "$plugin/hooks/$name" || status=1
+          done
+          if [ ! -f .claude/worker-contract.md ]; then
+            echo "Missing installed contract: .claude/worker-contract.md"
+            status=1
+          else
+            diff .claude/worker-contract.md "$plugin/skills/agentic-work-packages/assets/worker-contract.md" || status=1
+          fi
+          exit $status
+
       - name: Run the fixture tests
         run: |
           shopt -s nullglob
