@@ -12,16 +12,20 @@
  *
  * Control header
  * --------------
- * Default: block, and only in the one state above. A clean tree, the default
- *   branch, or either file present all allow the stop; the hook is silent
- *   whenever it allows.
+ * Default: block, in two states: the one above, and a HANDOFF.md that has no
+ *   "Plan check" section (a "Plan check" heading and a line
+ *   "Package issue still matches: yes" or "no"). A clean tree, the default
+ *   branch, a BLOCKER.md (exempt from the Plan check), or a HANDOFF.md with the
+ *   section all allow the stop; the hook is silent whenever it allows.
  * Fail posture: open, and loud. Any error exits 0 after one stderr line naming
  *   this hook and the error, the same posture as enforce-scope.js. A handoff
  *   convention is a coordination guardrail; a broken sensor must not trap a
  *   session in a turn it cannot end.
  * Residue — what this hook does not judge: whether HANDOFF.md is any good,
- *   whether it describes this work, or whether it is stale. It judges
- *   presence. It also cannot see uncommitted work in another worktree, and it
+ *   whether it describes this work, or whether it is stale; whether the Plan
+ *   check answer is true, or whether a "no" names the updated issue and what
+ *   changed. It judges the presence of the section and of a yes or no. It also
+ *   cannot see uncommitted work in another worktree, and it
  *   does not fire when the user interrupts a turn, because Stop does not run
  *   on a user interrupt.
  *
@@ -51,6 +55,9 @@ const HANDOFF = 'HANDOFF.md';
 const BLOCKER = 'BLOCKER.md';
 const CELL_DIRS = ['.agentic', '.auto-shop'];
 const FALLBACK_DEFAULTS = ['main', 'master', 'development'];
+const PLAN_HEADING = /^#{1,6}[ \t]*Plan check[ \t]*$/im;
+const PLAN_ANSWER = /^[ \t]*Package issue still matches:[ \t]*(yes|no)[ \t]*$/im;
+const PLAN_LINE = 'Package issue still matches: yes';
 
 function git(dir, args) {
   return execFileSync('git', ['-C', dir, ...args], {
@@ -92,13 +99,23 @@ function handoffDirs(root, branch) {
   return dirs;
 }
 
-function hasWrittenState(root, branch) {
+// 'none' when neither file exists, 'blocker' when a BLOCKER.md exists (exempt
+// from the Plan check), 'handoff-ok' when a HANDOFF.md carries the Plan check,
+// and 'handoff-no-plan-check' when HANDOFF.md exists but none of them does.
+function writtenState(root, branch) {
+  let handoffSeen = false;
   for (const dir of handoffDirs(root, branch)) {
-    for (const name of [HANDOFF, BLOCKER]) {
-      if (fs.existsSync(path.join(dir, name))) return true;
-    }
+    if (fs.existsSync(path.join(dir, BLOCKER))) return 'blocker';
+    const file = path.join(dir, HANDOFF);
+    if (!fs.existsSync(file)) continue;
+    handoffSeen = true;
+    if (hasPlanCheck(fs.readFileSync(file, 'utf8'))) return 'handoff-ok';
   }
-  return false;
+  return handoffSeen ? 'handoff-no-plan-check' : 'none';
+}
+
+function hasPlanCheck(text) {
+  return PLAN_HEADING.test(text) && PLAN_ANSWER.test(text);
 }
 
 let input = '';
@@ -123,13 +140,19 @@ process.stdin.on('end', () => {
     const dirty = git(root, ['status', '--porcelain']);
     if (!dirty) process.exit(0);                       // nothing uncommitted to describe
 
-    if (hasWrittenState(root, branch)) process.exit(0);
+    const state = writtenState(root, branch);
+    if (state === 'blocker' || state === 'handoff-ok') process.exit(0);
 
-    const reason =
-        `This worktree is on ${branch} with uncommitted changes and neither ` +
+    const reason = state === 'handoff-no-plan-check'
+      ? `${HANDOFF} on ${branch} is missing the required "Plan check" section. ` +
+        `Add it to ${HANDOFF}, with a line "${PLAN_LINE}" (or "no" when the build ` +
+        `diverged from the package issue; then also give the updated issue number ` +
+        `and what changed):\n\n## Plan check\n\n${PLAN_LINE}\n`
+      : `This worktree is on ${branch} with uncommitted changes and neither ` +
         `${HANDOFF} nor ${BLOCKER} written. Before ending the turn, write one of them ` +
         `at the repo root or in this branch's cell directory: ${HANDOFF} if the work ` +
-        `continues (what is done, what is next, what a cold session needs to resume), ` +
+        `continues (what is done, what is next, what a cold session needs to resume, ` +
+        `and a "Plan check" section with the line "${PLAN_LINE}" or "no"), ` +
         `${BLOCKER} if it stopped and needs a decision (bucket, kind and reference, ` +
         `alternatives searched, un-block condition, owner, and the one-line ask). ` +
         `Committing or stashing the changes is not the alternative — the point is the ` +
