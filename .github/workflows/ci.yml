@@ -16,26 +16,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Hook copies are byte-identical
-        run: |
-          shopt -s nullglob
-          hooks=(plugins/agentic-work-packages/hooks/*.js)
-          if [ ${#hooks[@]} -eq 0 ]; then
-            echo "No plugin hooks found — the glob matched nothing."
-            exit 1
-          fi
-          assets=plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks
-          status=0
-          for h in "${hooks[@]}"; do
-            name=$(basename "$h")
-            if [ ! -f "$assets/$name" ]; then
-              echo "Missing manual-install copy: $assets/$name"
-              status=1
-              continue
-            fi
-            diff "$h" "$assets/$name" || status=1
-          done
-          exit $status
+      - name: Hook copies are byte-identical and fixture tests pass
+        run: bash scripts/test.sh
 
       - name: Installed worker hooks and contract match the plugin copies
         run: |
@@ -55,19 +37,4 @@ jobs:
           else
             diff .claude/worker-contract.md "$plugin/skills/agentic-work-packages/assets/worker-contract.md" || status=1
           fi
-          exit $status
-
-      - name: Run the fixture tests
-        run: |
-          shopt -s nullglob
-          tests=(plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/*.test.sh plugins/fleet/tests/*.test.sh)
-          if [ ${#tests[@]} -eq 0 ]; then
-            echo "No fixture tests found — the glob matched nothing."
-            exit 1
-          fi
-          status=0
-          for t in "${tests[@]}"; do
-            echo "=== $t ==="
-            bash "$t" || status=1
-          done
           exit $status
