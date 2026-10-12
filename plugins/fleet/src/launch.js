@@ -160,6 +160,14 @@ function launch(cfg, tracker, store, req, persist) {
   const t = trust.isTrusted(cfg.bins.git, target.localPath);
   if (!t.trusted) return { ok: false, stage: 'trust', error: `${target.localPath} is not a trusted workspace, so the worker's permissions.allow rules would be ignored under -p and it could not commit, push or open a PR; ${trust.howToTrust(t)}${t.error ? ` (${t.error})` : ''}` };
 
+  // Unattended edits are only as safe as the CI that catches them. Blast
+  // radius is not measured here; see references/scope-contract.md.
+  const ci = tracker.ciStatus(target.repo, target.defaultBranch);
+  if (!ci.ok) return { ok: false, stage: 'ci-check-failed', error: `cannot read CI state for ${target.repo}, so no worker is launched: ${ci.error}` };
+  if (ci.enabledWorkflows === 0) return { ok: false, stage: 'ci-disabled', error: `${target.repo} has no enabled CI workflow; enable one before unattended workers run there` };
+  const ageDays = ci.lastRunAt ? (Date.now() - Date.parse(ci.lastRunAt)) / 86400000 : Infinity;
+  if (!(ageDays <= cfg.ciMaxAgeDays)) return { ok: false, stage: 'ci-stale', error: `${target.repo}: ${ci.lastRunAt ? `the last workflow run on ${target.defaultBranch} was ${ci.lastRunAt}` : `no workflow run on ${target.defaultBranch}`}, outside the ${cfg.ciMaxAgeDays}-day window (ciMaxAgeDays)` };
+
   if (req.dryRun) {
     return { ok: true, dryRun: true, session: { issue: req.issue.number, id: req.id, branch: req.sc.branch, worktree: scope.worktreePath(cfg.worktreesDir, target.repo, req.id), target: target.repo, tier: req.tier || 'default', mode } };
   }
