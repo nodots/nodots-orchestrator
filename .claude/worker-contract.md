@@ -139,6 +139,20 @@ is not ready to file.
    Committing the changes is not the alternative; the written state is the
    point.
 
+   `HANDOFF.md` carries a required `Plan check` section. The hook blocks a
+   `HANDOFF.md` that lacks it; `BLOCKER.md` is exempt.
+
+   ```markdown
+   ## Plan check
+
+   Package issue still matches: yes
+   ```
+
+   Write `no` when what you built diverged from the package issue. Then update
+   the issue in the same change, and under the line give the issue number you
+   updated and what changed. The hook checks that the section and a `yes` or
+   `no` are present; it does not judge whether the answer is true.
+
 Do not change your own `cell:*` label. Labels are derived from observable state
 each cycle by the coordinator, and a hand-set one is overwritten.
 
