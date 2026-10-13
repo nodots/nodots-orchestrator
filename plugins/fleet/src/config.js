@@ -15,6 +15,7 @@ const path = require('path');
 
 const MODES = new Set(['local', 'cloud', 'external']);
 const PERMISSION_MODES = new Set(['acceptEdits', 'auto', 'dontAsk', 'default', 'plan', 'bypassPermissions']);
+const APPROVAL_MODES = new Set(['off', 'branch-protection', 'ruleset']);
 const WORKER_ID = /^[A-Za-z0-9_-]+$/;
 
 const DEFAULTS = {
@@ -29,6 +30,7 @@ const DEFAULTS = {
   maxCycleMinutes: 30,
   externalStartTimeoutMinutes: 240,
   ciMaxAgeDays: 14,
+  approvalEnforcement: 'off',
   models: { cheapest: 'haiku', default: null, strongest: 'opus' },
 };
 
@@ -92,6 +94,7 @@ function validate(raw, baseDir) {
     if (!Number.isInteger(c[k]) || c[k] < 0 || (k === 'wipCap' && c[k] === 0)) fail(`${k} must be a non-negative integer${k === 'wipCap' ? ' above zero' : ''}`);
   }
   if (!Number.isInteger(c.ciMaxAgeDays) || c.ciMaxAgeDays <= 0) fail('ciMaxAgeDays must be a positive integer');
+  if (!APPROVAL_MODES.has(c.approvalEnforcement)) fail(`approvalEnforcement [${c.approvalEnforcement}] must be one of ${[...APPROVAL_MODES].join(', ')}`);
   if (typeof c.maxBudgetUsd !== 'number' || c.maxBudgetUsd <= 0) fail('maxBudgetUsd must be a positive number');
   if (!PERMISSION_MODES.has(c.permissionMode)) fail(`permissionMode [${c.permissionMode}] is not a Claude Code permission mode`);
   if (c.permissionPrompts !== 'none' && c.permissionPrompts !== 'host') fail('permissionPrompts must be "none" or "host"');
@@ -117,4 +120,33 @@ function validate(raw, baseDir) {
   return c;
 }
 
-module.exports = { loadConfig, validate, defaultPluginRoot, DEFAULTS, MODES };
+// Approval enforcement (decision D1): off by default. When off, nothing here
+// blocks a merge. When on, the host forge enforces the rule; GitHub applies
+// the payload below through the mechanism the plan supports.
+const REVIEW_COUNT = 1;
+
+function approvalPayload(c) {
+  if (c.approvalEnforcement === 'branch-protection') {
+    // PUT /repos/{owner}/{repo}/branches/{branch}/protection
+    return { required_status_checks: null, enforce_admins: null, required_pull_request_reviews: { required_approving_review_count: REVIEW_COUNT }, restrictions: null };
+  }
+  if (c.approvalEnforcement === 'ruleset') {
+    // POST /repos/{owner}/{repo}/rulesets
+    return {
+      name: 'require-human-approval', target: 'branch', enforcement: 'active',
+      conditions: { ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] } },
+      rules: [{ type: 'pull_request', parameters: { required_approving_review_count: REVIEW_COUNT, dismiss_stale_reviews_on_push: false, require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false } }],
+    };
+  }
+  return null;
+}
+
+// pr: { number, approvals: [{ state, author, authorType? }] }. A bot approval does not count.
+function approvalGate(c, pr) {
+  if (c.approvalEnforcement === 'off') return { blocked: false, mechanism: null, reason: 'approvalEnforcement is off' };
+  const humans = (pr.approvals || []).filter(a => a.state === 'APPROVED' && a.authorType !== 'Bot').length;
+  if (humans >= REVIEW_COUNT) return { blocked: false, mechanism: c.approvalEnforcement, reason: 'human approval present' };
+  return { blocked: true, mechanism: c.approvalEnforcement, reason: `PR #${pr.number} has no human approval` };
+}
+
+module.exports = { loadConfig, validate, defaultPluginRoot, approvalGate, approvalPayload, DEFAULTS, MODES };

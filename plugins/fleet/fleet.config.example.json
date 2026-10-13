@@ -10,6 +10,7 @@
     "c": { "mode": "external" }
   },
   "wipCap": 4,
+  "approvalEnforcement": "off",
   "worktreesDir": "../api-worktrees",
   "stateDir": "../api-worktrees/.fleet",
   "permissionMode": "acceptEdits",

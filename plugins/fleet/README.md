@@ -59,6 +59,49 @@ node "$PLUGIN/bin/fleet.js" resume --reason "reviewed the last three reports; qu
 `skills/fleet/SKILL.md` tells a coordinator Claude session how to drive it and
 what each alarm asks for.
 
+## Approval enforcement
+
+`approvalEnforcement` in `fleet.config.json` is `off` by default. While `off`,
+no check added by the review epic blocks any merge. Set it per project; it is
+not turned on for this repository.
+
+| Value               | Mechanism                                  | Needs                                                                 |
+|---------------------|--------------------------------------------|-----------------------------------------------------------------------|
+| `off`               | none                                       | nothing                                                               |
+| `branch-protection` | required pull request review on the default branch | a plan that offers branch protection for the repo's visibility |
+| `ruleset`           | a branch ruleset with a `pull_request` rule | a plan that offers rulesets for the repo's visibility                |
+
+Both mechanisms require one approving review. `approvalPayload(config)` in
+`src/config.js` returns the request body, and `approvalGate(config, pr)`
+returns `{ blocked, mechanism, reason }` for a PR: a PR with no human approval
+is blocked when the setting is on and not blocked when it is off. A bot
+approval does not count.
+
+Turn it on for a project:
+
+```bash
+# 1. set "approvalEnforcement": "branch-protection" (or "ruleset") in fleet.config.json
+# 2. apply the mechanism, from the target repo; check the account first
+gh api -X PUT repos/OWNER/REPO/branches/BRANCH/protection --input protection.json
+gh api -X POST repos/OWNER/REPO/rulesets --input ruleset.json
+```
+
+Write the payload to the `--input` file with
+`node -e "const c=require('./src/config').loadConfig('fleet.config.json'); console.log(JSON.stringify(require('./src/config').approvalPayload(c)))"`.
+Fleet does not call these endpoints itself. The PUT replaces any protection
+already set on that branch, so read it first with `gh api repos/OWNER/REPO/branches/BRANCH/protection`.
+
+Where a mechanism is unavailable:
+
+- Branch protection on a repository whose plan lacks it: the API answers 403.
+  `nodots/nodots-orchestrator` is in this state, which is why enforcement ships
+  off. Rulesets have not been tried on it. Whether a given plan offers each mechanism is
+  GitHub's to say; check the current plan table at
+  https://docs.github.com/en/get-started/learning-about-github/githubs-plans
+  before relying on either.
+- With neither available, `approvalEnforcement` cannot be enforced by the
+  forge. Leave it `off`; fleet adds no check of its own that blocks a merge.
+
 ## Layout
 
 ```
