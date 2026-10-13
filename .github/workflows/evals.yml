@@ -1,13 +1,16 @@
 # Evals CI (G2.3, issue #37).
 #
-# Runs the evals in evals/cases on pull requests that change CLAUDE.md, any
-# SKILL.md, plugin hooks, or the worker contract, then gates on pass rate.
+# Runs the evals in evals/cases, then gates on pass rate. TRIGGER: manual only
+# (workflow_dispatch). It ran on pull requests that changed CLAUDE.md, any
+# SKILL.md, plugin hooks or the worker contract, and failed on every one of them
+# because the runner has no model credential (the owner's decision, 2026-10-13:
+# on demand, not per PR). To restore the per-PR trigger, add under `on:` a
+# `pull_request` block with `paths:` for those files, after the secret exists.
 #
 # THE SCHEDULE IS OFF. The playbook asks for a weekly run, but the G2.1 budget
 # calibration amendment to epic #25 has not been merged by the coordinator, and
-# the caps in evals/budget.json are still estimates. Until it merges, this
-# workflow runs on pull requests only. To enable the weekly run after the
-# amendment merges, add under `on:`:
+# the caps in evals/budget.json are still estimates. To enable the weekly run
+# after the amendment merges, add under `on:`:
 #   schedule:
 #     - cron: '0 6 * * 1'
 #
@@ -28,12 +31,7 @@
 name: Evals
 
 on:
-  pull_request:
-    paths:
-      - 'CLAUDE.md'
-      - '**/SKILL.md'
-      - 'plugins/**/hooks/**'
-      - '**/assets/worker-contract.md'
+  workflow_dispatch:
 
 permissions:
   contents: read

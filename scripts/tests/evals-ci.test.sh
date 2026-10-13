@@ -18,10 +18,10 @@ trap 'rm -rf "$TMP"' EXIT
 
 # Triggers. Match uncommented lines only: the header may mention a schedule in a comment.
 live() { grep -v '^[[:space:]]*#' "$WF"; }
-assert_contains "$(live)" "pull_request:" "runs on pull_request"
-for p in "CLAUDE.md" "**/SKILL.md" "plugins/**/hooks/**" "**/assets/worker-contract.md"; do
-  assert_contains "$(live)" "- '$p'" "pull_request paths include $p"
-done
+# Owner decision 2026-10-13: manual trigger only. The runner has no model credential, so a
+# per-PR trigger failed on every PR.
+assert_contains "$(live)" "workflow_dispatch:" "runs on manual dispatch"
+assert_not_contains "$(live)" "pull_request:" "does not run on pull_request"
 assert_not_contains "$(live)" "schedule:" "no live schedule trigger until calibration merges"
 assert_not_contains "$(live)" "cron:" "no live cron entry until calibration merges"
 assert_contains "$(grep '^#' "$WF")" "calibration" "header states why the schedule is off"
