@@ -1,0 +1,8 @@
+{
+  "id": "example-hello",
+  "prompt": "Create a file named hello.txt in the current directory containing exactly the word hello, then reply with the single word done. Do nothing else.",
+  "checks": [
+    { "name": "hello.txt exists with the word hello", "kind": "tests", "command": "test \"$(cat hello.txt)\" = hello" },
+    { "name": "reply says done", "kind": "policy", "resultMatches": "done" }
+  ]
+}

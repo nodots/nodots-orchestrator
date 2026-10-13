@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Eval case and budget",
+  "description": "Case format for evals/cases/*.json and the shape of evals/budget.json. evals/lib/cases.js and evals/lib/budget.js enforce this; the schema documents it.",
+  "$defs": {
+    "check": {
+      "type": "object",
+      "required": ["name", "kind"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["tests", "lint", "policy"] },
+        "command": { "type": "string", "description": "Run with bash in the work directory; exit 0 passes." },
+        "resultMatches": { "type": "string", "description": "Regex the claude result text must match." },
+        "resultNotMatches": { "type": "string", "description": "Regex the claude result text must not match." }
+      },
+      "anyOf": [{ "required": ["command"] }, { "required": ["resultMatches"] }, { "required": ["resultNotMatches"] }]
+    },
+    "case": {
+      "type": "object",
+      "required": ["id", "prompt", "checks"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+        "prompt": { "type": "string", "minLength": 1 },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } },
+        "model": { "type": "string", "description": "Overrides budget.model. Name the reason in the case." },
+        "permissionMode": { "type": "string", "description": "Default acceptEdits." },
+        "timeoutSeconds": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": ["perEvalUsd", "perSuiteUsd", "monthlyCeilingUsd"],
+      "properties": {
+        "perEvalUsd": { "type": "number", "exclusiveMinimum": 0 },
+        "perSuiteUsd": { "type": "number", "exclusiveMinimum": 0 },
+        "monthlyCeilingUsd": { "type": "number", "exclusiveMinimum": 0 },
+        "model": { "type": "string" },
+        "timeoutSeconds": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/case" }, { "$ref": "#/$defs/budget" }]
+}
