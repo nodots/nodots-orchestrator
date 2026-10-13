@@ -1,0 +1,29 @@
+{
+  "feature": "v1-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/v1-gate",
+  "allowedPaths": [
+    "scripts/tests/v1-gate.test.sh"
+  ],
+  "forbiddenPaths": [
+    "scripts/check-stamp.js",
+    "scripts/test.sh",
+    "REVIEW.md",
+    ".github/**",
+    "plugins/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**"
+  ],
+  "dependsOn": [
+    "feat/g1-1-review-workflow",
+    "feat/g1-2-stamp-check",
+    "feat/g1-3-approval-config"
+  ],
+  "estimatedScope": "gate for Phase 1",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default",
+    "agents": []
+  }
+}
