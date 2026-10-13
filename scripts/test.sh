@@ -3,12 +3,15 @@
 # Exits 0 when every check holds, non-zero on any failure.
 #
 # 1. The plugin hooks and their manual-install copies are byte-identical.
-# 2. Every fixture test (*.test.sh) passes. A glob that matches nothing fails.
+# 2. Every .js and .sh under plugins/ parses (scripts/check-syntax.sh).
+# 3. No changed file holds a private-key header or token (scripts/check-credentials.sh).
+# 4. Every fixture test (*.test.sh) passes. A glob that matches nothing fails.
 #
 # REPO_ROOT overrides the tree under test; scripts/tests/test-sh.test.sh uses it.
 set -uo pipefail
 shopt -s nullglob
 
+SELF_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd -P)}"
 cd "$REPO_ROOT" || exit 1
 
@@ -34,6 +37,12 @@ for h in "${hooks[@]}"; do
     status=1
   fi
 done
+
+echo "=== syntax (parse check, not a style lint) ==="
+if ! REPO_ROOT="$REPO_ROOT" bash "$SELF_DIR/check-syntax.sh"; then status=1; fi
+
+echo "=== credentials in changed files ==="
+if ! REPO_ROOT="$REPO_ROOT" bash "$SELF_DIR/check-credentials.sh"; then status=1; fi
 
 echo "=== fixture tests ==="
 tests=("$ASSETS"/tests/*.test.sh plugins/fleet/tests/*.test.sh scripts/tests/*.test.sh)
