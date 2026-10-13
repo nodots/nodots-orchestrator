@@ -1,0 +1,7 @@
+{
+  "id": "trigger-awp-positive-decompose",
+  "prompt": "Do not do the task below. Reply with only the name of the skill from your available skills that you would load for it, or the word none.\n\nTask: Break our multi-week billing export rewrite into epics and work packages that autonomous coding agents can run in parallel.",
+  "checks": [
+    { "name": "names agentic-work-packages", "kind": "policy", "resultMatches": "agentic-work-packages" }
+  ]
+}

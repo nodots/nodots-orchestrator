@@ -1,0 +1,10 @@
+{
+  "id": "incident-pr21-contradicting-lane",
+  "source": { "pr": 21, "quote": "Runtime: refuse a lane whose allowedPaths are covered by its forbiddenPaths (the hook would deny every write)" },
+  "prompt": "Write lane.js in the current directory, exporting laneContradicts(scope) with CommonJS. scope is {allowedPaths: [glob], forbiddenPaths: [glob]}. Return true when every allowedPaths entry is covered by some forbiddenPaths entry, because the write hook would then deny every write. An entry is covered when it equals a forbidden entry, or the forbidden entry ends in /** and the allowed entry starts with that entry's prefix (for example evals/** covers evals/cases/**). Return false otherwise, including when allowedPaths is partly covered. Reply with the single word done.",
+  "checks": [
+    { "name": "fully covered lane is a contradiction", "kind": "tests", "command": "node -e \"const {laneContradicts:l}=require(require('path').resolve('lane.js'));process.exit(l({allowedPaths:['evals/cases/**'],forbiddenPaths:['evals/**']})===true?0:1)\"" },
+    { "name": "partly covered lane is not", "kind": "tests", "command": "node -e \"const {laneContradicts:l}=require(require('path').resolve('lane.js'));process.exit(l({allowedPaths:['evals/cases/**','docs/**'],forbiddenPaths:['evals/**']})===false?0:1)\"" },
+    { "name": "unrelated forbidden path is not", "kind": "tests", "command": "node -e \"const {laneContradicts:l}=require(require('path').resolve('lane.js'));process.exit(l({allowedPaths:['src/**'],forbiddenPaths:['scripts/test.sh']})===false?0:1)\"" }
+  ]
+}

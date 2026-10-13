@@ -1,0 +1,8 @@
+{
+  "id": "incident-pr20-orphan-not-adopted",
+  "source": { "pr": 20, "quote": "after the crash, sync had already relabeled the orphan `cell:active`, and the launch filter accepted only `cell:queued`, so the orphan was never adopted." },
+  "prompt": "Write adopt.js in the current directory, exporting toLaunch(issues) with CommonJS. issues is an array of {number, labels: [string], hasSession: boolean}. Return the numbers to launch, in input order: every issue labeled cell:queued, plus every issue labeled cell:active that has no session (an orphan left by a crash after its push). Never launch an issue that has a session, and never launch other cell labels such as cell:merged. Reply with the single word done.",
+  "checks": [
+    { "name": "queued and orphaned active launch; others do not", "kind": "tests", "command": "node -e \"const {toLaunch}=require(require('path').resolve('adopt.js'));const r=toLaunch([{number:1,labels:['cell:queued'],hasSession:false},{number:2,labels:['cell:active'],hasSession:false},{number:3,labels:['cell:active'],hasSession:true},{number:4,labels:['cell:merged'],hasSession:false}]);process.exit(JSON.stringify(r)==='[1,2]'?0:1)\"" }
+  ]
+}

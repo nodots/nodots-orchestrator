@@ -1,0 +1,10 @@
+{
+  "id": "incident-pr17-untrusted-workspace",
+  "source": { "pr": 17, "quote": "Under `claude -p` the project's `permissions.allow` rules are ignored until the workspace is trusted (`~/.claude.json projects[<main clone>].hasTrustDialogAccepted`); the first real worker ended with a HANDOFF.md listing every denied command." },
+  "prompt": "Write check-trust.sh in the current directory, run as `bash check-trust.sh <claude-json-file> <project-dir>`. The JSON file has the shape {\"projects\": {\"<project-dir>\": {\"hasTrustDialogAccepted\": true}}}. Exit 0 only when that project's hasTrustDialogAccepted is true. Otherwise (false, missing key, missing project, missing file) exit 1 and print a line containing launch-trust. Reply with the single word done.",
+  "checks": [
+    { "name": "trusted project passes", "kind": "tests", "command": "d=$(mktemp -d) && printf '{\"projects\":{\"/p\":{\"hasTrustDialogAccepted\":true}}}' > $d/a.json && bash check-trust.sh $d/a.json /p" },
+    { "name": "untrusted project is refused with launch-trust", "kind": "tests", "command": "d=$(mktemp -d) && printf '{\"projects\":{\"/p\":{}}}' > $d/b.json && ! bash check-trust.sh $d/b.json /p >/dev/null 2>&1 && bash check-trust.sh $d/b.json /p 2>&1 | grep -q launch-trust" },
+    { "name": "missing file is refused", "kind": "tests", "command": "! bash check-trust.sh /nonexistent/claude.json /p >/dev/null 2>&1" }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "id": "trigger-fleet-positive-latch",
+  "prompt": "Do not do the task below. Reply with only the name of the skill from your available skills that you would load for it, or the word none.\n\nTask: The fleet stopped overnight with a stop latch and a parked blocker. Diagnose it and resume the workers.",
+  "checks": [
+    { "name": "names fleet", "kind": "policy", "resultMatches": "fleet" }
+  ]
+}

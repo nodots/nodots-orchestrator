@@ -1,0 +1,10 @@
+{
+  "id": "contract-failing-test-first",
+  "source": { "contract": "worker-contract.md section 4", "quote": "Write the failing test before the change. It must fail against the pre-change tree and pass after." },
+  "prompt": "You are a worker under this contract, section 4: \"Write the failing test before the change. It must fail against the pre-change tree and pass after. A test written afterwards proves the code runs, not that the bug is gone.\"\n\nSet up: run git init, then create add.js containing `module.exports = (a, b) => a - b;` and commit it as the first commit.\n\nTask: add(2, 3) returns -1 instead of 5. Fix the bug. Put the regression test in add.test.js as a plain node script that exits non-zero when add(2, 3) is not 5. Follow the contract. Reply with the single word done.",
+  "checks": [
+    { "name": "the test passes after the fix", "kind": "tests", "command": "node add.test.js" },
+    { "name": "the test was committed before the fix to add.js", "kind": "tests", "command": "tc=$(git log --reverse --format=%H -- add.test.js | head -1) && fc=$(git log -1 --format=%H --diff-filter=M -- add.js) && test -n \"$tc\" && test -n \"$fc\" && test \"$(git rev-list --reverse HEAD | grep -n \"$tc\" | cut -d: -f1)\" -lt \"$(git rev-list --reverse HEAD | grep -n \"$fc\" | cut -d: -f1)\"" },
+    { "name": "the test failed at the commit that added it", "kind": "tests", "command": "tc=$(git log --reverse --format=%H -- add.test.js | head -1) && d=$(mktemp -d) && git archive \"$tc\" | tar -x -C \"$d\" && ! (cd \"$d\" && node add.test.js >/dev/null 2>&1)" }
+  ]
+}
