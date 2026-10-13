@@ -1,0 +1,125 @@
+# Evals CI (G2.3, issue #37).
+#
+# Runs the evals in evals/cases on pull requests that change CLAUDE.md, any
+# SKILL.md, plugin hooks, or the worker contract, then gates on pass rate.
+#
+# THE SCHEDULE IS OFF. The playbook asks for a weekly run, but the G2.1 budget
+# calibration amendment to epic #25 has not been merged by the coordinator, and
+# the caps in evals/budget.json are still estimates. Until it merges, this
+# workflow runs on pull requests only. To enable the weekly run after the
+# amendment merges, add under `on:`:
+#   schedule:
+#     - cron: '0 6 * * 1'
+#
+# Baseline: evals/baseline.json, committed to git. The gate fails when
+# passed / total falls below `passRate` there. It lives in git so that moving it
+# is a reviewed change, and so a run cannot lower its own bar. While passRate is
+# null (no baseline recorded) the gate requires 100%. Evals that did not run
+# count as not passed.
+#
+# Ceiling: evals/spend.json lists measured spend per run. The ceiling step sums
+# the current UTC month and fails the job at or above monthlyCeilingUsd in
+# evals/budget.json, before any eval starts. The sum is passed to evals/run.js
+# as --month-spent, which enforces the ceiling again during the run. Recording a
+# run's spend in spend.json is a committed edit; this workflow does not push.
+#
+# Secret: ANTHROPIC_API_KEY, referenced by name only.
+
+name: Evals
+
+on:
+  pull_request:
+    paths:
+      - 'CLAUDE.md'
+      - '**/SKILL.md'
+      - 'plugins/**/hooks/**'
+      - '**/assets/worker-contract.md'
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    name: Evals
+    runs-on: ubuntu-latest
+    env:
+      BUDGET_FILE: evals/budget.json
+      SPEND_FILE: evals/spend.json
+      BASELINE_FILE: evals/baseline.json
+      RESULTS_FILE: evals-results.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Monthly ceiling check
+        id: ceiling
+        run: |
+          node -e '
+            const fs = require("fs");
+            const fail = m => { console.error("MONTHLY CEILING CHECK FAILED: " + m); process.exit(1); };
+            let budget, ledger;
+            try { budget = JSON.parse(fs.readFileSync(process.env.BUDGET_FILE, "utf8")); } catch (e) { fail("cannot read budget: " + e.message); }
+            try { ledger = JSON.parse(fs.readFileSync(process.env.SPEND_FILE, "utf8")); } catch (e) { fail("cannot read spend ledger: " + e.message); }
+            const ceiling = budget.monthlyCeilingUsd;
+            if (typeof ceiling !== "number" || !(ceiling > 0)) fail("monthlyCeilingUsd is not a positive number");
+            if (!Array.isArray(ledger.runs)) fail("spend ledger has no runs array");
+            const month = process.env.NOW_MONTH || new Date().toISOString().slice(0, 7);
+            let spent = 0;
+            for (const r of ledger.runs) {
+              if (typeof r.date !== "string" || typeof r.usd !== "number" || !Number.isFinite(r.usd) || r.usd < 0) {
+                fail("bad spend entry " + JSON.stringify(r));
+              }
+              if (r.date.slice(0, 7) === month) spent = Math.round((spent + r.usd) * 1e6) / 1e6;
+            }
+            if (spent >= ceiling) {
+              fail("MONTHLY CEILING REACHED: spent $" + spent + " in " + month + ", ceiling $" + ceiling + ". No evals were run.");
+            }
+            console.log("month " + month + ": spent $" + spent + " of $" + ceiling + " ceiling");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "month_spent=" + spent + "\n");
+          '
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # The runner exits 1 when any eval fails. The gate below decides whether that
+      # is acceptable against the baseline, and fails closed when no results exist.
+      - name: Run evals
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MONTH_SPENT: ${{ steps.ceiling.outputs.month_spent }}
+        run: node evals/run.js --month-spent "$MONTH_SPENT" --results "$RESULTS_FILE"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-results
+          path: evals-results.json
+          if-no-files-found: warn
+
+      - name: Pass-rate gate
+        run: |
+          node -e '
+            const fs = require("fs");
+            const fail = m => { console.error("PASS-RATE GATE FAILED: " + m); process.exit(1); };
+            let results, base;
+            try { results = JSON.parse(fs.readFileSync(process.env.RESULTS_FILE, "utf8")); } catch (e) { fail("cannot read results: " + e.message); }
+            try { base = JSON.parse(fs.readFileSync(process.env.BASELINE_FILE, "utf8")); } catch (e) { fail("cannot read baseline: " + e.message); }
+            if (!Array.isArray(results.evals) || results.evals.length === 0) fail("results contain no evals");
+            const total = results.evals.length;
+            const passed = results.evals.filter(e => e.status === "passed").length;
+            const rate = passed / total;
+            let required = base.passRate;
+            if (required === null) {
+              required = 1;
+              console.log("no baseline recorded in evals/baseline.json: requiring every eval to pass");
+            } else if (typeof required !== "number" || required < 0 || required > 1) {
+              fail("baseline passRate must be null or a number in [0,1]");
+            }
+            console.log("pass rate " + rate.toFixed(4) + " (" + passed + " of " + total + " passed, not-run counted as not passed); baseline " + required);
+            if (rate < required) fail("pass rate " + rate.toFixed(4) + " is below baseline " + required);
+          '
