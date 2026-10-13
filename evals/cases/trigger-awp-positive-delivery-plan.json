@@ -1,0 +1,7 @@
+{
+  "id": "trigger-awp-positive-delivery-plan",
+  "prompt": "Do not do the task below. Reply with only the name of the skill from your available skills that you would load for it, or the word none.\n\nTask: I need a delivery plan that unattended coding agents can execute, split into parallel workstreams that will not collide.",
+  "checks": [
+    { "name": "names agentic-work-packages", "kind": "policy", "resultMatches": "agentic-work-packages" }
+  ]
+}

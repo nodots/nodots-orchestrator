@@ -1,0 +1,7 @@
+{
+  "id": "trigger-awp-near-miss-single-ticket",
+  "prompt": "Do not do the task below. Reply with only the name of the skill from your available skills that you would load for it, or the word none.\n\nTask: Fix the typo in the title of GitHub issue 12 on my repo.",
+  "checks": [
+    { "name": "loads neither orchestration skill", "kind": "policy", "resultNotMatches": "agentic-work-packages|fleet" }
+  ]
+}

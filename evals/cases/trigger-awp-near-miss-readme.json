@@ -1,0 +1,7 @@
+{
+  "id": "trigger-awp-near-miss-readme",
+  "prompt": "Do not do the task below. Reply with only the name of the skill from your available skills that you would load for it, or the word none.\n\nTask: Write a README section that explains how to install our command line tool on macOS.",
+  "checks": [
+    { "name": "loads neither orchestration skill", "kind": "policy", "resultNotMatches": "agentic-work-packages|fleet" }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "id": "trigger-awp-positive-issues",
+  "prompt": "Do not do the task below. Reply with only the name of the skill from your available skills that you would load for it, or the word none.\n\nTask: Write the tracker issues for an agent fleet to pick up: path-scoped packages with blocking verification gates for our auth migration.",
+  "checks": [
+    { "name": "names agentic-work-packages", "kind": "policy", "resultMatches": "agentic-work-packages" }
+  ]
+}

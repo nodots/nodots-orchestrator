@@ -1,0 +1,7 @@
+{
+  "id": "trigger-fleet-near-miss-vehicles",
+  "prompt": "Do not do the task below. Reply with only the name of the skill from your available skills that you would load for it, or the word none.\n\nTask: Draft a maintenance schedule for our company's delivery vehicle fleet.",
+  "checks": [
+    { "name": "loads neither orchestration skill", "kind": "policy", "resultNotMatches": "agentic-work-packages|fleet" }
+  ]
+}
