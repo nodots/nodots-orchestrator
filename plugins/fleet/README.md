@@ -25,7 +25,10 @@ fleet cycle --apply
   `execution.verifiedBy` is `unlaunchable`. Blast radius is not checked.
 - **reap** classifies finished sessions: PR ⇒ movement; `BLOCKER.md` with a
   known Kind ⇒ parked for the coordinator; silent or failed ⇒ escalate one
-  model tier up, up to `maxEscalations`.
+  model tier up, up to `maxEscalations`. A PR belongs to a package only when
+  its head branch equals the package branch (title and body are ignored). A
+  parked session whose blocker is removed is relaunched only if the package
+  has no PR in any state; otherwise it is closed as `pr`.
 - **report** posts one Movement / Exhaustion / Alarm comment on the epic, with
   a marker so a re-post is a no-op, and keeps the no-movement streak that
   latches the fleet after `noMovementLimit` cycles.
