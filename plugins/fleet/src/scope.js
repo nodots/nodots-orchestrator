@@ -75,6 +75,9 @@ function validate(scope) {
   if (ex.pattern !== undefined && !PATTERNS.has(ex.pattern)) problems.push(`execution.pattern [${ex.pattern}] is not one of ${[...PATTERNS].join(', ')}`);
   if (ex.model !== undefined && !TIERS.has(ex.model)) problems.push(`execution.model [${ex.model}] is not one of ${[...TIERS].join(', ')}`);
   if (ex.mode !== undefined && !['local', 'cloud'].includes(ex.mode)) problems.push(`execution.mode [${ex.mode}] is not local or cloud`);
+  // The check that verifies the output is what lets a cheaper tier run unattended.
+  if (ex.verifiedBy !== undefined && (typeof ex.verifiedBy !== 'string' || !ex.verifiedBy.trim())) problems.push('execution.verifiedBy must be a non-empty string naming the check that verifies the output');
+  else if (ex.model === 'cheapest' && ex.verifiedBy === undefined) problems.push('execution.verifiedBy is required when execution.model is cheapest: name the test, schema, build or gate that verifies the output');
   return problems;
 }
 

@@ -18,6 +18,11 @@ fleet cycle --apply
   worktree on the package branch, the issue's `SCOPE.json` committed as
   `<ID>: scope`, a plain push as the claim, then a detached
   `claude -p … --permission-prompts none --max-budget-usd …` in the worktree.
+  Before any of that, launch refuses a target with no enabled CI workflow
+  (`launch-ci-disabled`), no workflow run on its default branch inside
+  `ciMaxAgeDays` (default 14; `launch-ci-stale`), or CI state it cannot read
+  (`launch-ci-check-failed`). A package on the `cheapest` tier with no
+  `execution.verifiedBy` is `unlaunchable`. Blast radius is not checked.
 - **reap** classifies finished sessions: PR ⇒ movement; `BLOCKER.md` with a
   known Kind ⇒ parked for the coordinator; silent or failed ⇒ escalate one
   model tier up, up to `maxEscalations`.

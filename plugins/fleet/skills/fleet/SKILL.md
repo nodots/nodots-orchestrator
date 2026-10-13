@@ -57,6 +57,13 @@ Every cycle ends in exactly one outcome (the cycle contract):
   - `launch-push`: the plain push was rejected. Same meaning as `launch-claim`.
   - `unlaunchable`: the issue's `### SCOPE.json` block is missing, invalid, or
     names an empty lane. Fix the issue body; the runtime never edits it.
+    A `cheapest` package with no `execution.verifiedBy` is refused the same way.
+  - `launch-ci-disabled`: the target repo has no enabled CI workflow. Enable
+    one; nothing was launched for that target.
+  - `launch-ci-stale`: the target's default branch has no workflow run inside
+    `ciMaxAgeDays` (default 14). Get CI running again, or raise the window.
+  - `launch-ci-check-failed`: the CI state could not be read (auth, network,
+    API error). The launch is refused, never assumed healthy.
   - `escalation-cap`: a package failed `maxEscalations` times. Read its log
     under `<stateDir>/logs/`, decide whether to split it, widen the plan, or
     re-cut it as a new package. The runtime holds it until you act.

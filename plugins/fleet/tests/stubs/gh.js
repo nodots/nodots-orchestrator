@@ -5,6 +5,8 @@
 //   labels.json   label overrides written by `issue edit`  {number: [labels]}
 //   prs.json      pull requests [{number,title,body,state,headRefName,headRefOid,isDraft,url,repo}]
 //   comments.json {issueNumber: [{id, body, created_at}]}
+//   ci.json       {workflows:[{name,state}], runs:[{created_at}], fail:bool} for the
+//                 Actions endpoints; absent means one active workflow and a run just now
 //   writes.log    one line per write: "edit <n> +label -label" / "comment <n>"
 // Branches and BLOCKER.md come from the bare remote at GH_STUB_REMOTE.
 const fs = require('fs');
@@ -74,6 +76,13 @@ if (a === 'api') {
   if (/\/branches/.test(ep)) {
     const names = execFileSync('git', ['--git-dir', REMOTE, 'for-each-ref', '--format=%(refname:short)', 'refs/heads'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean);
     out(names.join('\n') + '\n'); process.exit(0);   // one name per line, as --jq '.[].name' prints
+  }
+  if (/\/actions\/(workflows|runs)/.test(ep)) {
+    const ci = rd('ci.json', {});
+    if (ci.fail) { process.stderr.write('gh: HTTP 500\n'); process.exit(1); }
+    if (/\/actions\/workflows/.test(ep)) out({ workflows: ci.workflows || [{ name: 'ci', state: 'active' }] });
+    else out({ workflow_runs: ci.runs || [{ created_at: new Date().toISOString() }] });
+    process.exit(0);
   }
   let m;
   if ((m = /contents\/(.*?BLOCKER\.md)\?ref=(.+)$/.exec(ep))) {
