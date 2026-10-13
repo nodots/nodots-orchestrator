@@ -1,18 +1,21 @@
-# HANDOFF: G0.2 (issue #27)
+# HANDOFF: G1.3 approval enforcement config
 
 ## Done
-- `scripts/check-syntax.sh`: `node --check` on every `.js` and `bash -n` on every `.sh` under `plugins/`. Fails on a parse error or when nothing matches.
-- `scripts/check-credentials.sh`: scans files changed against `origin/development` (merge base, staged, unstaged, untracked) for private-key headers and token prefixes (AWS, GitHub, Slack, Anthropic, Google). Output names the file, never the match. An unresolvable `BASE_REF` fails. A non-git tree scans every file.
-- `scripts/test.sh` runs both (scripts/test.sh, "syntax" and "credentials" sections) and sets `status=1` on failure. Both are called from the directory of `test.sh`, so the `REPO_ROOT` fixtures in `test-sh.test.sh` keep working.
-- `scripts/tests/check-syntax.test.sh` (8 checks) and `scripts/tests/check-credentials.test.sh` (15 checks). Both failed before the scripts existed (script-missing errors, 5 and 6 failed checks). Seeded secrets are joined from fragments at runtime; no secret-shaped literal is committed.
+- `approvalEnforcement` (`off` | `branch-protection` | `ruleset`), default `off`: `plugins/fleet/src/config.js` (DEFAULTS, validate), `plugins/fleet/fleet.config.example.json`.
+- `approvalGate(config, pr)` returns `{blocked, mechanism, reason}`; `approvalPayload(config)` returns the GitHub API body for each mechanism.
+- README section "Approval enforcement" in `plugins/fleet/README.md`, with how to turn it on and where each mechanism is unavailable.
+- Tests: `scripts/tests/approval-config.test.sh` (new, 16 checks); two added cases at the end of `plugins/fleet/tests/config.test.sh`, existing assertions untouched. Written first and run red (14 of 16 failed) before the change.
 
-## Limits
-- The syntax check is a parse check only. It is not a style linter and gives no lint coverage.
-- The credential check matches the listed patterns only. It is not a general secret scanner.
-- The `test.sh` wiring (a seeded bad file makes `test.sh` itself exit non-zero) was not exercised end to end: `scripts/tests/test-sh.test.sh` is outside `allowedPaths`, and an ad-hoc seeded run was denied in this session. Each script's non-zero exit is covered by its own test; the wiring is `if ! ...; then status=1`.
+## Exploration: where project config lives
+Chose `plugins/fleet/fleet.config.example.json` and `src/config.js`. They are the only config this repo ships with a loader and validator (`src/config.js:59-118`). `.claude/project.json` is referenced in `plugins/agentic-work-packages/agents/cell-worker.md` but has no loader or tracked file here, so a setting there would have no code to read it.
+
+## Not verified
+- Which GitHub plans offer branch protection and rulesets for private repos is not checked at source here. The README points to GitHub's plan table instead of asserting it. Only evidence: branch protection returned 403 on this repo (per the issue). Rulesets were not tried.
+- Neither payload was sent to the GitHub API; fleet does not call these endpoints.
+- `approvalGate` models the rule; GitHub does the actual blocking.
 
 ## Next
-Review and merge.
+Review, merge. No enforcement is turned on for this repository.
 
 ## Plan check
 

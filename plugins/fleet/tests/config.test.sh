@@ -42,4 +42,8 @@ OUT=$(js "try{c.validate({...$BASE, pluginRoot:undefined},'$TMP/nowhere')}catch(
 case "$OUT" in *"pluginRoot is required"*|"") : ;; esac
 assert_contains "$(js "const {validate}=c; const base=$BASE; delete base.pluginRoot; try{validate(base,'$TMP');console.log('accepted')}catch(e){console.log(e.message)}")" "accepted" "without pluginRoot the default is used when the repo-layout sibling exists"
 
+# --- approvalEnforcement (G1.3): added cases only ---------------------------
+assert_eq "off" "$(js "console.log(c.validate($BASE,'$TMP').approvalEnforcement)")" "approvalEnforcement defaults to off"
+assert_eq "ECONFIG" "$(js "try{c.validate({...$BASE,approvalEnforcement:'yes'},'$TMP');console.log('accepted')}catch(e){console.log(e.code)}")" "approvalEnforcement rejects an unknown value"
+
 finish
