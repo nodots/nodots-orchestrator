@@ -1,0 +1,26 @@
+{
+  "feature": "v3-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/v3-gate",
+  "allowedPaths": [
+    "scripts/tests/v3-gate.test.sh"
+  ],
+  "forbiddenPaths": [
+    "scripts/metrics.js",
+    "scripts/test.sh",
+    ".github/**",
+    "plugins/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**"
+  ],
+  "dependsOn": [
+    "feat/g3-1-metrics-collector"
+  ],
+  "estimatedScope": "gate for Phase 3",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default",
+    "agents": []
+  }
+}
