@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/enforce-scope.js"
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-scope.js\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/require-handoff.js"
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/require-handoff.js\""
           }
         ]
       }
