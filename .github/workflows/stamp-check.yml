@@ -1,0 +1,43 @@
+name: Stamp check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  stamp:
+    name: READY PRs carry a current VERIFIED stamp
+    # issue_comment fires for issues too; only PR comments matter.
+    if: github.event_name == 'pull_request' || github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Collect title, head sha and comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json title,headRefOid > "$RUNNER_TEMP/view.json"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate --jq '.[].body | @json' > "$RUNNER_TEMP/comments.ndjson"
+          node -e '
+            const fs = require("fs");
+            const [view, comments, out] = process.argv.slice(1);
+            const v = JSON.parse(fs.readFileSync(view, "utf8"));
+            const c = fs.readFileSync(comments, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
+            fs.writeFileSync(out, JSON.stringify({ title: v.title, headSha: v.headRefOid, comments: c }));
+          ' "$RUNNER_TEMP/view.json" "$RUNNER_TEMP/comments.ndjson" "$RUNNER_TEMP/pr.json"
+
+      - name: Check the stamp
+        run: node scripts/check-stamp.js "$RUNNER_TEMP/pr.json"

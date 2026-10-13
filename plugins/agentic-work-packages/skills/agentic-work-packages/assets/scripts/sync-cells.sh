@@ -73,18 +73,9 @@ cat > "$TMP/derive.js" <<'JS'
 'use strict';
 const fs = require('fs');
 
-const STAMP = /^VERIFIED:\s*(\S.*?)\s+@\s+([0-9a-f]{40})\s*$/m;
-
-// A stamp is current only when it names the PR's head sha. Any push after the
-// stamp changes that sha and voids the evidence.
-function currentStamp(pr) {
-  if (!pr || !pr.headSha) return null;
-  for (const body of pr.comments || []) {
-    const m = STAMP.exec(String(body));
-    if (m && m[2] === pr.headSha) return { suite: m[1], sha: m[2] };
-  }
-  return null;
-}
+// The stamp pattern and the current-stamp rule live in stamp.js, beside this
+// script. This file runs from a temp directory, so the path is passed in.
+const { currentStamp } = require(process.env.SYNC_CELLS_STAMP_MODULE);
 
 function derive(issue) {
   const pr = issue.pr || null;
@@ -337,7 +328,8 @@ if [ -n "$EMIT" ]; then
     || { printf 'sync-cells: could not write --emit-state %s\n' "$EMIT" >&2; exit 70; }
 fi
 
-node "$TMP/derive.js" "$STATE" > "$TMP/rows.tsv" || exit 70
+SYNC_CELLS_STAMP_MODULE="$(cd "$(dirname "$0")" && pwd -P)/stamp.js" \
+  node "$TMP/derive.js" "$STATE" > "$TMP/rows.tsv" || exit 70
 
 changes=0
 while IFS=$'\t' read -r number from to action why; do
