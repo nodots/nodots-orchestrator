@@ -5,11 +5,18 @@ Non-interactive evals run through `claude -p`, under a budget the runner enforce
 ```
 node evals/run.js [--cases evals/cases] [--budget evals/budget.json] [--results out.json]
                   [--workdir <dir>] [--claude claude] [--month-spent USD]
+                  [--contract <file>]
 ```
 
 Each case in `--cases` is one `*.json` file (format: `schema.json`, example: `cases/_example.json`): a prompt plus checks of kind `tests`, `lint` or `policy`. A check is a shell `command` that must exit 0, and/or a regex the reply must match (`resultMatches`) or must not match (`resultNotMatches`).
 
 Every eval runs in a fresh temp directory unless `--workdir` is given, so it does not edit this repo or trip its scope hook. `--claude` may carry leading arguments (`"bash stub.sh"`).
+
+`--contract <file>` passes the file's text to claude as `--append-system-prompt` for every case in the run. Without it, claude gets no system prompt from the runner. The temp work directory has no `CLAUDE.md`, so a case that tests the worker contract gets the contract only through this option, and its prompt carries only the task. An unreadable or empty file exits 2 before any eval runs.
+
+```
+node evals/run.js --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md
+```
 
 ## Budget
 
@@ -25,4 +32,4 @@ Exit codes: 0 all passed; 1 an eval failed or did not run; 2 bad input (missing 
 
 ## Tests
 
-`bash scripts/tests/evals-runner.test.sh` runs the runner against the stub in `tests/stubs/claude.sh`. No model is called.
+`bash scripts/tests/evals-runner.test.sh` and `node evals/tests/contract-option.test.js` run the runner against the stub in `tests/stubs/claude.sh`. No model is called. `scripts/test.sh` runs the first, not yet the second.
