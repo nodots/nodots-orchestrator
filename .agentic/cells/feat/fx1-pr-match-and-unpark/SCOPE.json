@@ -1,0 +1,30 @@
+{
+  "feature": "fx1-pr-match-and-unpark",
+  "project": "program",
+  "branch": "feat/fx1-pr-match-and-unpark",
+  "allowedPaths": [
+    "plugins/fleet/src/reap.js",
+    "plugins/fleet/tests/reap.test.sh",
+    "plugins/fleet/tests/pr-match.test.sh",
+    "plugins/fleet/skills/fleet/SKILL.md",
+    "plugins/fleet/README.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**",
+    ".github/**",
+    ".claude/**",
+    "scripts/**",
+    "CLAUDE.md"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "PR matching by branch and no unpark when a PR exists",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default",
+    "agents": []
+  }
+}

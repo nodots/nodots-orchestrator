@@ -89,7 +89,11 @@ the runtime will not relaunch them while the file exists. To resume one:
 4. The next `cycle --apply` reaps the session as `unparked` and relaunches it
    at the same tier, as a new dispatch with reason `unparked`. In the JSON
    report the launch carries `"adopted": true` (existing worktree) and
-   `"recut": true` when the scope was rewritten.
+   `"recut": true` when the scope was rewritten. If the package already has a
+   PR in any state, the session is closed with outcome `pr` instead and no
+   launch is requested. A PR counts for a package only when its head branch
+   equals the package branch; a package id or issue reference in a title or
+   body never matches.
 
 A package that stops again with a new `BLOCKER.md` is parked again and needs a
 second decision; nothing escalates it for you.
