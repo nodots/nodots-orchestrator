@@ -1,0 +1,4 @@
+{
+  "passRate": null,
+  "note": "No pass rate has been recorded as a baseline. While null, the gate requires every eval to pass. Replace with a measured value (passed / total, not-run counted as not passed) in a reviewed PR."
+}
