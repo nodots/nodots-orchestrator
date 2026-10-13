@@ -12,7 +12,11 @@ How it works:
 - Against the real file the rebound cases are byte-identical to the committed cases. The gate asserts this, so the real run is the committed evals.
 - `evals/run.js` runs unmodified, three times: degraded, real, and real with `perSuiteUsd` set to `$0.001` in a temp copy of `evals/budget.json`. The gate asserts that the low cap is below the cheapest eval measured in the real run.
 
-## Gate run (2026-10-13, sonnet, from the worktree root)
+## Status: blocked, see `BLOCKER.md`
+
+The gate ran twice on the same tree. Run 1 passed. Run 2, at 233b8ba, failed: the degraded `contract-failing-test-first` eval passed ($0.2018 suite, $0.4422 gate total), so the degraded run exited 0. Every other assertion held. No `VERIFIED:` stamp is posted on PR #85.
+
+## Gate run 1 (2026-10-13, sonnet, from the worktree root)
 
 `node evals/gates/v2-degraded-contract.js`, exit 0, `GATE PASS`.
 
@@ -30,14 +34,14 @@ Gate total: $0.4743 measured, under the $25 per-suite cap. Monthly spend was not
 
 ## Things the next session should know
 
-- The degraded failure is one sample of model behavior. A model can still write the test first without the rule, so a later run of the degraded suite may pass. If it does, the gate fails, which is the right outcome: it would mean the eval does not reliably detect the missing rule.
+- The degraded failure is not stable: 1 of 2 degraded runs failed. The decision on how to proceed is V2-1 in `BLOCKER.md`.
 - Interpretation to confirm: the package says to run the evals "against the degraded copy". Because the cases quote the contract, not read it, the gate binds the quoted text to the copy. Having the cases read the contract file instead would be a change to `evals/cases/**`, which this lane forbids.
 - `git hash-object` was denied by worker permissions, so the base hash is computed in the gate script from `git show origin/development:<path>`.
 - The gate is not wired into `scripts/test.sh` or CI (both out of lane). It calls the model and costs about $0.50 a run.
 
 ## Next
 
-The Phase 2 close.
+A decision on V2-1 (`BLOCKER.md`), then a re-run of the gate and a `VERIFIED:` stamp on PR #85.
 
 ## Plan check
 
