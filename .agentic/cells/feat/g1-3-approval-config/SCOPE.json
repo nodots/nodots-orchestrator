@@ -1,0 +1,35 @@
+{
+  "feature": "g1-3-approval-config",
+  "project": "nodots-orchestrator",
+  "branch": "feat/g1-3-approval-config",
+  "allowedPaths": [
+    "plugins/fleet/fleet.config.example.json",
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/tests/config.test.sh",
+    "plugins/fleet/README.md",
+    "scripts/tests/approval-config.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**",
+    ".github/workflows/review.yml",
+    ".github/workflows/stamp-check.yml",
+    ".github/workflows/evals.yml",
+    ".github/workflows/ci.yml",
+    "scripts/test.sh",
+    "CLAUDE.md"
+  ],
+  "dependsOn": [
+    "feat/g1-1-review-workflow",
+    "feat/g4-1-auto-mode-preconditions"
+  ],
+  "estimatedScope": "approval enforcement setting",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default",
+    "agents": []
+  }
+}
