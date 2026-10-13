@@ -1,0 +1,4 @@
+{
+  "runs": [],
+  "note": "Measured spend per eval-suite run, one entry per run: {\"date\": \"YYYY-MM-DD\", \"usd\": <measured cost>}. The ceiling step sums entries whose date is in the current UTC month. Runs before this ledger existed are not recorded here."
+}
