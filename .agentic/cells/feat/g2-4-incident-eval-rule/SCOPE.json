@@ -1,0 +1,31 @@
+{
+  "feature": "g2-4-incident-eval-rule",
+  "project": "nodots-orchestrator",
+  "branch": "feat/g2-4-incident-eval-rule",
+  "allowedPaths": [
+    ".github/pull_request_template.md",
+    "scripts/tests/pr-template.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**",
+    ".github/workflows/review.yml",
+    ".github/workflows/stamp-check.yml",
+    ".github/workflows/evals.yml",
+    ".github/workflows/ci.yml",
+    "evals/**",
+    "scripts/test.sh"
+  ],
+  "dependsOn": [
+    "feat/g2-1-eval-harness"
+  ],
+  "estimatedScope": "PR template and its fixture",
+  "execution": {
+    "model": "default",
+    "pattern": "solo",
+    "window": "default",
+    "agents": []
+  }
+}
