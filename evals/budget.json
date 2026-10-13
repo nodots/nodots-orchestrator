@@ -1,0 +1,7 @@
+{
+  "perEvalUsd": 1,
+  "perSuiteUsd": 25,
+  "monthlyCeilingUsd": 200,
+  "model": "sonnet",
+  "timeoutSeconds": 600
+}
