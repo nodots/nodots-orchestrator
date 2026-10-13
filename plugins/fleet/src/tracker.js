@@ -61,6 +61,29 @@ class Tracker {
     return r.status === 0 ? { ok: true, url: r.stdout.trim() } : { ok: false, error: r.error || r.stderr.trim() };
   }
 
+  // The CI state a worker would run under: enabled workflows, and the newest
+  // workflow run on <branch>. One answer per repo and branch per Tracker, so a
+  // cycle asks once however many packages target the repo. A failed query is
+  // { ok:false }; the caller refuses on it and never treats it as healthy.
+  ciStatus(repo, branch) {
+    const key = `${repo}#${branch}`;
+    this.ciCache = this.ciCache || new Map();
+    if (this.ciCache.has(key)) return this.ciCache.get(key);
+    const result = this.queryCi(repo, branch);
+    this.ciCache.set(key, result);
+    return result;
+  }
+
+  queryCi(repo, branch) {
+    const w = runJson(this.gh, ['api', `repos/${repo}/actions/workflows?per_page=100`]);
+    if (w.json === null || !Array.isArray(w.json.workflows)) return { ok: false, error: `workflows query for ${repo}: ${w.error || w.stderr.trim() || `gh exited ${w.status}`}` };
+    const enabled = w.json.workflows.filter(x => x.state === 'active').length;
+    const r = runJson(this.gh, ['api', `repos/${repo}/actions/runs?branch=${encodeURIComponent(branch)}&per_page=1`]);
+    if (r.json === null || !Array.isArray(r.json.workflow_runs)) return { ok: false, error: `runs query for ${repo}@${branch}: ${r.error || r.stderr.trim() || `gh exited ${r.status}`}` };
+    const last = r.json.workflow_runs[0];
+    return { ok: true, enabledWorkflows: enabled, lastRunAt: last ? last.created_at : null };
+  }
+
   // Does <branch> exist on the remote of the clone at localPath?
   remoteBranchExists(localPath, branch) {
     const r = run(this.git, ['-C', localPath, 'ls-remote', '--exit-code', '--heads', 'origin', branch], { timeoutMs: 60000 });

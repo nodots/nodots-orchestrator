@@ -65,7 +65,10 @@ Two rules travel with it:
 - **A cheaper tier needs a tool that checks the output** — a test, a schema, a
   build, a gate — or a bounded transform against a precise spec. Ask the
   question the profile table asks: is this package's output verifiable by a
-  tool? If the answer is no, the cheap tier is an unmeasured bet.
+  tool? If the answer is no, the cheap tier is an unmeasured bet. Name the
+  check in `execution.verifiedBy`; the fleet runtime refuses a `cheapest`
+  package without it. It confirms the field is present, not that the check is
+  adequate, and it does not measure blast radius.
 - **State the `window`.** Choosing a model chooses a context window, and the
   window drives cost more than the per-token price. A profile that omits it
   does not say what the package costs.

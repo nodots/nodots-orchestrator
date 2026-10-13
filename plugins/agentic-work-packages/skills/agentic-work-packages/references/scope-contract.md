@@ -54,6 +54,11 @@ profile at dispatch and logs any change.
 | `pattern` | Closed vocabulary: `solo` (one worker, no reviewer), `implement+review` (the worker spawns a reviewer subagent before opening the PR), `implement+test` (an implementer/tester pair under the same `SCOPE.json`), `gate-verify` (an independent verifier proves the integration claim) |
 | `window` | The context window the worker runs with, or the autocompact setting. Choosing a model chooses a window, and the window drives cost more than the per-token price does |
 | `agents` | Optional named agent types, where the repo defines them |
+| `verifiedBy` | Optional. A non-empty string naming the check that verifies the output: a test command, a schema, a build or a gate. Required when `model` is `cheapest`; the fleet runtime refuses a cheapest package without it as `unlaunchable`. The runtime checks that the field is present, not that the named check exists or covers the change |
+
+Not checked: the blast radius of a package. Nothing here or in the fleet
+runtime measures how much a package can touch beyond what `allowedPaths`
+states; a small lane is the planner's judgment, not an enforced limit.
 
 A package that seems to need a pattern outside that vocabulary is a signal it
 was cut wrong — the same signal as a package that wants to edit its own

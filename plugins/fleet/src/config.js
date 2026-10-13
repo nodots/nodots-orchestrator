@@ -28,6 +28,7 @@ const DEFAULTS = {
   noMovementLimit: 3,
   maxCycleMinutes: 30,
   externalStartTimeoutMinutes: 240,
+  ciMaxAgeDays: 14,
   models: { cheapest: 'haiku', default: null, strongest: 'opus' },
 };
 
@@ -90,6 +91,7 @@ function validate(raw, baseDir) {
   for (const k of ['wipCap', 'sessionTimeoutMinutes', 'killGraceSeconds', 'maxEscalations', 'noMovementLimit', 'maxCycleMinutes', 'externalStartTimeoutMinutes']) {
     if (!Number.isInteger(c[k]) || c[k] < 0 || (k === 'wipCap' && c[k] === 0)) fail(`${k} must be a non-negative integer${k === 'wipCap' ? ' above zero' : ''}`);
   }
+  if (!Number.isInteger(c.ciMaxAgeDays) || c.ciMaxAgeDays <= 0) fail('ciMaxAgeDays must be a positive integer');
   if (typeof c.maxBudgetUsd !== 'number' || c.maxBudgetUsd <= 0) fail('maxBudgetUsd must be a positive number');
   if (!PERMISSION_MODES.has(c.permissionMode)) fail(`permissionMode [${c.permissionMode}] is not a Claude Code permission mode`);
   if (c.permissionPrompts !== 'none' && c.permissionPrompts !== 'host') fail('permissionPrompts must be "none" or "host"');
