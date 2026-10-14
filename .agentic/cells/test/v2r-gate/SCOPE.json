@@ -1,0 +1,33 @@
+{
+  "feature": "v2-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/v2r-gate",
+  "allowedPaths": [
+    "evals/gates/**"
+  ],
+  "forbiddenPaths": [
+    "evals/run.js",
+    "evals/lib/**",
+    "evals/budget.json",
+    "evals/cases/**",
+    ".github/**",
+    "plugins/**",
+    "scripts/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**"
+  ],
+  "dependsOn": [
+    "feat/g2-1-eval-harness",
+    "feat/g2-2-first-evals",
+    "feat/g2-3-eval-ci",
+    "feat/g2-4-incident-eval-rule",
+    "feat/g2-5-test-first-eval"
+  ],
+  "estimatedScope": "gate for Phase 2",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default",
+    "agents": []
+  }
+}
