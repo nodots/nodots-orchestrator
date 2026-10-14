@@ -23,10 +23,11 @@ function readCost(parsed) {
   return typeof c === 'number' && Number.isFinite(c) && c >= 0 ? c : null;
 }
 
-function runClaude({ bin, prompt, allowance, model, permissionMode, workdir, timeoutSeconds }) {
+function runClaude({ bin, prompt, allowance, model, permissionMode, workdir, timeoutSeconds, systemPrompt }) {
   const args = ['-p', prompt, '--output-format', 'json', '--max-budget-usd', String(Number(allowance.toFixed(4))),
     '--permission-mode', permissionMode, '--permission-prompts', 'none', '--no-session-persistence'];
   if (model) args.push('--model', model);
+  if (systemPrompt) args.push('--append-system-prompt', systemPrompt);   // the --contract text (evals/run.js)
   const env = { ...process.env };
   delete env.CLAUDECODE;               // nested-session guard; each eval is its own session (as in plugins/fleet/src/launch.js)
   const [cmd, ...lead] = bin.split(/\s+/).filter(Boolean);   // bin may carry leading arguments, e.g. "bash stub.sh"

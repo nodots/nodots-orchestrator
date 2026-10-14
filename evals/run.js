@@ -5,6 +5,10 @@
 //
 //   node evals/run.js [--cases evals/cases] [--budget evals/budget.json] [--results out.json]
 //                     [--workdir <dir, default: fresh temp dir>] [--claude claude] [--month-spent USD]
+//                     [--contract <file>]
+//
+// --contract hands the file's text to claude as --append-system-prompt for every
+// case, so a case prompt can carry only the task and the rules come from the file.
 //
 // Exit 0: every eval ran and passed. Exit 1: any eval failed or did not run.
 // Exit 2: bad input (missing budget, no cases, malformed case). An eval that did
@@ -21,8 +25,9 @@ const REPO = path.resolve(__dirname, '..');
 
 function parseArgs(argv) {
   const o = { cases: path.join(REPO, 'evals/cases'), budget: path.join(REPO, 'evals/budget.json'), results: null,
-    workdir: null, claude: process.env.CLAUDE_BIN || 'claude', monthSpent: null };
-  const flags = { '--cases': 'cases', '--budget': 'budget', '--results': 'results', '--workdir': 'workdir', '--claude': 'claude', '--month-spent': 'monthSpent' };
+    workdir: null, claude: process.env.CLAUDE_BIN || 'claude', monthSpent: null, contract: null };
+  const flags = { '--cases': 'cases', '--budget': 'budget', '--results': 'results', '--workdir': 'workdir', '--claude': 'claude', '--month-spent': 'monthSpent',
+    '--contract': 'contract' };
   for (let i = 0; i < argv.length; i += 2) {
     const key = flags[argv[i]];
     if (!key || argv[i + 1] === undefined) throw new Error(`unknown or incomplete argument: ${argv[i]}`);
@@ -36,12 +41,21 @@ function parseArgs(argv) {
   return o;
 }
 
+// An unreadable or empty contract is bad input, never a run without one.
+function loadContract(file) {
+  if (file === null) return null;
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { throw new Error(`cannot read --contract ${file}: ${e.message}`); }
+  if (!text.trim()) throw new Error(`--contract ${file} is empty`);
+  return text;
+}
+
 const costText = c => (c === null ? 'cost unknown [unknown]' : `${usd(c)} [measured]`);
 
 function runEval(c, { allowance, opts, budget }) {
   const timeoutSeconds = c.timeoutSeconds || budget.timeoutSeconds || 600;
   const r = runClaude({ bin: opts.claude, prompt: c.prompt, allowance, model: c.model || budget.model,
-    permissionMode: c.permissionMode || 'acceptEdits', workdir: opts.workdir, timeoutSeconds });
+    permissionMode: c.permissionMode || 'acceptEdits', workdir: opts.workdir, timeoutSeconds, systemPrompt: opts.contractText });
   const reasons = [];
   if (r.spawnError) reasons.push(`could not start claude: ${r.spawnError}`);
   if (r.timedOut) reasons.push(`timed out after ${timeoutSeconds}s`);
@@ -65,6 +79,7 @@ function main() {
   let opts, budget, cases;
   try {
     opts = parseArgs(process.argv.slice(2));
+    opts.contractText = loadContract(opts.contract);
     budget = loadBudget(opts.budget);
     cases = loadCases(opts.cases);
   } catch (e) {
