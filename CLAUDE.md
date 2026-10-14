@@ -4,7 +4,7 @@ Use American spelling: color, center, organize.
 
 ## Test
 
-One command runs everything CI runs. It exits non-zero on any failure, and on a test glob that matches nothing:
+One command runs everything CI runs, including the node tests under `evals/`. It exits non-zero on any failure, and on a test glob that matches nothing:
 
 ```
 bash scripts/test.sh
@@ -13,8 +13,10 @@ bash scripts/test.sh
 Healthy output ends like this (tail of a real run; one `PASS` line per test file):
 
 ```
-PASS  plugins/fleet/tests/store.test.sh  --- 13 checks, 0 failed
-PASS  scripts/tests/test-sh.test.sh  --- 11 checks, 0 failed
+PASS  scripts/tests/test-sh.test.sh  --- 22 checks, 0 failed
+=== eval tests (node, no model calls) ===
+PASS  evals/tests/contract-option.test.js  --- 13 checks, 0 failed
+PASS  evals/gates/v2-degraded-contract.test.js  --- 15 checks, 0 failed
 ALL PASS
 ```
 
