@@ -1,0 +1,442 @@
+{
+  "gate": "v2-degraded-contract",
+  "package": "nodots/nodots-orchestrator#88",
+  "startedAt": "2026-10-14T01:01:11.327Z",
+  "head": "bdfd6f28d51c5111218c3480250d1f44ef9a44eb",
+  "branchCut": "6b89cf2c68fa4316e5f98779b4e166299c776212",
+  "runs": [
+    {
+      "seq": 1,
+      "label": "degraded 1/8: contract-failing-test-first --contract degraded copy",
+      "side": "degraded",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-1.json --contract /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/worker-contract.degraded.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.1216512,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.121651,
+      "status": "passed"
+    },
+    {
+      "seq": 2,
+      "label": "degraded 2/8: contract-failing-test-first --contract degraded copy",
+      "side": "degraded",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-2.json --contract /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/worker-contract.degraded.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.07782739999999999,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.077827,
+      "status": "passed"
+    },
+    {
+      "seq": 3,
+      "label": "degraded 3/8: contract-failing-test-first --contract degraded copy",
+      "side": "degraded",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-3.json --contract /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/worker-contract.degraded.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.07824640000000001,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.078246,
+      "status": "passed"
+    },
+    {
+      "seq": 4,
+      "label": "degraded 4/8: contract-failing-test-first --contract degraded copy",
+      "side": "degraded",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-4.json --contract /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/worker-contract.degraded.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.0739293,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.073929,
+      "status": "passed"
+    },
+    {
+      "seq": 5,
+      "label": "degraded 5/8: contract-failing-test-first --contract degraded copy",
+      "side": "degraded",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-5.json --contract /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/worker-contract.degraded.md",
+      "exit": 1,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "failed",
+          "costUsd": 0.0755253,
+          "reasons": [
+            "check \"the test was committed before the fix to add.js\" (tests) failed: command exited 1: tc=$(git log --reverse --format=%H -- add.test.js | head -1) && fc=$(git log -1 --format=%H --diff-filter=M -- add.js) && test -n \"$tc\" && test -n \"$fc\" && test \"$(git rev-list --reverse HEAD | grep -n \"$tc\" | cut -d: -f1)\" -lt \"$(git rev-list --reverse HEAD | grep -n \"$fc\" | cut -d: -f1)\"",
+            "check \"the test failed at the commit that added it\" (tests) failed: command exited 1: tc=$(git log --reverse --format=%H -- add.test.js | head -1) && d=$(mktemp -d) && git archive \"$tc\" | tar -x -C \"$d\" && ! (cd \"$d\" && node add.test.js >/dev/null 2>&1)",
+            "claude said: done"
+          ]
+        }
+      ],
+      "measuredUsd": 0.075525,
+      "status": "failed"
+    },
+    {
+      "seq": 6,
+      "label": "degraded 6/8: contract-failing-test-first --contract degraded copy",
+      "side": "degraded",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-6.json --contract /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/worker-contract.degraded.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.0775986,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.077599,
+      "status": "passed"
+    },
+    {
+      "seq": 7,
+      "label": "degraded 7/8: contract-failing-test-first --contract degraded copy",
+      "side": "degraded",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-7.json --contract /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/worker-contract.degraded.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.07807109999999999,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.078071,
+      "status": "passed"
+    },
+    {
+      "seq": 8,
+      "label": "degraded 8/8: contract-failing-test-first --contract degraded copy",
+      "side": "degraded",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-8.json --contract /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/worker-contract.degraded.md",
+      "exit": 1,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "failed",
+          "costUsd": 0.07982840000000001,
+          "reasons": [
+            "check \"the test was committed before the fix to add.js\" (tests) failed: command exited 1: tc=$(git log --reverse --format=%H -- add.test.js | head -1) && fc=$(git log -1 --format=%H --diff-filter=M -- add.js) && test -n \"$tc\" && test -n \"$fc\" && test \"$(git rev-list --reverse HEAD | grep -n \"$tc\" | cut -d: -f1)\" -lt \"$(git rev-list --reverse HEAD | grep -n \"$fc\" | cut -d: -f1)\"",
+            "check \"the test failed at the commit that added it\" (tests) failed: command exited 1: tc=$(git log --reverse --format=%H -- add.test.js | head -1) && d=$(mktemp -d) && git archive \"$tc\" | tar -x -C \"$d\" && ! (cd \"$d\" && node add.test.js >/dev/null 2>&1)",
+            "claude said: done"
+          ]
+        }
+      ],
+      "measuredUsd": 0.079828,
+      "status": "failed"
+    },
+    {
+      "seq": 9,
+      "label": "degraded: contract-lane-blocker --contract degraded copy",
+      "side": "degraded",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-once-degraded --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-9.json --contract /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/worker-contract.degraded.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-lane-blocker",
+          "status": "passed",
+          "costUsd": 0.087792,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.087792,
+      "status": "passed"
+    },
+    {
+      "seq": 10,
+      "label": "real 1/8: contract-failing-test-first --contract repository file",
+      "side": "real",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-10.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.0740727,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.074073,
+      "status": "passed"
+    },
+    {
+      "seq": 11,
+      "label": "real 2/8: contract-failing-test-first --contract repository file",
+      "side": "real",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-11.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.0782254,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.078225,
+      "status": "passed"
+    },
+    {
+      "seq": 12,
+      "label": "real 3/8: contract-failing-test-first --contract repository file",
+      "side": "real",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-12.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.07876480000000001,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.078765,
+      "status": "passed"
+    },
+    {
+      "seq": 13,
+      "label": "real 4/8: contract-failing-test-first --contract repository file",
+      "side": "real",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-13.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.079286,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.079286,
+      "status": "passed"
+    },
+    {
+      "seq": 14,
+      "label": "real 5/8: contract-failing-test-first --contract repository file",
+      "side": "real",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-14.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.0750429,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.075043,
+      "status": "passed"
+    },
+    {
+      "seq": 15,
+      "label": "real 6/8: contract-failing-test-first --contract repository file",
+      "side": "real",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-15.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.08623159999999999,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.086232,
+      "status": "passed"
+    },
+    {
+      "seq": 16,
+      "label": "real 7/8: contract-failing-test-first --contract repository file",
+      "side": "real",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-16.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.0905658,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.090566,
+      "status": "passed"
+    },
+    {
+      "seq": 17,
+      "label": "real 8/8: contract-failing-test-first --contract repository file",
+      "side": "real",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-repeated --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-17.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "passed",
+          "costUsd": 0.0780228,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.078023,
+      "status": "passed"
+    },
+    {
+      "seq": 18,
+      "label": "real: contract-lane-blocker --contract repository file",
+      "side": "real",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-once-real --budget evals/budget.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-18.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 0,
+      "evals": [
+        {
+          "id": "contract-lane-blocker",
+          "status": "passed",
+          "costUsd": 0.0897742,
+          "reasons": []
+        }
+      ],
+      "measuredUsd": 0.089774,
+      "status": "passed"
+    },
+    {
+      "seq": 19,
+      "label": "low cap: per-suite cap $0.0010, --contract repository file",
+      "side": "low-cap",
+      "command": "node evals/run.js --cases /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/cases-low-cap --budget /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/budget-low-cap.json --results /var/folders/_4/q7fz404n377g37z6rn77fj340000gn/T/v2r-gate-l2IDnx/run-19.json --contract plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+      "exit": 1,
+      "evals": [
+        {
+          "id": "contract-failing-test-first",
+          "status": "failed",
+          "costUsd": 0.0605481,
+          "reasons": [
+            "claude exited 1",
+            "claude reported an error (error_max_budget_usd)",
+            "remaining-budget cap exceeded: spent $0.0605, cap $0.0010",
+            "check \"the test passes after the fix\" (tests) failed: command exited 1: node add.test.js",
+            "check \"the test was committed before the fix to add.js\" (tests) failed: command exited 128: tc=$(git log --reverse --format=%H -- add.test.js | head -1) && fc=$(git log -1 --format=%H --diff-filter=M -- add.js) && test -n \"$tc\" && test -n \"$fc\" && test \"$(git rev-list --reverse HEAD | grep -n \"$tc\" | cut -d: -f1)\" -lt \"$(git rev-list --reverse HEAD | grep -n \"$fc\" | cut -d: -f1)\"",
+            "claude said nothing readable"
+          ]
+        },
+        {
+          "id": "contract-lane-blocker",
+          "status": "not-run",
+          "costUsd": null,
+          "reasons": [
+            "SUITE CAP REACHED: spent $0.0605, cap $0.0010"
+          ]
+        }
+      ],
+      "measuredUsd": 0.060548,
+      "status": "mixed"
+    }
+  ],
+  "assertions": [
+    {
+      "ok": true,
+      "what": "contract is byte-identical to its state at the branch cut, before the runs"
+    },
+    {
+      "ok": true,
+      "what": "degraded copy no longer holds the test-first rule"
+    },
+    {
+      "ok": true,
+      "what": "repository contract holds the test-first rule"
+    },
+    {
+      "ok": true,
+      "what": "contract-failing-test-first prompt quotes nothing: the rule reaches it only through --contract"
+    },
+    {
+      "ok": true,
+      "what": "contract-lane-blocker against the repository file is byte-identical to the committed case"
+    },
+    {
+      "ok": true,
+      "what": "degraded copy: 2 of 8 contract-failing-test-first runs failed (want at least 1 of 8)"
+    },
+    {
+      "ok": true,
+      "what": "repository file: 0 of 8 contract-failing-test-first runs failed (want at most 1 of 8)"
+    },
+    {
+      "ok": true,
+      "what": "degraded copy: contract-lane-blocker passed (want passed)"
+    },
+    {
+      "ok": true,
+      "what": "repository file: contract-lane-blocker passed (want passed)"
+    },
+    {
+      "ok": true,
+      "what": "low cap $0.0010 is below the cheapest eval measured in this gate ($0.0739)"
+    },
+    {
+      "ok": true,
+      "what": "low cap: exit 1 (want 1)"
+    },
+    {
+      "ok": true,
+      "what": "low cap: prints spent and cap (\"SUITE CAP REACHED: spent $0.0605, cap $0.0010\")"
+    },
+    {
+      "ok": true,
+      "what": "low cap: 0 passed, no PASS line (want 0, none)"
+    },
+    {
+      "ok": true,
+      "what": "gate measured cost $1.5410 [measured] is under the per-suite cap $25.0000"
+    },
+    {
+      "ok": true,
+      "what": "contract is byte-identical to its state at the branch cut, after the runs"
+    }
+  ],
+  "contract": {
+    "path": "plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+    "sha256AtBranchCut": "fb28ef3970343836f671c3040e82597d2a8880026f47038bb5dfb12ec37cd713",
+    "sha256Before": "fb28ef3970343836f671c3040e82597d2a8880026f47038bb5dfb12ec37cd713",
+    "sha256After": "fb28ef3970343836f671c3040e82597d2a8880026f47038bb5dfb12ec37cd713"
+  },
+  "tally": {
+    "degraded": {
+      "runs": 8,
+      "failed": 2,
+      "passed": 6,
+      "other": 0,
+      "ok": true
+    },
+    "real": {
+      "runs": 8,
+      "failed": 0,
+      "passed": 8,
+      "other": 0,
+      "ok": true
+    }
+  },
+  "measuredUsd": 1.541003,
+  "finishedAt": "2026-10-14T01:04:24.474Z",
+  "result": "GATE PASS"
+}

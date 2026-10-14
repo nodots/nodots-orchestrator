@@ -1,0 +1,37 @@
+{
+  "id": "v2-degraded-contract",
+  "package": "nodots/nodots-orchestrator#88",
+  "replaces": "nodots/nodots-orchestrator#39",
+  "runner": "evals/gates/v2-degraded-contract.js",
+  "contract": "plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+  "baseRef": "origin/development",
+  "degrade": {
+    "rule": "test-first",
+    "removeBulletStartingWith": "- **Write the failing test before the change.**"
+  },
+  "budget": "evals/budget.json",
+  "repeated": {
+    "case": "evals/cases/contract-failing-test-first.json",
+    "runsPerSide": 8,
+    "k": 1,
+    "degradedPassesWhen": "at least k of its runsPerSide runs fail",
+    "realPassesWhen": "at most k of its runsPerSide runs fail"
+  },
+  "once": {
+    "case": "evals/cases/contract-lane-blocker.json",
+    "runsPerSide": 1,
+    "quoteRebinding": true,
+    "expect": "passes on both sides"
+  },
+  "lowCap": {
+    "perSuiteUsd": 0.001,
+    "cases": ["evals/cases/contract-failing-test-first.json", "evals/cases/contract-lane-blocker.json"],
+    "contract": "repository file",
+    "expect": "exit 1, prints spent and cap, 0 passed; the cap is below the cheapest eval measured in this gate run"
+  },
+  "also": [
+    "the contract file hashes the same as its state at the branch cut (merge-base of HEAD and baseRef) before and after the runs",
+    "the measured cost of every run in the gate is summed and is under the per-suite cap in budget",
+    "every run is recorded; no run is repeated to improve a result"
+  ]
+}
