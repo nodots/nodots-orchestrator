@@ -1,0 +1,28 @@
+{
+  "feature": "g2-6-eval-tests-in-test-sh",
+  "project": "nodots-orchestrator",
+  "branch": "feat/g2-6-eval-tests-in-test-sh",
+  "allowedPaths": [
+    "scripts/test.sh",
+    "scripts/tests/test-sh.test.sh",
+    "CLAUDE.md"
+  ],
+  "forbiddenPaths": [
+    "evals/**",
+    ".github/**",
+    "plugins/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**"
+  ],
+  "dependsOn": [
+    "feat/g2-5-test-first-eval",
+    "test/v2r-gate"
+  ],
+  "estimatedScope": "one new section in test.sh and its fixture checks",
+  "execution": {
+    "model": "default",
+    "pattern": "solo",
+    "window": "default",
+    "agents": []
+  }
+}

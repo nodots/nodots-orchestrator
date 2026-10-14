@@ -6,6 +6,8 @@
 # 2. Every .js and .sh under plugins/ parses (scripts/check-syntax.sh).
 # 3. No changed file holds a private-key header or token (scripts/check-credentials.sh).
 # 4. Every fixture test (*.test.sh) passes. A glob that matches nothing fails.
+# 5. Every eval test (evals/tests/*.test.js, evals/gates/*.test.js) passes under node.
+#    A glob that matches nothing fails. These tests stub the model; none may call one.
 #
 # REPO_ROOT overrides the tree under test; scripts/tests/test-sh.test.sh uses it.
 set -uo pipefail
@@ -61,6 +63,28 @@ for t in "${tests[@]}"; do
     printf '%s\n' "$out" | sed 's/^/      /'
     status=1
   fi
+done
+
+echo "=== eval tests (node, no model calls) ==="
+for dir in evals/tests evals/gates; do
+  evals=("$dir"/*.test.js)
+  if [ ${#evals[@]} -eq 0 ]; then
+    echo "FAIL  No eval tests found in $dir - the glob matched nothing."
+    status=1
+    continue
+  fi
+  for t in "${evals[@]}"; do
+    out=$(node "$t" 2>&1)
+    rc=$?
+    summary=$(printf '%s\n' "$out" | grep -E -- '--- [0-9]+ checks' | tail -n 1 | sed 's/^ *//')
+    if [ $rc -eq 0 ]; then
+      echo "PASS  $t  ${summary:-(no tally printed)}"
+    else
+      echo "FAIL  $t  ${summary:-(no tally printed)}"
+      printf '%s\n' "$out" | sed 's/^/      /'
+      status=1
+    fi
+  done
 done
 
 if [ $status -eq 0 ]; then echo "ALL PASS"; else echo "FAILED"; fi
