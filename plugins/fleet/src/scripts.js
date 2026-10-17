@@ -50,6 +50,9 @@ function runSync(cfg, { apply, emitPath }) {
   const script = path.join(cfg.scriptsDir, 'sync-cells.sh');
   const args = [script, '--repo', cfg.repo];
   for (const t of cfg.targets) args.push('--target', t.repo);
+  // Only the epic's packages: a host repo's other programs cost no per-package
+  // calls, and their uncollected repos cannot fail the sync.
+  args.push('--epic', String(cfg.epic));
   if (emitPath) args.push('--emit-state', emitPath);
   if (apply) args.push('--apply');
   const env = { ...process.env, GH_BIN: cfg.bins.gh };

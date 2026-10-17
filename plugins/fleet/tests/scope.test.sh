@@ -32,6 +32,12 @@ assert_eq "t5-0d" "$(js "console.log(s.slug('T5.0d'))")" "a letter-suffixed id k
 assert_eq "/w/api-t1-2" "$(js "console.log(s.worktreePath('/w','acme/api','T1.2'))")" "worktree is <dir>/<repoName>-<slug>"
 assert_eq "T5.0d" "$(js "console.log(s.packageId('T5.0d: carrier contracts'))")" "package id is the first token with trailing punctuation stripped"
 
+# The epic a package belongs to, from its header line; the same rule as
+# sync-cells.sh --epic, so the cycle and the sync agree on the epic's packages.
+assert_eq "1" "$(BODY="$BODY" js "console.log(s.partOf(process.env.BODY))")" "partOf reads the epic from **Part of** #<n>"
+assert_eq "600" "$(js "console.log(s.partOf('**Part of** #600 · **Repo:** x'))")" "partOf reads the whole number, so #600 is not #60"
+assert_eq "null" "$(js "console.log(s.partOf('no header line'))")" "partOf is null when the body names no epic"
+
 # Refusals, each named.
 OUT=$(js "console.log(s.describe({title:'X y', body:'no block here'}).problems.join('|'))")
 assert_contains "$OUT" "no SCOPE.json heading" "a body with no block is refused"
