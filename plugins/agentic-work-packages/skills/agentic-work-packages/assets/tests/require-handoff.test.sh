@@ -40,6 +40,11 @@ run_stop() {
   ERR=$(cat "$ERRFILE")
 }
 
+# A handoff that carries the required Plan check section: plan_handoff yes|no
+plan_handoff() {
+  printf '# handoff\n\n## Plan check\n\nPackage issue still matches: %s\n' "$1"
+}
+
 blocked() { case "$OUT" in *'"decision":"block"'*) return 0 ;; *) return 1 ;; esac; }
 
 # --- 1. default branch, dirty: allowed ---------------------------------------
@@ -72,9 +77,50 @@ assert_eq 0 "$EXIT" "stop_hook_active: exit 0"
 assert_empty "$OUT" "stop_hook_active: allowed, so a block cannot loop"
 
 # --- 4. feature branch, dirty, HANDOFF.md present: allowed -------------------
-printf '# handoff\n' > "$REPO/HANDOFF.md"
+plan_handoff yes > "$REPO/HANDOFF.md"
 run_stop
 assert_empty "$OUT" "HANDOFF.md at the repo root satisfies the hook"
+
+# --- 4c. Plan check: a bare HANDOFF.md is blocked, naming the section --------
+printf '# handoff\n' > "$REPO/HANDOFF.md"
+run_stop
+assert_eq 0 "$EXIT" "bare HANDOFF.md: the block is a JSON decision"
+if blocked; then _pass "HANDOFF.md without a Plan check section: blocked"
+else _fail "HANDOFF.md without a Plan check section: blocked" "got [$OUT]"; fi
+assert_contains "$OUT" "Plan check" "the block names the missing section"
+assert_contains "$OUT" "Package issue still matches: yes" "the block shows the line to add"
+assert_empty "$ERR" "a block is not an error, so stderr stays empty"
+
+# heading present but no answer line: still blocked
+printf '# handoff\n\n## Plan check\n\nlooks fine\n' > "$REPO/HANDOFF.md"
+run_stop
+if blocked; then _pass "Plan check heading without the answer line: blocked"
+else _fail "Plan check heading without the answer line: blocked" "got [$OUT]"; fi
+
+# an answer that is neither yes nor no: blocked
+printf '# handoff\n\n## Plan check\n\nPackage issue still matches: maybe\n' > "$REPO/HANDOFF.md"
+run_stop
+if blocked; then _pass "Plan check answer other than yes/no: blocked"
+else _fail "Plan check answer other than yes/no: blocked" "got [$OUT]"; fi
+
+# the loop guard still wins over the Plan check block
+run_stop --active
+assert_empty "$OUT" "stop_hook_active: a bare HANDOFF.md does not block twice"
+
+# either answer is allowed
+plan_handoff no > "$REPO/HANDOFF.md"
+run_stop
+assert_empty "$OUT" "Plan check answer no is allowed"
+plan_handoff yes > "$REPO/HANDOFF.md"
+run_stop
+assert_empty "$OUT" "Plan check answer yes is allowed"
+
+# BLOCKER.md is exempt, even beside a bare HANDOFF.md
+printf '# handoff\n' > "$REPO/HANDOFF.md"
+printf '# blocker\n' > "$REPO/BLOCKER.md"
+run_stop
+assert_empty "$OUT" "BLOCKER.md exempts the Plan check"
+rm -f "$REPO/BLOCKER.md"
 
 # --- 4a. BLOCKER.md alone also satisfies it ----------------------------------
 rm -f "$REPO/HANDOFF.md"
@@ -85,7 +131,7 @@ assert_empty "$OUT" "BLOCKER.md at the repo root satisfies the hook"
 # --- 4b. and so does the branch's cell directory -----------------------------
 rm -f "$REPO/BLOCKER.md"
 mkdir -p "$REPO/.agentic/cells/feat/thing"
-printf '# handoff\n' > "$REPO/.agentic/cells/feat/thing/HANDOFF.md"
+plan_handoff yes > "$REPO/.agentic/cells/feat/thing/HANDOFF.md"
 run_stop
 assert_empty "$OUT" "HANDOFF.md in the branch's cell directory satisfies the hook"
 rm -rf "$REPO/.agentic"
@@ -120,9 +166,14 @@ assert_contains "$ERR" "HANDOFF.md" "TaskCompleted feedback names HANDOFF.md"
 assert_contains "$ERR" "BLOCKER.md" "TaskCompleted feedback names BLOCKER.md"
 assert_contains "$ERR" "feat/thing" "TaskCompleted feedback names the branch"
 
-printf '# handoff\n' > "$REPO/HANDOFF.md"
+plan_handoff yes > "$REPO/HANDOFF.md"
 run_task_completed
 assert_eq 0 "$EXIT" "TaskCompleted with HANDOFF.md present: allowed"
+
+printf '# handoff\n' > "$REPO/HANDOFF.md"
+run_task_completed
+assert_eq 2 "$EXIT" "TaskCompleted with a bare HANDOFF.md: exit 2 blocks"
+assert_contains "$ERR" "Plan check" "TaskCompleted feedback names the missing section"
 rm -f "$REPO/HANDOFF.md"
 
 git -C "$REPO" checkout -q development

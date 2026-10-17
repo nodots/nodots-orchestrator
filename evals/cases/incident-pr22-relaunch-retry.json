@@ -1,0 +1,9 @@
+{
+  "id": "incident-pr22-relaunch-retry",
+  "source": { "pr": 22, "quote": "after the overlap refusal the unparked session was left closed and never relaunched even once the lane was fixed. Reap requests that fail to launch are now held at status `retry` and re-asked each cycle." },
+  "prompt": "Write reap.js in the current directory, exporting step(request, launch) and pending(requests) with CommonJS. A request is {id, status}. step calls launch(request), which returns true on success and false when the launch was refused. On success return a copy with status \"launched\". On refusal return a copy with status \"retry\", never a closed or dropped state. pending(requests) returns the requests whose status is \"open\" or \"retry\", so a refused launch is asked again on the next cycle. Reply with the single word done.",
+  "checks": [
+    { "name": "refused launch is held at retry and re-asked", "kind": "tests", "command": "node -e \"const {step,pending}=require(require('path').resolve('reap.js'));const a=step({id:1,status:'open'},()=>false);process.exit(a.status==='retry'&&pending([a]).length===1?0:1)\"" },
+    { "name": "retry then success is launched and no longer pending", "kind": "tests", "command": "node -e \"const {step,pending}=require(require('path').resolve('reap.js'));const a=step({id:1,status:'retry'},()=>true);process.exit(a.status==='launched'&&pending([a]).length===0?0:1)\"" }
+  ]
+}

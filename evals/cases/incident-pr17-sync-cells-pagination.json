@@ -1,0 +1,10 @@
+{
+  "id": "incident-pr17-sync-cells-pagination",
+  "source": { "pr": 17, "quote": "`gh api --paginate --jq '[.[].name]'` emits one JSON array per page, so a repo past 100 branches (or a PR with several pages of comments) produced two arrays in one file and `JSON.parse` failed." },
+  "prompt": "Write parse.js in the current directory. It reads all of stdin, which is the output of `gh api --paginate --jq '[.[].name]'`: one JSON array per page, so two pages arrive as two arrays on separate lines, for example [\"a\",\"b\"] then [\"c\"]. Print every name, one per line, in order. A single page must work too. Do not run gh. Reply with the single word done.",
+  "checks": [
+    { "name": "two pages are merged in order", "kind": "tests", "command": "test \"$(printf '[\"a\",\"b\"]\\n[\"c\"]\\n' | node parse.js | tr '\\n' ' ')\" = 'a b c '" },
+    { "name": "one page still works", "kind": "tests", "command": "test \"$(printf '[\"x\"]\\n' | node parse.js | tr '\\n' ' ')\" = 'x '" },
+    { "name": "reply says done", "kind": "policy", "resultMatches": "done" }
+  ]
+}

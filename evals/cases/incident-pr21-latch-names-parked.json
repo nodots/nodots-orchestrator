@@ -1,0 +1,8 @@
+{
+  "id": "incident-pr21-latch-names-parked",
+  "source": { "pr": 21, "quote": "the latch reason names parked packages." },
+  "prompt": "Write latch.js in the current directory, exporting latchReason(packages) with CommonJS. packages is an array of {id: string, state: string}. Return a one-line string explaining why the stop latch is set. It must name every package whose state is \"parked\" by its id, and must not name packages in other states. Reply with the single word done.",
+  "checks": [
+    { "name": "reason names parked packages only", "kind": "tests", "command": "node -e \"const {latchReason:r}=require(require('path').resolve('latch.js'));const s=r([{id:'G1.1',state:'merged'},{id:'G1.2',state:'parked'},{id:'G1.3',state:'parked'}]);process.exit(typeof s==='string'&&s.includes('G1.2')&&s.includes('G1.3')&&!s.includes('G1.1')?0:1)\"" }
+  ]
+}

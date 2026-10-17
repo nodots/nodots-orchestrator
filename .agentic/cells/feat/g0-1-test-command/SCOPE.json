@@ -1,0 +1,28 @@
+{
+  "feature": "g0-1-test-command",
+  "project": "nodots-orchestrator",
+  "branch": "feat/g0-1-test-command",
+  "allowedPaths": [
+    "CLAUDE.md",
+    "scripts/test.sh",
+    "scripts/tests/test-sh.test.sh",
+    ".github/workflows/ci.yml"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**",
+    ".github/workflows/review.yml",
+    ".github/workflows/stamp-check.yml",
+    ".github/workflows/evals.yml"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "scripted CI entry point and project instructions",
+  "execution": {
+    "model": "default",
+    "pattern": "solo",
+    "window": "default",
+    "agents": []
+  }
+}

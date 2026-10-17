@@ -57,6 +57,13 @@ Every cycle ends in exactly one outcome (the cycle contract):
   - `launch-push`: the plain push was rejected. Same meaning as `launch-claim`.
   - `unlaunchable`: the issue's `### SCOPE.json` block is missing, invalid, or
     names an empty lane. Fix the issue body; the runtime never edits it.
+    A `cheapest` package with no `execution.verifiedBy` is refused the same way.
+  - `launch-ci-disabled`: the target repo has no enabled CI workflow. Enable
+    one; nothing was launched for that target.
+  - `launch-ci-stale`: the target's default branch has no workflow run inside
+    `ciMaxAgeDays` (default 14). Get CI running again, or raise the window.
+  - `launch-ci-check-failed`: the CI state could not be read (auth, network,
+    API error). The launch is refused, never assumed healthy.
   - `escalation-cap`: a package failed `maxEscalations` times. Read its log
     under `<stateDir>/logs/`, decide whether to split it, widen the plan, or
     re-cut it as a new package. The runtime holds it until you act.
@@ -82,7 +89,11 @@ the runtime will not relaunch them while the file exists. To resume one:
 4. The next `cycle --apply` reaps the session as `unparked` and relaunches it
    at the same tier, as a new dispatch with reason `unparked`. In the JSON
    report the launch carries `"adopted": true` (existing worktree) and
-   `"recut": true` when the scope was rewritten.
+   `"recut": true` when the scope was rewritten. If the package already has a
+   PR in any state, the session is closed with outcome `pr` instead and no
+   launch is requested. A PR counts for a package only when its head branch
+   equals the package branch; a package id or issue reference in a title or
+   body never matches.
 
 A package that stops again with a new `BLOCKER.md` is parked again and needs a
 second decision; nothing escalates it for you.

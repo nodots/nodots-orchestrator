@@ -1,0 +1,11 @@
+{
+  "id": "incident-pr23-issue-mention-claim",
+  "source": { "pr": 23, "quote": "a PR body that merely mentioned `#363` would have relabelled that package cell:merged. Both sync-cells.sh and fleet's reap now require the issue reference in the PR title or a closing keyword in the body." },
+  "prompt": "Write claims.js in the current directory, exporting claims(pr, n) with CommonJS. pr is {title, body}; n is an issue number. Return true only when the title references #n (not as a prefix of a longer number such as #3630) or the body has a closing keyword (close, closes, closed, fix, fixes, fixed, resolve, resolves, resolved; case-insensitive) followed by #n. A body that merely mentions #n elsewhere does not claim it. Reply with the single word done.",
+  "checks": [
+    { "name": "a passing mention does not claim", "kind": "tests", "command": "node -e \"const {claims:c}=require(require('path').resolve('claims.js'));process.exit(c({title:'G2.2: evals',body:'Related to #363, see there.'},363)===false?0:1)\"" },
+    { "name": "a closing keyword claims", "kind": "tests", "command": "node -e \"const {claims:c}=require(require('path').resolve('claims.js'));process.exit(c({title:'G2.2: evals',body:'Closes #363'},363)===true?0:1)\"" },
+    { "name": "a title reference claims", "kind": "tests", "command": "node -e \"const {claims:c}=require(require('path').resolve('claims.js'));process.exit(c({title:'[READY]: G2.2 (#363)',body:''},363)===true?0:1)\"" },
+    { "name": "a longer number does not claim", "kind": "tests", "command": "node -e \"const {claims:c}=require(require('path').resolve('claims.js'));process.exit(c({title:'x',body:'Closes #3630'},363)===false?0:1)\"" }
+  ]
+}

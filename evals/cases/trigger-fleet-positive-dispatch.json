@@ -1,0 +1,7 @@
+{
+  "id": "trigger-fleet-positive-dispatch",
+  "prompt": "Do not do the task below. Reply with only the name of the skill from your available skills that you would load for it, or the word none.\n\nTask: Dispatch work package G2.2 to a local worker session in its own worktree and babysit it until it reports.",
+  "checks": [
+    { "name": "names fleet", "kind": "policy", "resultMatches": "fleet" }
+  ]
+}

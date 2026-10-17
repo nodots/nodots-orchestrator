@@ -1,0 +1,7 @@
+{
+  "id": "trigger-fleet-positive-cycle",
+  "prompt": "Do not do the task below. Reply with only the name of the skill from your available skills that you would load for it, or the word none.\n\nTask: Run one coordination cycle for the worker fleet and tell me what the Movement, Exhaustion and Alarm report says.",
+  "checks": [
+    { "name": "names fleet", "kind": "policy", "resultMatches": "fleet" }
+  ]
+}

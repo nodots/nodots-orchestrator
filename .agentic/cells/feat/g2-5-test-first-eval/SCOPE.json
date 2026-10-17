@@ -1,0 +1,36 @@
+{
+  "feature": "g2-5-test-first-eval",
+  "project": "nodots-orchestrator",
+  "branch": "feat/g2-5-test-first-eval",
+  "allowedPaths": [
+    "evals/cases/contract-failing-test-first.json",
+    "evals/run.js",
+    "evals/lib/**",
+    "evals/schema.json",
+    "evals/tests/**",
+    "evals/README.md"
+  ],
+  "forbiddenPaths": [
+    "evals/budget.json",
+    "evals/gates/**",
+    "evals/cases/contract-lane-blocker.json",
+    "evals/cases/incident-*.json",
+    "evals/cases/trigger-*.json",
+    "evals/cases/_example.json",
+    ".github/**",
+    "plugins/**",
+    "scripts/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**"
+  ],
+  "dependsOn": [
+    "feat/g2-2-first-evals"
+  ],
+  "estimatedScope": "one runner option, its test, one eval case prompt",
+  "execution": {
+    "model": "default",
+    "pattern": "solo",
+    "window": "default",
+    "agents": []
+  }
+}

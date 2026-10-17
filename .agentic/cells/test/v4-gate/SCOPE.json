@@ -1,0 +1,30 @@
+{
+  "feature": "v4-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/v4-gate",
+  "allowedPaths": [
+    "plugins/fleet/tests/v4-gate.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/v4-gate.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/**",
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+    ".github/**",
+    "scripts/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**"
+  ],
+  "dependsOn": [
+    "feat/g4-1-auto-mode-preconditions",
+    "feat/g4-2-plan-divergence-handoff"
+  ],
+  "estimatedScope": "gate for Phase 4",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default",
+    "agents": []
+  }
+}

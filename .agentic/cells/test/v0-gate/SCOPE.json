@@ -1,0 +1,29 @@
+{
+  "feature": "v0-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/v0-gate",
+  "allowedPaths": [
+    "scripts/tests/v0-gate.test.sh"
+  ],
+  "forbiddenPaths": [
+    "scripts/test.sh",
+    "scripts/check-syntax.sh",
+    "scripts/check-credentials.sh",
+    "CLAUDE.md",
+    ".github/**",
+    "plugins/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**"
+  ],
+  "dependsOn": [
+    "feat/g0-1-test-command",
+    "feat/g0-2-lint-credential-checks"
+  ],
+  "estimatedScope": "gate for Phase 0",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default",
+    "agents": []
+  }
+}

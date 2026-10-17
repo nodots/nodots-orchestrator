@@ -1,0 +1,34 @@
+{
+  "feature": "g2-2-first-evals",
+  "project": "nodots-orchestrator",
+  "branch": "feat/g2-2-first-evals",
+  "allowedPaths": [
+    "evals/cases/**",
+    "scripts/tests/evals-cases.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    ".claude-plugin/**",
+    "plugins/*/.claude-plugin/**",
+    ".github/workflows/review.yml",
+    ".github/workflows/stamp-check.yml",
+    ".github/workflows/evals.yml",
+    ".github/workflows/ci.yml",
+    "evals/run.js",
+    "evals/lib/**",
+    "evals/budget.json",
+    "evals/schema.json",
+    "scripts/test.sh"
+  ],
+  "dependsOn": [
+    "feat/g2-1-eval-harness"
+  ],
+  "estimatedScope": "20 eval cases",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default",
+    "agents": []
+  }
+}

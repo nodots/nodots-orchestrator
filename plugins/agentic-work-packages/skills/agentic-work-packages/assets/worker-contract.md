@@ -133,11 +133,28 @@ is not ready to file.
    A push after the stamp voids it — re-run and re-stamp. `[READY]` means a
    current stamp exists for the present head sha. Someone else's "tests pass"
    is a pointer to re-query, never a clearance.
-5. **Write `HANDOFF.md`** before you finish: what is done, what is next, what a
-   cold session needs in order to resume. A `Stop` hook blocks the turn from
+5. **Write `HANDOFF.md`** before you finish, in this branch's cell directory
+   (`.agentic/cells/<branch>/HANDOFF.md`, next to `SCOPE.json`), never at the repo
+   root: a root file collides with every other package's handoff when their PRs
+   merge. Put `BLOCKER.md` in the same directory. Say what is done, what is next,
+   what a cold session needs in order to resume. A `Stop` hook blocks the turn from
    ending on a dirty branch with neither `HANDOFF.md` nor `BLOCKER.md` written.
    Committing the changes is not the alternative; the written state is the
    point.
+
+   `HANDOFF.md` carries a required `Plan check` section. The hook blocks a
+   `HANDOFF.md` that lacks it; `BLOCKER.md` is exempt.
+
+   ```markdown
+   ## Plan check
+
+   Package issue still matches: yes
+   ```
+
+   Write `no` when what you built diverged from the package issue. Then update
+   the issue in the same change, and under the line give the issue number you
+   updated and what changed. The hook checks that the section and a `yes` or
+   `no` are present; it does not judge whether the answer is true.
 
 Do not change your own `cell:*` label. Labels are derived from observable state
 each cycle by the coordinator, and a hand-set one is overwritten.

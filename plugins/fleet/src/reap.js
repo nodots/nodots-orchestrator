@@ -47,18 +47,11 @@ function blockerFor(session) {
   return null;
 }
 
+// A PR belongs to a package only when its head branch equals the package
+// branch. A title or closing keyword is not evidence: a throwaway PR carrying
+// the package id would otherwise be recorded as the package's PR.
 function prFor(session, pulls) {
-  const id = session.id;
-  const esc = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\./g, '[.\\-]');
-  const idRe = new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`, 'i');
-  // Same rule as sync-cells.sh: the issue reference in the title, or a closing
-  // keyword in the body. A bare mention is not a claim.
-  const refTitle = new RegExp(`#${session.issue}(?!\\d)`);
-  const refClose = new RegExp(`\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\s*:?\\s+(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#${session.issue}(?!\\d)`, 'i');
-  return (pulls || []).find(p => p.headRefName === session.branch)
-    || (pulls || []).find(p => refTitle.test(p.title || '') || refClose.test(p.body || ''))
-    || (pulls || []).find(p => idRe.test(p.title || ''))
-    || null;
+  return (pulls || []).find(p => p.headRefName === session.branch) || null;
 }
 
 // classify(session, facts) -> { outcome, detail, next }
@@ -110,6 +103,14 @@ function reap(cfg, state, pulls, now = Date.now(), blockerOnBranch = null) {
     if (session.status === 'parked') {
       const onBranch = blockerOnBranch ? blockerOnBranch(session) : false;
       if (!blockerFor(session) && !onBranch) {
+        // A package that already has a PR, in any state, is not relaunched.
+        const pr = prFor(session, pulls);
+        if (pr) {
+          const c = classify(session, { pr });
+          session.status = 'closed'; session.outcome = c.outcome; session.endedAt = new Date(now).toISOString();
+          reaped.push({ issue: session.issue, id: session.id, attempt: session.attempt, tier: session.tier, ...c });
+          continue;
+        }
         session.status = 'closed'; session.outcome = 'unparked'; session.endedAt = new Date(now).toISOString();
         reaped.push({ issue: session.issue, id: session.id, attempt: session.attempt, tier: session.tier, outcome: 'unparked', detail: 'BLOCKER.md removed; resuming', next: 'unpark' });
         requests.push({ session, next: 'unpark', reason: 'unparked' });
