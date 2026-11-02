@@ -9,9 +9,10 @@
 # Precedence, first match wins:
 #   1. PR merged                              -> cell:merged
 #   2. PR open with a current VERIFIED stamp   -> cell:awaiting-review
-#   3. BLOCKER.md present on the branch        -> cell:blocked
-#   4. branch exists, no PR                    -> cell:active
-#   5. none of the above                       -> unchanged
+#   3. PR open, title [VERIFY]:, no current stamp -> cell:awaiting-lab
+#   4. BLOCKER.md present on the branch        -> cell:blocked
+#   5. branch exists, no PR                    -> cell:active
+#   6. none of the above                       -> unchanged
 #
 # "Current" means the stamp's sha is the PR's head sha. A push after the stamp
 # voids it: the evidence was produced by a tree that is no longer the one under
@@ -99,6 +100,11 @@ function derive(issue) {
     if (stamp) {
       return ['cell:awaiting-review',
               `PR #${pr.number} open, VERIFIED ${stamp.suite} @ ${stamp.sha.slice(0, 7)}`];
+    }
+    // A [VERIFY]: PR is the verifier's queue. Without a current stamp it is
+    // waiting on the lab, not on a worker, so it must not read as active.
+    if (/^\[VERIFY\]:/.test(String(pr.title || ''))) {
+      return ['cell:awaiting-lab', `PR #${pr.number} open, [VERIFY] awaiting the lab`];
     }
   }
   if (issue.blockerOnBranch) {
@@ -278,7 +284,7 @@ for (const issue of issues) {
     branch,
     branchExists: Boolean(branch && (brMatch || pr)),
     blockerOnBranch: false,                   // filled in by the shell below
-    pr: pr ? { number: pr.number, state: pr.state, headSha: pr.headRefOid, comments: [] } : null,
+    pr: pr ? { number: pr.number, title: pr.title, state: pr.state, headSha: pr.headRefOid, comments: [] } : null,
   });
 }
 if (uncovered.length) {

@@ -315,6 +315,83 @@ assert_not_contains "$(printf '%s' "$OUT" | grep -E '^#42 ' || true)" "merged" "
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#43 ' || true)" "cell:merged" "Fixes: owner/repo#43 claims the PR"
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#44 ' || true)" "cell:merged" "#44 in the PR title claims the PR"
 
+# --- an open [VERIFY] PR waiting on the verifier is awaiting-lab ------------
+# A [VERIFY]: PR with no current stamp is queued for the lab, not active: a
+# worker still writing code and a PR waiting for the verifier look identical
+# under the branch rule, and the queue was invisible. A stale stamp does not
+# count, and a [VERIFY] PR with a blocker still reads awaiting-lab, because the
+# precedence puts the lab queue above blocked.
+cat > "$TMP/state-verify.json" <<JSON
+{
+  "repo": "example/host",
+  "targets": ["example/host"],
+  "issues": [
+    { "number": 201, "title": "V1.1 verify queue", "label": "cell:active",
+      "branch": "feat/v1-1", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 301, "title": "[VERIFY]: V1.1", "state": "OPEN", "headSha": "$SHA_HEAD", "comments": [] } },
+    { "number": 202, "title": "V1.2 verify reviewed", "label": "cell:active",
+      "branch": "feat/v1-2", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 302, "title": "[VERIFY]: V1.2", "state": "OPEN", "headSha": "$SHA_HEAD",
+              "comments": ["VERIFIED: unit @ $SHA_HEAD\n\nnpm test\n40 passed"] } },
+    { "number": 203, "title": "V1.3 verify stale", "label": "cell:active",
+      "branch": "feat/v1-3", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 303, "title": "[VERIFY]: V1.3", "state": "OPEN", "headSha": "$SHA_HEAD",
+              "comments": ["VERIFIED: unit @ $SHA_OLD\n\nnpm test\n40 passed"] } },
+    { "number": 204, "title": "V1.4 verify merged", "label": "cell:awaiting-lab",
+      "branch": "feat/v1-4", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 304, "title": "[VERIFY]: V1.4", "state": "MERGED", "headSha": "$SHA_HEAD", "comments": [] } },
+    { "number": 205, "title": "V1.5 verify blocked", "label": "cell:active",
+      "branch": "feat/v1-5", "branchExists": true, "blockerOnBranch": true,
+      "pr": { "number": 305, "title": "[VERIFY]: V1.5", "state": "OPEN", "headSha": "$SHA_HEAD", "comments": [] } },
+    { "number": 206, "title": "V1.6 ready, not verify", "label": "cell:active",
+      "branch": "feat/v1-6", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 306, "title": "[READY]: V1.6", "state": "OPEN", "headSha": "$SHA_HEAD", "comments": [] } }
+  ]
+}
+JSON
+OUT_V=$(bash "$SCRIPT" --state "$TMP/state-verify.json" 2>"$TMP/err-verify"); EXIT_V=$?
+assert_eq 0 "$EXIT_V" "a [VERIFY] fixture run exits 0"
+vrow() { printf '%s' "$OUT_V" | grep -E "^#$1 " || true; }
+assert_contains "$(vrow 201)" "cell:awaiting-lab" "an open [VERIFY] PR with no stamp is awaiting-lab"
+assert_contains "$(vrow 202)" "cell:awaiting-review" "an open [VERIFY] PR with a current stamp is awaiting-review"
+assert_contains "$(vrow 203)" "cell:awaiting-lab" "an open [VERIFY] PR with a stale stamp is awaiting-lab"
+assert_contains "$(vrow 204)" "cell:merged" "a merged [VERIFY] PR is cell:merged"
+assert_contains "$(vrow 205)" "cell:awaiting-lab" "an open [VERIFY] PR without a stamp is awaiting-lab even with a blocker on its branch"
+assert_contains "$(vrow 206)" "unchanged" "an open PR that is not [VERIFY] and has no stamp is left alone"
+assert_not_contains "$(vrow 206)" "awaiting-lab" "only a [VERIFY] title earns awaiting-lab"
+
+# The collector carries the PR title into the state, so the rule works on a
+# live repo as well as on a fixture file.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 91, "title": "W1.1 verify via collector", "state": "OPEN", "labels": [{"name": "cell:active"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[{"number": 92, "title": "[VERIFY]: W1.1", "body": "Closes #91", "state": "OPEN",
+  "headRefName": "feat/w1-1", "headRefOid": "3333333333333333333333333333333333333333"}]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development feat/w1-1 ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>/dev/null)
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#91 ' || true)" "cell:awaiting-lab" "the collector derives awaiting-lab for an open [VERIFY] PR"
+
 # --- a truncated collection must fail loudly, never derive from partial state
 # Deriving labels from half a backlog is worse than not running: a package
 # whose PR is beyond the cut looks branch-only and gets downgraded.
