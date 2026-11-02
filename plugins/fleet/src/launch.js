@@ -51,16 +51,27 @@ function targetFor(cfg, issue) {
   return cfg.targets.find(t => t.repo === declared) || null;
 }
 
+// A target with verify (config.js) admits one verifier run at a time, so the
+// worker stops at a "[VERIFY]:" PR the queue picks up. These lines replace the
+// contract's "[READY]:" title and VERIFIED stamp; "[READY]" is never said.
 function buildPrompt(cfg, { issue, id, sc, workerId, target, attempt, reason, handoffPresent }) {
+  const queued = Boolean(target.verify);
+  const title = queued ? `[VERIFY]: ${id}` : `[READY]: ${id}`;
   const lines = [
     `You are worker ${workerId} executing work package ${id} (issue #${issue.number} in ${cfg.repo}) in repository ${target.repo}.`,
     `Follow the worker contract at ${cfg.contractPath}, in order. It governs everything below.`,
     `Your lane is .agentic/cells/${sc.branch}/SCOPE.json in this worktree. Execution pattern: ${(sc.execution && sc.execution.pattern) || 'solo'}.`,
     `Read the package with: gh issue view ${issue.number} --repo ${cfg.repo}`,
-    `Branch ${sc.branch} is checked out and already pushed. Commit on it. Open the PR against ${target.defaultBranch} with a title starting "[READY]: ${id}" and a body containing "Closes #${issue.number}".`,
+    `Branch ${sc.branch} is checked out and already pushed. Commit on it. Open the PR against ${target.defaultBranch} with a title starting "${title}" and a body containing "Closes #${issue.number}".`,
     'Do not change any cell:* or worker:* label. Do not edit SCOPE.json. If you need a file outside allowedPaths, stop and write BLOCKER.md.',
   ];
-  if (target.ci && target.ci.gate === 'external') {
+  if (queued) {
+    lines.push(
+      `${target.repo} is verified through a queue that admits one run at a time (${target.verify.kind}, suite ${target.verify.suite}). For this target the PR title above and the steps below replace the contract's completion title and its VERIFIED stamp.`,
+      'Do not run the verifier, and do not claim any lock it uses. Do not post a VERIFIED stamp: the queue runs the verifier and stamps the PR.',
+      `In the PR body, paste the selection this target's tooling lists for your change. How to list it: ${target.ci.verifiedBy}.`,
+    );
+  } else if (target.ci && target.ci.gate === 'external') {
     lines.push(`No GitHub Actions workflow verifies ${target.repo}. Verification for this target: ${target.ci.verifiedBy}. Your VERIFIED stamp must come from that run, not from a pipeline.`);
   }
   if (attempt > 1) lines.push(`This is attempt ${attempt}.${handoffPresent ? ' HANDOFF.md is present: read it first, you are resuming.' : ''}${reason ? ` The previous attempt ended with: ${reason}.` : ''}`);

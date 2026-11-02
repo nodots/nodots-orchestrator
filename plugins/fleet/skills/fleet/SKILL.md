@@ -66,6 +66,12 @@ Every cycle ends in exactly one outcome (the cycle contract):
     `ci: { "gate": "external", "verifiedBy": "<what verifies it>" }` in
     `fleet.config.json` instead; that is a statement about where proof comes
     from, not a way to silence the alarm.
+    If the target's verifier admits one run at a time, add
+    `verify: { "kind": "lab-runner", "url": "<loopback url>", "suite": "<id>" }`
+    to it (requires `ci.gate` `external`). Its workers then stop at a
+    `[VERIFY]: <id>` PR carrying the selection `ci.verifiedBy` says how to list;
+    they do not run the verifier, take its lock, or stamp `VERIFIED`. Expect
+    `[VERIFY]` PRs from that target, not `[READY]`.
   - `launch-ci-check-failed`: the CI state could not be read (auth, network,
     API error). The launch is refused, never assumed healthy.
   - `escalation-cap`: a package failed `maxEscalations` times. Read its log
