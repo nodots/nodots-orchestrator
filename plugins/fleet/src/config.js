@@ -18,6 +18,8 @@ const PERMISSION_MODES = new Set(['acceptEdits', 'auto', 'dontAsk', 'default', '
 const APPROVAL_MODES = new Set(['off', 'branch-protection', 'ruleset']);
 const CI_GATES = new Set(['github-actions', 'external']);
 const WORKER_ID = /^[A-Za-z0-9_-]+$/;
+const VERIFY_KINDS = new Set(['lab-runner']);
+const SUITE_ID = /^[A-Za-z0-9_-]+$/;
 
 const DEFAULTS = {
   wipCap: 4,
@@ -68,6 +70,28 @@ function loadConfig(file) {
   return validate(raw, path.dirname(abs));
 }
 
+// verify: a target whose verifier admits one run at a time. A worker there does
+// not run the verifier; it stops at a "[VERIFY]:" PR the queue picks up. The
+// verifier is reached on loopback only, and the suite id goes into a request,
+// so both are checked here rather than trusted. ci.gate must be external: a
+// target verified by GitHub Actions has no queue to hand the PR to.
+function isLoopback(hostname) {
+  const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return h === 'localhost' || h === '::1' || /^127(\.\d{1,3}){3}$/.test(h);
+}
+function validateVerify(v, ci, i) {
+  const at = `targets[${i}].verify`;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) fail(`${at} must be an object {kind, url, suite}`);
+  if (!VERIFY_KINDS.has(v.kind)) fail(`${at}.kind [${v.kind}] must be one of ${[...VERIFY_KINDS].join(', ')}`);
+  let u;
+  try { u = new URL(String(v.url)); } catch { fail(`${at}.url [${v.url}] is not a URL`); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') fail(`${at}.url must be http or https`);
+  if (!isLoopback(u.hostname)) fail(`${at}.url host [${u.hostname}] must be loopback (127.0.0.0/8, localhost or ::1)`);
+  if (typeof v.suite !== 'string' || !SUITE_ID.test(v.suite)) fail(`${at}.suite [${v.suite}] must match ${SUITE_ID}`);
+  if (ci.gate !== 'external') fail(`${at} requires targets[${i}].ci.gate external: a target with a verify queue is not verified by GitHub Actions`);
+  return { kind: v.kind, url: v.url, suite: v.suite };
+}
+
 function validate(raw, baseDir) {
   const c = { ...DEFAULTS, ...raw, models: { ...DEFAULTS.models, ...(raw.models || {}) } };
 
@@ -88,12 +112,14 @@ function validate(raw, baseDir) {
     if (ci.gate === 'external' && (typeof ci.verifiedBy !== 'string' || !ci.verifiedBy.trim())) {
       fail(`targets[${i}].ci.verifiedBy is required when ci.gate is external: name what verifies this target's changes`);
     }
-    return {
+    const target = {
       repo: t.repo.includes('/') ? t.repo : `${c.repo.split('/')[0]}/${t.repo}`,
       localPath: path.resolve(baseDir, t.localPath),
       defaultBranch: t.defaultBranch || 'main',
       ci: ci.gate === 'external' ? { gate: 'external', verifiedBy: ci.verifiedBy.trim() } : { gate: 'github-actions' },
     };
+    if (t.verify !== undefined) target.verify = validateVerify(t.verify, ci, i);
+    return target;
   });
 
   if (!c.workers || typeof c.workers !== 'object' || Object.keys(c.workers).length === 0) fail('workers must map at least one id to {mode}');

@@ -29,6 +29,14 @@ fleet cycle --apply
   launch then skips the GitHub Actions check for it, tells the worker what
   verifies its work, and records the gate on the session and in the report.
   `verifiedBy` is required with `external`, so the exemption is never silent.
+  A target whose verifier admits one run at a time also declares
+  `"verify": { "kind": "lab-runner", "url": "http://127.0.0.1:<port>", "suite": "<id>" }`.
+  `url` must be loopback, `suite` must match `^[A-Za-z0-9_-]+$`, `lab-runner`
+  is the only kind, and `ci.gate` must be `external`; anything else is a config
+  error. A worker on that target opens its PR titled `[VERIFY]: <id>`, never
+  `[READY]`. It does not run the verifier, claim any lock it uses, or post a
+  `VERIFIED` stamp, and it pastes into the PR body the selection its target's
+  tooling lists, as `ci.verifiedBy` describes.
 - **reap** classifies finished sessions: PR ⇒ movement; `BLOCKER.md` with a
   known Kind ⇒ parked for the coordinator; silent or failed ⇒ escalate one
   model tier up, up to `maxEscalations`. A PR belongs to a package only when
