@@ -9,7 +9,8 @@ fleet cycle --apply
 ```
 
 - **sync** derives every `cell:*` label from branches, PRs and `BLOCKER.md`
-  (the plugin's script; fleet reads its state through `--emit-state`).
+  (the plugin's script; fleet reads its state through `--emit-state`). It runs
+  with `--epic <epic>`, so only the config's epic's packages are derived.
 - **promote** adds `cell:queued` to an `agent-ready` package once every
   `dependsOn` branch has a merged PR.
 - **assign** hands queued packages to worker ids as `worker:<id>` labels, within
@@ -37,6 +38,17 @@ fleet cycle --apply
 - **report** posts one Movement / Exhaustion / Alarm comment on the epic, with
   a marker so a re-post is a no-op, and keeps the no-movement streak that
   latches the fleet after `noMovementLimit` cycles.
+
+A cycle acts on one epic: the packages whose header line says
+`**Part of** #<epic>`, the same rule `sync-cells.sh --epic` applies. Other
+programs in the same host repo are neither synced, promoted nor launched. Two
+limits follow:
+
+- A `dependsOn` branch that belongs to another epic is never seen as merged,
+  because promotion reads merged branches from the epic's sync state. Keep
+  dependencies inside the epic.
+- `assign-cells.sh` still counts load across the whole host repo, so another
+  program's in-flight packages use up the WIP cap.
 
 No daemon. State is the tracker plus `<stateDir>/state.json` (sessions,
 dispatch history, streak), written atomically. A crash mid-cycle is recovered

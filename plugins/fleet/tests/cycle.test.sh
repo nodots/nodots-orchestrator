@@ -47,8 +47,9 @@ unset CLAUDECODE; export CLAUDECODE=1    # the launcher must strip this
 scope_body() { # branch deps-json
   printf '**Part of** #1 · **Phase 1 · x** · **Repo:** `acme/api`\n\n## Goal\nx\n\n### SCOPE.json\n```json\n{"feature":"f","branch":"%s","allowedPaths":["src/**"],"forbiddenPaths":["contracts/**"],"dependsOn":%s,"execution":{"model":"default","pattern":"solo"}}\n```\n' "$1" "$2"
 }
-node - "$TMP/gh" "$(scope_body feat/t1-1-first '[]')" "$(scope_body feat/t1-2-second '["feat/t1-0-base"]')" "$(scope_body feat/t1-3-silent '[]')" "$(scope_body feat/t1-4-blocker '[]')" "$(scope_body feat/t1-5-external '[]')" "$(scope_body feat/t1-0-base '[]')" "$BASE_SHA" <<'JS'
-const fs = require('fs'); const [dir, b11, b12, b13, b14, b15, b10, sha] = process.argv.slice(2);
+OTHER_EPIC_BODY=$(scope_body feat/u1-1-other '[]' | sed 's/\*\*Part of\*\* #1 /**Part of** #2 /')
+node - "$TMP/gh" "$(scope_body feat/t1-1-first '[]')" "$(scope_body feat/t1-2-second '["feat/t1-0-base"]')" "$(scope_body feat/t1-3-silent '[]')" "$(scope_body feat/t1-4-blocker '[]')" "$(scope_body feat/t1-5-external '[]')" "$(scope_body feat/t1-0-base '[]')" "$BASE_SHA" "$OTHER_EPIC_BODY" <<'JS'
+const fs = require('fs'); const [dir, b11, b12, b13, b14, b15, b10, sha, bOther] = process.argv.slice(2);
 fs.writeFileSync(`${dir}/issues.json`, JSON.stringify([
   { number: 1, title: 'Epic: program T', body: '', state: 'OPEN', labels: ['epic'] },
   { number: 9, title: 'T1.0 Base', body: b10, state: 'CLOSED', labels: ['agent-ready', 'cell:active'] },
@@ -57,6 +58,12 @@ fs.writeFileSync(`${dir}/issues.json`, JSON.stringify([
   { number: 12, title: 'T1.3 Silent one', body: b13, state: 'OPEN', labels: ['agent-ready', 'cell:queued', 'worker:a'] },
   { number: 13, title: 'T1.4 Blocked one', body: b14, state: 'OPEN', labels: ['agent-ready', 'cell:queued', 'worker:a'] },
   { number: 14, title: 'T1.5 External one', body: b15, state: 'OPEN', labels: ['agent-ready', 'cell:queued', 'worker:x'] },
+  // Another program in the same host repo: ready, no dependencies, so only the
+  // epic filter keeps the cycle from promoting and launching it.
+  { number: 20, title: 'U1.1 Other program', body: bOther, state: 'OPEN', labels: ['agent-ready'] },
+  // A package of that program already in the lifecycle: only sync --epic keeps
+  // it out of the sync state.
+  { number: 21, title: 'U1.2 Other program, active', body: bOther.replace('feat/u1-1-other', 'feat/u1-2-other'), state: 'OPEN', labels: ['agent-ready', 'cell:active'] },
 ], null, 2));
 fs.writeFileSync(`${dir}/prs.json`, JSON.stringify([
   { number: 100, title: '[READY]: T1.0 base', body: 'Closes #9', state: 'MERGED', headRefName: 'feat/t1-0-base', headRefOid: sha, isDraft: false, url: 'u', repo: 'acme/api' },
@@ -90,6 +97,10 @@ assert_eq "0" "$(markers)" "dry run posts no report"
 assert_contains "$OUT" '"dryRun": true' "dry run says so in JSON"
 assert_contains "$OUT" '"id": "T1.2"' "dry run computes the promotion of T1.2 (its dependency merged)"
 assert_contains "$(cat "$TMP/errA")" "fleet cycle" "the one-line summary goes to stderr"
+assert_not_contains "$OUT" '"id": "U1.1"' "a ready package of another epic is not promoted"
+synced_numbers=$(node -e 'process.stdout.write(require(process.argv[1]).issues.map(i=>i.number).join(","))' "$TMP/state/sync-state.json" 2>/dev/null || echo "no sync-state.json")
+assert_not_contains ",$synced_numbers," ",21," "sync runs with --epic: the other epic's package is not in the sync state"
+assert_contains ",$synced_numbers," ",10," "the epic's own packages are in the sync state"
 
 # --- A2. an untrusted clone refuses to launch, before any worktree is made ----
 OUT=$(CLAUDE_CONFIG_FILE="$TMP/untrusted.json" fleet cycle --apply --json 2>/dev/null); EXIT=$?
@@ -303,6 +314,7 @@ assert_contains "$OUT" '"launched": []' "fleet launch of an external worker's pa
 # --- K. doctor runs and names what is missing ----------------------------------
 OUT=$(fleet doctor 2>&1); EXIT=$?
 assert_contains "$OUT" "ok    sync-cells.sh supports --emit-state" "doctor confirms the plugin version"
+assert_contains "$OUT" "ok    sync-cells.sh supports --epic" "doctor confirms sync-cells can be scoped to the epic"
 assert_contains "$OUT" "FAIL  scope + handoff hooks committed in acme/api" "doctor flags a target without committed hooks"
 assert_ne 0 "$EXIT" "doctor exits non-zero when a check fails"
 

@@ -409,4 +409,98 @@ assert_contains "$OUT2" "example/code-b" "the uncovered repo is named"
 assert_contains "$OUT2" "B1.1" "the package that needs it is named"
 assert_not_contains "$OUT2" "0 label(s) would change" "an uncovered repo never reports a clean result"
 
+# --- --epic limits the run to one epic's packages ---------------------------
+# Regression from nodots-tms: a host repo with ~290 historical packages made
+# the per-package BLOCKER.md and PR-comment calls run past fleet's 10-minute
+# limit, so a cycle for a six-package epic never derived anything. A package
+# belongs to an epic by its header line: **Part of** #<epic>.
+
+# Over a state file: the filter applies to the recorded partOf.
+cat > "$TMP/state-epic.json" <<JSON
+{
+  "repo": "example/host",
+  "targets": ["example/host"],
+  "issues": [
+    { "number": 61, "title": "L1.1 in the epic", "label": "cell:queued", "partOf": 60,
+      "branch": "feat/l1-1", "branchExists": true, "blockerOnBranch": false, "pr": null },
+    { "number": 71, "title": "T1.1 another epic", "label": "cell:queued", "partOf": 70,
+      "branch": "feat/t1-1", "branchExists": true, "blockerOnBranch": false, "pr": null },
+    { "number": 72, "title": "T1.2 no parent", "label": "cell:queued",
+      "branch": "feat/t1-2", "branchExists": true, "blockerOnBranch": false, "pr": null }
+  ]
+}
+JSON
+OUT=$(bash "$SCRIPT" --state "$TMP/state-epic.json" --epic 60 --emit-state "$TMP/emitted-epic.json" 2>"$TMP/err-epic"); EXIT=$?
+assert_eq 0 "$EXIT" "--epic over a state file exits 0"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#61 ' || true)" "cell:active" "a package of the epic is derived"
+assert_empty "$(printf '%s' "$OUT" | grep -E '^#71 ' || true)" "a package of another epic is not reported"
+assert_empty "$(printf '%s' "$OUT" | grep -E '^#72 ' || true)" "a package with no Part of line is not reported"
+emitted=$(node -e 'process.stdout.write(require(process.argv[1]).issues.map(i=>i.number).join(","))' "$TMP/emitted-epic.json")
+assert_eq "61" "$emitted" "--emit-state under --epic holds only the epic's packages"
+
+# Without --epic the same file still reports every package.
+OUT=$(bash "$SCRIPT" --state "$TMP/state-epic.json" 2>/dev/null)
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#71 ' || true)" "cell:active" "without --epic every package is still derived"
+
+# A non-numeric epic is a usage error, not an empty run.
+OUT=$(bash "$SCRIPT" --state "$TMP/state-epic.json" --epic L 2>&1); EXIT=$?
+assert_eq 64 "$EXIT" "a non-numeric --epic is a usage error"
+assert_contains "$OUT" "--epic needs an issue number" "the usage error says what --epic takes"
+
+# Through the collector: no per-package call is made for another epic's
+# package, the epic is recorded, and an uncovered repo outside the epic does
+# not fail the run.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_CALLS"
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 61, "title": "L1.1 in the epic", "state": "OPEN",
+   "body": "**Part of** #60 · **Phase 1** · **Repo:** `example/host`",
+   "labels": [{"name": "cell:queued"}]},
+  {"number": 71, "title": "T1.1 another epic", "state": "CLOSED",
+   "body": "**Part of** #70 · **Phase 1** · **Repo:** `example/host`",
+   "labels": [{"name": "cell:active"}]},
+  {"number": 73, "title": "U1.1 another epic, another repo", "state": "OPEN",
+   "body": "**Part of** #70 · **Repo:** `example/elsewhere`",
+   "labels": [{"name": "cell:queued"}]},
+  {"number": 600, "title": "L1.10 epic number prefix", "state": "OPEN",
+   "body": "**Part of** #600 · **Repo:** `example/host`",
+   "labels": [{"name": "cell:queued"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[{"number": 81, "title": "[READY]: T1.1", "body": "Closes #71", "state": "MERGED",
+  "headRefName": "feat/t1-1", "headRefOid": "1111111111111111111111111111111111111111"}]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development feat/l1-1-x feat/t1-1 ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+: > "$STUB_CALLS"
+OUT=$(GH_BIN="$STUB/gh" STUB_CALLS="$STUB_CALLS" bash "$SCRIPT" --repo example/host --epic 60 \
+  --emit-state "$TMP/emitted-collector.json" 2>"$TMP/err-epic2"); EXIT=$?
+assert_eq 0 "$EXIT" "--epic through the collector exits 0 despite an uncovered repo in another epic"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#61 ' || true)" "cell:active" "the epic's package derives from its branch"
+assert_empty "$(printf '%s' "$OUT" | grep -E '^#71 ' || true)" "another epic's merged package is not reported"
+assert_empty "$(printf '%s' "$OUT" | grep -E '^#600 ' || true)" "Part of #600 does not match --epic 60"
+calls=$(cat "$STUB_CALLS")
+assert_not_contains "$calls" "ref=feat/t1-1" "no BLOCKER.md lookup is made for another epic's branch"
+assert_not_contains "$calls" "issues/81/comments" "no PR comment fetch is made for another epic's PR"
+assert_contains "$calls" "ref=feat/l1-1-x" "the epic's own branch is still checked for a blocker"
+partof=$(node -e 'process.stdout.write(String(require(process.argv[1]).issues[0].partOf))' "$TMP/emitted-collector.json")
+assert_eq "60" "$partof" "the collector records each package's epic as partOf"
+
 finish

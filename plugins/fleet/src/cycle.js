@@ -76,7 +76,9 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // Fresh issue list with bodies: promotion and launch read SCOPE.json from it.
     const list = tracker.listIssues(cfg.repo);
     if (!list.ok) { alarm('issues-failed', list.error); r.outcome = 'alarm'; return { report: r, exit: list.truncated ? EXIT.truncated : EXIT.internal }; }
-    let issues = list.issues;
+    // The epic's packages only, matching the sync's --epic: promotion, launch,
+    // reap and the counts never act on another program in the same host repo.
+    let issues = list.issues.filter(i => scope.partOf(i.body) === cfg.epic);
 
     // 2. promote
     const pr = promote(issues, sync.state);

@@ -18,6 +18,14 @@ function packageId(title) {
   return (String(title || '').trim().split(/\s+/)[0] || '').replace(/[^\w.\-]+$/, '');
 }
 
+// The epic a package belongs to, from its header line: **Part of** #<n>. The
+// same rule as sync-cells.sh --epic, so the cycle and the sync agree on which
+// packages are the epic's.
+function partOf(body) {
+  const m = /\*\*Part of\*\*\s*#(\d+)(?!\d)/.exec(String(body || ''));
+  return m ? Number(m[1]) : null;
+}
+
 // M1.3 -> m1-3 ; T5.0d -> t5-0d
 function slug(id) {
   return String(id).toLowerCase().replace(/\./g, '-');
@@ -90,4 +98,4 @@ function describe(issue) {
   return { id, scope, problems };
 }
 
-module.exports = { packageId, slug, worktreePath, extract, validate, describe, safeBranch, PATTERNS, TIERS };
+module.exports = { packageId, partOf, slug, worktreePath, extract, validate, describe, safeBranch, PATTERNS, TIERS };
