@@ -16,6 +16,7 @@ const path = require('path');
 const MODES = new Set(['local', 'cloud', 'external']);
 const PERMISSION_MODES = new Set(['acceptEdits', 'auto', 'dontAsk', 'default', 'plan', 'bypassPermissions']);
 const APPROVAL_MODES = new Set(['off', 'branch-protection', 'ruleset']);
+const CI_GATES = new Set(['github-actions', 'external']);
 const WORKER_ID = /^[A-Za-z0-9_-]+$/;
 
 const DEFAULTS = {
@@ -77,10 +78,21 @@ function validate(raw, baseDir) {
   c.targets = c.targets.map((t, i) => {
     if (!t || typeof t.repo !== 'string') fail(`targets[${i}].repo is required`);
     if (typeof t.localPath !== 'string') fail(`targets[${i}].localPath is required`);
+    // ci: where this target's changes are verified. "github-actions" (the default) makes launch
+    // require an enabled workflow and a recent run on defaultBranch. "external" is for a target
+    // whose verification runs outside GitHub Actions (another CI, a lab, a device farm); launch
+    // then skips that check, and verifiedBy has to say what verifies the work instead, because
+    // the worker is told it and the dry run reports it. It is never silent.
+    const ci = t.ci === undefined ? { gate: 'github-actions' } : t.ci;
+    if (!ci || typeof ci !== 'object' || !CI_GATES.has(ci.gate)) fail(`targets[${i}].ci.gate must be one of ${[...CI_GATES].join(', ')}`);
+    if (ci.gate === 'external' && (typeof ci.verifiedBy !== 'string' || !ci.verifiedBy.trim())) {
+      fail(`targets[${i}].ci.verifiedBy is required when ci.gate is external: name what verifies this target's changes`);
+    }
     return {
       repo: t.repo.includes('/') ? t.repo : `${c.repo.split('/')[0]}/${t.repo}`,
       localPath: path.resolve(baseDir, t.localPath),
       defaultBranch: t.defaultBranch || 'main',
+      ci: ci.gate === 'external' ? { gate: 'external', verifiedBy: ci.verifiedBy.trim() } : { gate: 'github-actions' },
     };
   });
 

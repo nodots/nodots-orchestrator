@@ -23,6 +23,11 @@ fleet cycle --apply
   `ciMaxAgeDays` (default 14; `launch-ci-stale`), or CI state it cannot read
   (`launch-ci-check-failed`). A package on the `cheapest` tier with no
   `execution.verifiedBy` is `unlaunchable`. Blast radius is not checked.
+  A target whose changes are verified outside GitHub Actions declares
+  `"ci": { "gate": "external", "verifiedBy": "..." }` in `fleet.config.json`;
+  launch then skips the GitHub Actions check for it, tells the worker what
+  verifies its work, and records the gate on the session and in the report.
+  `verifiedBy` is required with `external`, so the exemption is never silent.
 - **reap** classifies finished sessions: PR ⇒ movement; `BLOCKER.md` with a
   known Kind ⇒ parked for the coordinator; silent or failed ⇒ escalate one
   model tier up, up to `maxEscalations`. A PR belongs to a package only when

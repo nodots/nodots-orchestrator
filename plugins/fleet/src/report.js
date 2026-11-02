@@ -37,7 +37,7 @@ function render(r) {
   }
   if (r.launched.length) {
     lines.push('**Launched**');
-    for (const l of r.launched) lines.push(`- ${l.id} (#${l.issue}) → worker:${l.worker} ${l.mode} tier=${l.tier} attempt=${l.attempt} on ${l.branch}`);
+    for (const l of r.launched) lines.push(`- ${l.id} (#${l.issue}) → worker:${l.worker} ${l.mode} tier=${l.tier} attempt=${l.attempt} on ${l.branch}${l.ci && l.ci.gate === 'external' ? ` · CI external: ${l.ci.verifiedBy}` : ''}`);
     lines.push('');
   }
   if (r.reaped.length) {

@@ -138,4 +138,50 @@ OUT=$(fleet cycle --json 2>&1); EXIT=$?
 assert_ne 0 "$EXIT" "G: ciMaxAgeDays 0 is a config error"
 assert_contains "$OUT" "ciMaxAgeDays" "G: the error names the field"
 
+# --- H. a target verified outside GitHub Actions: ci.gate "external" ---------
+write_external() { # ci-json
+  cat > "$TMP/fleet.config.json" <<JSON
+{
+  "repo": "acme/host", "epic": 1,
+  "targets": [{ "repo": "acme/api", "localPath": "$TMP/clone", "defaultBranch": "main", "ci": $1 }],
+  "workers": { "a": { "mode": "local" } },
+  "wipCap": 4, "worktreesDir": "$TMP/worktrees-h", "stateDir": "$TMP/state-h",
+  "pluginRoot": "$PLUGIN", "noMovementLimit": 99
+}
+JSON
+}
+ci '{"workflows":[]}'
+write_external '{"gate":"external","verifiedBy":"npm run test:impacted on the lab, under the lab lock"}'
+OUT=$(fleet cycle --json 2>/dev/null)
+assert_empty "$(alarms "$OUT" launch-ci-disabled)" "H: an external target is not refused for having no workflow"
+assert_empty "$(alarms "$OUT" launch-ci-stale)" "H: nor for having no recent run"
+assert_contains "$(launched "$OUT")" "10" "H: a default-tier package launches into an external target"
+assert_eq "11 13" "$(alarms "$OUT" unlaunchable)" "H: the verifiedBy rule for the cheapest tier still applies"
+GATE=$(printf '%s' "$OUT" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8')); const l=r.launched.find(x=>x.issue===10); console.log(l.ci.gate+' | '+l.ci.verifiedBy)")
+assert_eq "external | npm run test:impacted on the lab, under the lab lock" "$GATE" "H: the dry run records the gate and what verifies the work"
+ci '{"fail":true}'
+OUT=$(fleet cycle --json 2>/dev/null)
+assert_empty "$(alarms "$OUT" launch-ci-check-failed)" "H: the GitHub Actions state is not read for an external target"
+ci '{"workflows":[]}'
+OUT=$(fleet cycle --apply --json 2>/dev/null)
+assert_contains "$(launched "$OUT")" "10" "H: the applied cycle launches into the external target"
+ARGV=$(cat "$TMP"/claude-log/T1.1.*.argv 2>/dev/null)
+assert_contains "$ARGV" "Verification for this target: npm run test:impacted on the lab, under the lab lock" "H: the worker is told what verifies its work"
+assert_contains "$ARGV" "not from a pipeline" "H: and that its VERIFIED stamp comes from that run"
+
+write_external '{"gate":"external"}'
+OUT=$(fleet cycle --json 2>&1); EXIT=$?
+assert_ne 0 "$EXIT" "H: ci.gate external with no verifiedBy is a config error"
+assert_contains "$OUT" "ci.verifiedBy" "H: the error names the missing field"
+write_external '{"gate":"external","verifiedBy":"   "}'
+OUT=$(fleet cycle --json 2>&1); EXIT=$?
+assert_ne 0 "$EXIT" "H: a blank verifiedBy is refused the same way"
+write_external '{"gate":"jenkins"}'
+OUT=$(fleet cycle --json 2>&1); EXIT=$?
+assert_ne 0 "$EXIT" "H: an unknown gate is a config error"
+assert_contains "$OUT" "github-actions, external" "H: the error lists the gates"
+write_external '{"gate":"github-actions"}'
+OUT=$(fleet cycle --json 2>/dev/null)
+assert_eq "10 12" "$(alarms "$OUT" launch-ci-disabled)" "H: an explicit github-actions gate checks CI as the default does"
+
 finish

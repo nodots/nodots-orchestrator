@@ -60,6 +60,9 @@ function buildPrompt(cfg, { issue, id, sc, workerId, target, attempt, reason, ha
     `Branch ${sc.branch} is checked out and already pushed. Commit on it. Open the PR against ${target.defaultBranch} with a title starting "[READY]: ${id}" and a body containing "Closes #${issue.number}".`,
     'Do not change any cell:* or worker:* label. Do not edit SCOPE.json. If you need a file outside allowedPaths, stop and write BLOCKER.md.',
   ];
+  if (target.ci && target.ci.gate === 'external') {
+    lines.push(`No GitHub Actions workflow verifies ${target.repo}. Verification for this target: ${target.ci.verifiedBy}. Your VERIFIED stamp must come from that run, not from a pipeline.`);
+  }
   if (attempt > 1) lines.push(`This is attempt ${attempt}.${handoffPresent ? ' HANDOFF.md is present: read it first, you are resuming.' : ''}${reason ? ` The previous attempt ended with: ${reason}.` : ''}`);
   return lines.join('\n');
 }
@@ -162,14 +165,20 @@ function launch(cfg, tracker, store, req, persist) {
 
   // Unattended edits are only as safe as the CI that catches them. Blast
   // radius is not measured here; see references/scope-contract.md.
-  const ci = tracker.ciStatus(target.repo, target.defaultBranch);
-  if (!ci.ok) return { ok: false, stage: 'ci-check-failed', error: `cannot read CI state for ${target.repo}, so no worker is launched: ${ci.error}` };
-  if (ci.enabledWorkflows === 0) return { ok: false, stage: 'ci-disabled', error: `${target.repo} has no enabled CI workflow; enable one before unattended workers run there` };
-  const ageDays = ci.lastRunAt ? (Date.now() - Date.parse(ci.lastRunAt)) / 86400000 : Infinity;
-  if (!(ageDays <= cfg.ciMaxAgeDays)) return { ok: false, stage: 'ci-stale', error: `${target.repo}: ${ci.lastRunAt ? `the last workflow run on ${target.defaultBranch} was ${ci.lastRunAt}` : `no workflow run on ${target.defaultBranch}`}, outside the ${cfg.ciMaxAgeDays}-day window (ciMaxAgeDays)` };
+  // A target declared ci.gate "external" is verified elsewhere; its verifiedBy
+  // goes to the worker and onto the session record instead of this check.
+  const ciGate = (target.ci && target.ci.gate) || 'github-actions';
+  if (ciGate === 'github-actions') {
+    const ci = tracker.ciStatus(target.repo, target.defaultBranch);
+    if (!ci.ok) return { ok: false, stage: 'ci-check-failed', error: `cannot read CI state for ${target.repo}, so no worker is launched: ${ci.error}` };
+    if (ci.enabledWorkflows === 0) return { ok: false, stage: 'ci-disabled', error: `${target.repo} has no enabled CI workflow; enable one before unattended workers run there` };
+    const ageDays = ci.lastRunAt ? (Date.now() - Date.parse(ci.lastRunAt)) / 86400000 : Infinity;
+    if (!(ageDays <= cfg.ciMaxAgeDays)) return { ok: false, stage: 'ci-stale', error: `${target.repo}: ${ci.lastRunAt ? `the last workflow run on ${target.defaultBranch} was ${ci.lastRunAt}` : `no workflow run on ${target.defaultBranch}`}, outside the ${cfg.ciMaxAgeDays}-day window (ciMaxAgeDays)` };
+  }
+  const ciRecord = ciGate === 'external' ? { gate: 'external', verifiedBy: target.ci.verifiedBy } : { gate: 'github-actions' };
 
   if (req.dryRun) {
-    return { ok: true, dryRun: true, session: { issue: req.issue.number, id: req.id, branch: req.sc.branch, worktree: scope.worktreePath(cfg.worktreesDir, target.repo, req.id), target: target.repo, tier: req.tier || 'default', mode } };
+    return { ok: true, dryRun: true, session: { issue: req.issue.number, id: req.id, branch: req.sc.branch, worktree: scope.worktreePath(cfg.worktreesDir, target.repo, req.id), target: target.repo, tier: req.tier || 'default', mode, ci: ciRecord } };
   }
 
   const prep = prepareWorktree(cfg, tracker, { target, id: req.id, sc: req.sc });
@@ -185,7 +194,7 @@ function launch(cfg, tracker, store, req, persist) {
   const record = {
     issue: req.issue.number, id: req.id, worker: req.workerId, mode, target: target.repo,
     branch: req.sc.branch, worktree: prep.worktree, attempt, tier: req.tier || 'default',
-    sessionId, pid: null, procStart: null,
+    sessionId, pid: null, procStart: null, ci: ciRecord,
     logPath: store.logPath(req.issue.number, attempt), exitPath: store.exitPath(req.issue.number, attempt),
     startedAt: new Date().toISOString(), launchHeadSha: prep.headSha,
     issueHash: crypto.createHash('sha256').update(`${req.issue.title}\n${req.issue.body || ''}`).digest('hex'),
