@@ -2,7 +2,7 @@
   "repo": "acme/program-host",
   "epic": 1,
   "targets": [
-    { "repo": "acme/api", "localPath": "../api", "defaultBranch": "main" }
+    { "repo": "acme/api", "localPath": "../api", "defaultBranch": "main", "ci": { "gate": "github-actions" } }
   ],
   "workers": {
     "a": { "mode": "local" },

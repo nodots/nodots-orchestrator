@@ -62,6 +62,10 @@ Every cycle ends in exactly one outcome (the cycle contract):
     one; nothing was launched for that target.
   - `launch-ci-stale`: the target's default branch has no workflow run inside
     `ciMaxAgeDays` (default 14). Get CI running again, or raise the window.
+    If the target is verified outside GitHub Actions, set its
+    `ci: { "gate": "external", "verifiedBy": "<what verifies it>" }` in
+    `fleet.config.json` instead; that is a statement about where proof comes
+    from, not a way to silence the alarm.
   - `launch-ci-check-failed`: the CI state could not be read (auth, network,
     API error). The launch is refused, never assumed healthy.
   - `escalation-cap`: a package failed `maxEscalations` times. Read its log
