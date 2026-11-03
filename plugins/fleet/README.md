@@ -68,9 +68,12 @@ fleet cycle --apply
   - `verify.reverted` not true raises `verify-not-reverted` and **latches the
     fleet**: nothing launches or verifies until `fleet resume --reason <text>`.
   - An open `[READY]:` PR on a verify target with no stamp at its head (a push
-    after the stamp) is retitled `[VERIFY]:` and queued again.
-  - `verify-unreachable` (the record is kept), `verify-refused`,
-    `verify-not-reverted`, `verify-bad-sha`, `verify-post-failed`,
+    after the stamp) is retitled `[VERIFY]:` and queued again. A `[VERIFY]:` PR
+    with a stamp at its head is retitled `[READY]:`.
+  - When the target's PR list fails (`pulls-failed`), the stage skips the
+    target and keeps the record.
+  - `verify-unreachable` and `verify-pr-missing` (the record is kept),
+    `verify-refused`, `verify-not-reverted`, `verify-bad-sha`, `verify-post-failed`,
     `verify-write-failed` and `verify-redispatch-failed` make the cycle an
     alarm. `verify-stale` does not.
   - A dry run makes no POST, comment or title edit; it reports what it would

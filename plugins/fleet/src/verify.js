@@ -90,9 +90,9 @@ function inFlightCount(cfg, state) {
 }
 
 // stage(ctx) -> { requests: [{ session, next: 'verify-failed', reason }], verifying, latched }
-// ctx: { cfg, state, apply, tracker, pulls, sync, issues, at, alarm, r, http? }
+// ctx: { cfg, state, apply, tracker, pulls, pullsFailed (Set of repos), sync, issues, at, alarm, r, http? }
 // Mutates state.verify, state.latched (apply only) and r (verify notes, movement).
-function stage({ cfg, state, apply, tracker, pulls, sync, issues, at, alarm, r, http = request }) {
+function stage({ cfg, state, apply, tracker, pulls, pullsFailed = new Set(), sync, issues, at, alarm, r, http = request }) {
   const out = { requests: [], verifying: 0, latched: false };
   const targets = cfg.targets.filter(t => t.verify);
   if (!targets.length) return out;
@@ -111,19 +111,34 @@ function stage({ cfg, state, apply, tracker, pulls, sync, issues, at, alarm, r, 
     const pkgOf = n => synced.find(i => i.pr && i.pr.number === n && i.repo === t.repo) || null;
     const idOf = si => (si ? scope.packageId(si.title) || `#${si.number}` : null);
 
-    // A push after [READY] voids the stamp; the PR goes back to the queue.
+    // Without this target's PR list nothing here can be judged: a finished
+    // result would read as a closed PR. The record is kept for next cycle.
+    if (pullsFailed.has(t.repo)) {
+      if (vs.inFlight) out.verifying += 1;
+      note(vs.inFlight ? vs.inFlight.pr : '-', 'skipped', 'the PR list for this target failed (pulls-failed)');
+      continue;
+    }
+
+    // The title follows the stamp. A push after [READY] voids the stamp, so
+    // the PR goes back to the queue as [VERIFY]:; a [VERIFY]: PR whose head
+    // carries a current stamp (a retitle that failed, or a comment read that
+    // came back empty last cycle) goes to [READY]:.
     for (const si of synced) {
       if (!si.pr || si.repo !== t.repo) continue;
       const p = prOf(si.pr.number);
-      if (!isOpen(p) || !/^\[READY\]:/.test(String(p.title || ''))) continue;
-      if (currentStamp({ headSha: p.headRefOid, comments: si.pr.comments || [] })) continue;
-      const title = String(p.title).replace(/^\[READY\]:/, '[VERIFY]:');
+      if (!isOpen(p)) continue;
+      const ready = /^\[READY\]:/.test(String(p.title || ''));
+      if (!ready && !/^\[VERIFY\]:/.test(String(p.title || ''))) continue;
+      const stamped = Boolean(currentStamp({ headSha: p.headRefOid, comments: si.pr.comments || [] }));
+      if (ready === stamped) continue;
+      const title = ready ? String(p.title).replace(/^\[READY\]:/, '[VERIFY]:') : String(p.title).replace(/^\[VERIFY\]:/, '[READY]:');
+      const why = ready ? `no stamp at head ${short(p.headRefOid)}` : `stamped at head ${short(p.headRefOid)}`;
       acted.add(p.number);
-      if (!apply) { note(p.number, 'would-requeue', `no stamp at head ${short(p.headRefOid)}`); continue; }
+      if (!apply) { note(p.number, ready ? 'would-requeue' : 'would-retitle-ready', why); continue; }
       const w = tracker.editPrTitle(t.repo, p.number, title);
-      if (!w.ok) { alarm('verify-write-failed', `retitle of ${t.repo}#${p.number} to [VERIFY]: failed: ${w.error}`, si.number); continue; }
+      if (!w.ok) { alarm('verify-write-failed', `retitle of ${t.repo}#${p.number} to ${title.split(' ')[0]} failed: ${w.error}`, si.number); continue; }
       p.title = title;
-      note(p.number, 'requeued', `no stamp at head ${short(p.headRefOid)}; retitled [VERIFY]:`);
+      note(p.number, ready ? 'requeued' : 'retitled-ready', `${why}; retitled ${title.split(' ')[0]}`);
     }
 
     // The run in flight: unfinished, leave it; unreachable, keep it; finished, act.
@@ -203,14 +218,20 @@ function stage({ cfg, state, apply, tracker, pulls, sync, issues, at, alarm, r, 
         note(f.pr, 'not-reverted', `run ${f.runId}`);
         return;
       }
-      if (!isOpen(p)) { alarm('verify-stale', `run ${f.runId}: PR #${f.pr} is no longer open; the result is discarded`, issue); note(f.pr, 'stale', 'PR not open'); return; }
-      if (typeof ran !== 'string' || !SHA.test(ran)) {
+      // A PR missing from the list (one past the page limit) is not a closed
+      // one: keep the record and read the result again next cycle.
+      if (!p) { vs.inFlight = f; alarm('verify-pr-missing', `run ${f.runId} finished, but PR #${f.pr} is not in the PR list of ${t.repo}; the record is kept`, issue); return; }
+      if (!isOpen(p)) { alarm('verify-stale', `run ${f.runId}: PR #${f.pr} is ${p.state}, not open; the result is discarded`, issue); note(f.pr, 'stale', `PR ${p.state}`); return; }
+      // The full sha is required to stamp. A failure is acted on without it,
+      // at the head the run was posted for.
+      const shaOk = typeof ran === 'string' && SHA.test(ran);
+      if (!shaOk && rec.exitCode === 0) {
         alarm('verify-bad-sha', `run ${f.runId} for PR #${f.pr} reports verify.headSha ${JSON.stringify(ran)}, not a full 40-character lowercase sha; not stamped`, issue);
         vs.failed[f.pr] = { headSha: f.headSha, kind: 'bad-sha', runId: f.runId, at };
         note(f.pr, 'bad-sha', `verify.headSha ${JSON.stringify(ran)}`);
         return;
       }
-      if (ran !== p.headRefOid || f.headSha !== p.headRefOid) {
+      if (f.headSha !== p.headRefOid || (shaOk && ran !== p.headRefOid)) {
         alarm('verify-stale', `run ${f.runId} verified ${short(ran)} (posted at ${short(f.headSha)}), PR #${f.pr} head is now ${short(p.headRefOid)}; the result is discarded and the PR stays queued`, issue);
         note(f.pr, 'stale', `verified ${short(ran)}, head ${short(p.headRefOid)}`);
         return;
@@ -223,7 +244,7 @@ function stage({ cfg, state, apply, tracker, pulls, sync, issues, at, alarm, r, 
         const title = String(p.title || '').replace(/^\[VERIFY\]:/, '[READY]:');
         if (title !== p.title) {
           const e = tracker.editPrTitle(t.repo, f.pr, title);
-          if (!e.ok) alarm('verify-write-failed', `retitle of ${t.repo}#${f.pr} to [READY]: failed: ${e.error}`, issue);
+          if (!e.ok) alarm('verify-write-failed', `retitle of ${t.repo}#${f.pr} to [READY]: failed: ${e.error}; retried next cycle from the stamp`, issue);
           else p.title = title;
         }
         r.movement.push({ package: id, issue, artifact: { type: 'verified', ref: f.pr, detail: `${SUITE_LABEL} @ ${short(ran)}` } });
@@ -235,9 +256,9 @@ function stage({ cfg, state, apply, tracker, pulls, sync, issues, at, alarm, r, 
       const first = tests.find(x => x && x.outcome === 'unexpected');
       const reason = `verify-failed: ${first ? oneLine(first.title) : `exitCode ${rec.exitCode}`}`;
       if (!apply) { note(f.pr, 'would-fail', reason); return; }
-      const c = tracker.prComment(t.repo, f.pr, `Lab verification failed at ${ran} (${SUITE_LABEL}, exitCode ${rec.exitCode}).\n\n${summary(rec)}`);
+      const c = tracker.prComment(t.repo, f.pr, `Lab verification failed at ${p.headRefOid} (${SUITE_LABEL}, exitCode ${rec.exitCode}).\n\n${summary(rec)}`);
       if (!c.ok) { vs.inFlight = f; alarm('verify-write-failed', `failure comment on ${t.repo}#${f.pr} failed: ${c.error}; the result is read again next cycle`, issue); return; }
-      vs.failed[f.pr] = { headSha: ran, kind: 'failed', runId: f.runId, reason, at };
+      vs.failed[f.pr] = { headSha: p.headRefOid, kind: 'failed', runId: f.runId, reason, at };
       note(f.pr, 'failed', reason);
       // The worker that opened the PR is sent back at the same tier: a test
       // failure is not a silent worker. The cycle counts it toward maxEscalations.

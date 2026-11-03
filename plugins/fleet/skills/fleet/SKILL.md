@@ -90,6 +90,8 @@ Every cycle ends in exactly one outcome (the cycle contract):
     until its head changes.
   - `verify-bad-sha`: the run record's `verify.headSha` is not a full
     40-character lowercase sha, so it was not stamped. Fix the runner.
+  - `verify-pr-missing`: a run finished for a PR that is not in the target's
+    PR list (past the page limit). The record is kept; raise `FLEET_PAGE_LIMIT`.
   - `verify-post-failed`, `verify-write-failed`, `verify-redispatch-failed`:
     the POST got an unexpected answer, a PR comment or title edit failed, or a
     failed PR's worker could not be re-dispatched (no closed session on this

@@ -135,6 +135,11 @@ write_config 99
 
 # --- pass stamps at the run's full sha, on the target repo, and retitles; other 409 comments, skips, moves on
 vscript "s.results['201']={finished:true,exitCode:0,reverted:true,tests:[{title:'opens the order',status:'passed',outcome:'expected'},{title:'prints the label',status:'passed',outcome:'flaky'}],selection:{specs:['orders.spec.ts']},deployed:['dbo.usp_Orders.sql']}; s.refuse['200']='PR #200 cannot be verified: it changes dbo.Orders.Table.sql'"
+# A dry run over the finished pass: it would stamp, and writes nothing.
+C0=$(cat "$TMP/gh/comments.json"); W0=$(cat "$TMP/gh/writes.log"); N_POST=$(posts)
+OUT=$(fleet cycle --json 2>/dev/null)
+assert_contains "$OUT" '"action": "would-stamp"' "dry run: a finished pass is reported as would-stamp"
+assert_eq "$C0|$W0|$N_POST" "$(cat "$TMP/gh/comments.json")|$(cat "$TMP/gh/writes.log")|$(posts)" "dry run: over a finished pass, no comment, no title edit, no POST"
 cycle
 STAMPC=$(comments_on 'acme/api#201')
 assert_eq "VERIFIED: lab-impacted @ $H201" "$(printf '%s' "$STAMPC" | head -1)" "pass: the comment's first line is the stamp at the full 40-hex sha"
@@ -175,7 +180,9 @@ assert_eq "[VERIFY]: T1.2 done" "$(pr_field 202 title)" "moved head: the title s
 assert_ne "alarm" "$(outcome)" "verify-stale alone does not make the outcome alarm"
 assert_eq "$N_POST" "$(posts)" "moved head: nothing else is posted this cycle (#200 refused at its head)"
 vscript "s.results['202']={finished:true,exitCode:1,reverted:true,tests:[{title:'logs in',status:'failed',outcome:'unexpected'},{title:'logs out',status:'passed',outcome:'expected'}]}"
+N_POST=$(posts)
 cycle
+assert_eq "$((N_POST + 1))" "$(posts)" "moved head: the next cycle sends one POST"
 assert_eq "pr=202 202" "$(last_post)" "moved head: the next cycle posts the same PR again"
 
 # --- a fail comments, re-dispatches at the same tier with the reason, and skips that head
@@ -197,7 +204,9 @@ assert_eq "$N_POST" "$(posts)" "fail: the next cycle skips the PR at the failed 
 touch "$TMP/gate"; wait_exit 12-2
 assert_ne "$NEW202" "$(pr_field 202 headRefOid)" "pr-update: the second attempt moved the PR head"
 assert_eq "$(pr_field 202 headRefOid)" "$(git --git-dir "$TMP/api.git" rev-parse feat/t1-2-second)" "pr-update: the new head is pushed to the branch"
+N_POST=$(posts)
 cycle
+assert_eq "$((N_POST + 1))" "$(posts)" "fail: once the head changes, one POST is sent"
 assert_eq "pr=202 202" "$(last_post)" "fail: once the head changes, the PR is posted again"
 
 # --- at maxEscalations it holds with escalation-cap -------------------------------
@@ -236,7 +245,9 @@ assert_eq "78" "$EXIT" "not reverted: the next applied cycle refuses (exit 78)"
 assert_eq "$N_REQ" "$(requests)" "not reverted: a latched cycle makes no POST or GET with a PR waiting"
 fleet resume --reason x >/dev/null 2>&1
 vscript "s.results['200']={finished:true,exitCode:0,reverted:true,headSha:'abc1234',tests:[]}"
+N_POST=$(posts)
 cycle
+assert_eq "$((N_POST + 1))" "$(posts)" "not reverted: after fleet resume the next cycle sends one POST"
 assert_eq "pr=200 202" "$(last_post)" "not reverted: after fleet resume the next cycle posts"
 
 # --- a non-hex or short sha is not stamped ------------------------------------------
@@ -249,12 +260,45 @@ assert_eq "[VERIFY]: T1.1 done" "$(pr_field 200 title)" "bad sha: the title stay
 # --- a [READY]: PR pushed after its stamp is retitled [VERIFY]: and queued again ----
 NEW201=$(printf 'd%.0s' $(seq 40))
 set_head 201 "$NEW201"
+C0=$(cat "$TMP/gh/comments.json"); W0=$(cat "$TMP/gh/writes.log")
+OUT=$(fleet cycle --json 2>/dev/null)
+assert_contains "$OUT" '"action": "would-requeue"' "dry run: an unstamped [READY]: PR is reported as would-requeue"
+assert_eq "$C0|$W0|[READY]: V1 done" "$(cat "$TMP/gh/comments.json")|$(cat "$TMP/gh/writes.log")|$(pr_field 201 title)" "dry run: no title edit and no comment"
 cycle
 assert_eq "[VERIFY]: V1 done" "$(pr_field 201 title)" "push after READY: the PR is retitled [VERIFY]:"
 assert_contains "$(cat "$TMP/gh/writes.log")" "title acme/api 201 [VERIFY]: V1 done" "push after READY: writes.log records the retitle"
 cycle
 assert_contains "$(node -e "console.log((require('$TMP/gh/labels.json')[11]||[]).join(' '))")" "cell:awaiting-lab" "push after READY: sync derives cell:awaiting-lab"
 assert_eq "pr=201 202" "$(last_post)" "push after READY: the PR is queued and posted again"
+
+# --- stage() over fakes: a failed PR list, a PR missing from it, a fail with a short sha
+UNIT=$(node -e "
+const verify=require('$SRC/verify.js');
+const H='e'.repeat(40);
+const cfg={scriptsDir:'$PLUGIN/skills/agentic-work-packages/assets/scripts',targets:[{repo:'acme/api',verify:{kind:'lab-runner',url:'http://127.0.0.1:1',suite:'s'}}]};
+const sync={rows:[],state:{issues:[{number:12,title:'T1.2 x',repo:'acme/api',pr:{number:202,title:'[VERIFY]: T1.2',state:'OPEN',headSha:H,comments:[]}}]}};
+const rec={finishedAt:'t',exitCode:1,tests:[{title:'logs in',status:'failed',outcome:'unexpected'}],verify:{headSha:'abc',reverted:true}};
+function run(pulls,pullsFailed){
+  const state={sessions:{12:{issue:12,id:'T1.2',status:'closed'}},verify:{'acme/api':{inFlight:{pr:202,runId:'run-1',headSha:H,issue:12},failed:{}}}};
+  const writes=[]; const alarms=[];
+  const tracker={prComment:(repo,n,b)=>{writes.push('comment '+repo+' '+n);return{ok:true}},editPrTitle:(repo,n,t)=>{writes.push('title '+n);return{ok:true}}};
+  const r={verify:[],movement:[]};
+  const out=verify.stage({cfg,state,apply:true,tracker,pulls,pullsFailed,sync,issues:[],at:'now',alarm:c=>alarms.push(c),r,http:()=>({ok:true,status:200,json:rec,text:''})});
+  return {out,state,writes,alarms};
+}
+const pr={number:202,repo:'acme/api',state:'OPEN',title:'[VERIFY]: T1.2',headRefOid:H};
+const a=run([],new Set(['acme/api']));
+const b=run([],new Set());
+const c=run([pr],new Set());
+sync.state.issues[0].pr.comments=['VERIFIED: lab-impacted @ '+H];
+const d=run([{...pr}],new Set(['acme/other']));
+console.log([
+  d.writes[0]==='title 202',
+  a.state.verify['acme/api'].inFlight!==null && a.out.verifying===1 && a.writes.length===0,
+  b.state.verify['acme/api'].inFlight!==null && b.alarms.includes('verify-pr-missing') && b.writes.length===0,
+  c.writes.join(',')==='comment acme/api 202' && c.out.requests.length===1 && c.out.requests[0].reason==='verify-failed: logs in' && c.state.verify['acme/api'].failed[202].headSha===H && !c.alarms.includes('verify-bad-sha'),
+].join(' '));")
+assert_eq "true true true true" "$UNIT" "unit: a [VERIFY]: PR stamped at its head is retitled [READY]:; a failed PR list keeps the record; a PR missing from the list keeps it; a fail with a short sha is still commented, re-dispatched and held at the head"
 
 # --- a config without verify renders the report byte for byte as before --------
 GOLDEN='"<!-- fleet-cycle:c1 -->\n## fleet cycle c1 — EXHAUSTION\n\n_2026-11-02T00:00:00Z_\n\n**Counts** (read live at the end of the cycle)\nopen 5 · queued 1 · active 2 · awaiting-review 1 · blocked 0 · merged 3 · live sessions 2 · WIP free 1/4\n\n**Alarms**\n- wip-cap (#12): T1.2 waits\n\nstreak 1"'

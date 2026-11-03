@@ -118,7 +118,8 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
 
     // 4. reap first, so a slot freed this cycle can be refilled below.
     const pulls = [];
-    for (const t of cfg.targets) { const p = tracker.listPulls(t.repo); if (p.ok) pulls.push(...p.pulls.map(x => ({ ...x, repo: t.repo }))); else alarm('pulls-failed', p.error); }
+    const pullsFailed = new Set();
+    for (const t of cfg.targets) { const p = tracker.listPulls(t.repo); if (p.ok) pulls.push(...p.pulls.map(x => ({ ...x, repo: t.repo }))); else { alarm('pulls-failed', p.error); pullsFailed.add(t.repo); } }
     const reaped = reapMod.reap(cfg, state, pulls, Date.now(), s => { const x = synced.get(s.issue); return Boolean(x && x.blockerOnBranch); });
     r.reaped = reaped.reaped;
     for (const x of reaped.reaped) {
@@ -133,7 +134,7 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // 4b. verify: one run in flight per verify target; a failure's re-dispatch
     // joins this cycle's launch requests below.
     const vr = only === null
-      ? verifyMod.stage({ cfg, state, apply, tracker, pulls, sync, issues, at, alarm, r })
+      ? verifyMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync, issues, at, alarm, r })
       : { requests: [], verifying: verifyMod.inFlightCount(cfg, state), latched: false };
     reaped.requests.push(...vr.requests);
 
