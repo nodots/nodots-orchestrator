@@ -13,8 +13,9 @@ fleet cycle --apply
   with `--epic <epic>`, so only the config's epic's packages are derived.
 - **promote** adds `cell:queued` to an `agent-ready` package once every
   `dependsOn` branch has a merged PR.
-- **assign** hands queued packages to worker ids as `worker:<id>` labels, within
-  the WIP cap and the contract-change holds (the plugin's script).
+- **assign** hands the epic's queued packages to worker ids as `worker:<id>`
+  labels, within the WIP cap and the contract-change holds (the plugin's
+  script).
 - **launch**, for each queued package owned by a local worker id: a git
   worktree on the package branch, the issue's `SCOPE.json` committed as
   `<ID>: scope`, a plain push as the claim, then a detached
@@ -49,14 +50,15 @@ fleet cycle --apply
 
 A cycle acts on one epic: the packages whose header line says
 `**Part of** #<epic>`, the same rule `sync-cells.sh --epic` applies. Other
-programs in the same host repo are neither synced, promoted nor launched. Two
-limits follow:
+programs in the same host repo are neither synced, promoted, assigned nor
+launched: fleet passes `assign-cells.sh` the epic's open packages through
+`--state`, so the WIP cap counts only the epic's in-flight packages.
+`fleet doctor` prints how many open packages in the host repo belong to the
+epic and how many do not. One limit follows:
 
 - A `dependsOn` branch that belongs to another epic is never seen as merged,
   because promotion reads merged branches from the epic's sync state. Keep
   dependencies inside the epic.
-- `assign-cells.sh` still counts load across the whole host repo, so another
-  program's in-flight packages use up the WIP cap.
 
 No daemon. State is the tracker plus `<stateDir>/state.json` (sessions,
 dispatch history, streak), written atomically. A crash mid-cycle is recovered

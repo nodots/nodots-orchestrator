@@ -1,0 +1,33 @@
+{
+  "feature": "k0-4-epic-scope",
+  "project": "nodots-orchestrator",
+  "branch": "feat/k0-4-epic-scope",
+  "allowedPaths": [
+    "plugins/fleet/src/scope.js",
+    "plugins/fleet/src/scripts.js",
+    "plugins/fleet/src/tracker.js",
+    "plugins/fleet/bin/fleet.js",
+    "plugins/fleet/tests/epic-scope.test.sh",
+    "plugins/fleet/README.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/sync-cells.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/sync-cells.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/report.js",
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".github/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "filter the package set by the Part of line before every stage; sync-cells over that set",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
