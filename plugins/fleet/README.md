@@ -43,7 +43,16 @@ fleet cycle --apply
   model tier up, up to `maxEscalations`. A PR belongs to a package only when
   its head branch equals the package branch (title and body are ignored). A
   parked session whose blocker is removed is relaunched only if the package
-  has no PR in any state; otherwise it is closed as `pr`.
+  has no PR in any state; otherwise it is closed as `pr`. A running session
+  whose process is gone and which left no exit file was killed from outside
+  (the launcher's wrapper writes the exit file on every exit it survives): it
+  is reaped as `vanished`, relaunched at the same attempt under alarm
+  `worker-vanished` (package, pid, how long it lived, log size), and is not
+  movement, so the no-movement streak still rises. A session reap killed on
+  timeout is not vanished; it escalates as `timeout`. A second vanishing of the
+  same package within `sessionTimeoutMinutes` holds it with
+  `worker-vanished-repeat` and launches nothing; like `escalation-cap`, the
+  hold stays until the coordinator acts.
 - **verify** runs for each target with `verify`, after reap and before launch,
   and keeps one verifier run in flight per target (`src/verify.js`):
   - A run recorded in `state.json` (`verify.<repo>.inFlight`) is read with
@@ -99,6 +108,12 @@ epic and how many do not. One limit follows:
 No daemon. State is the tracker plus `<stateDir>/state.json` (sessions,
 dispatch history, streak), written atomically. A crash mid-cycle is recovered
 on the next pass from the tracker and the worktrees.
+
+Running a cycle from a supervisor requires the workers to outlive it. Under
+systemd, set `KillMode=process` on the unit: the default
+`KillMode=control-group` kills every worker a `Type=oneshot` cycle launched as
+soon as the cycle exits, and each later cycle reports `worker-vanished`.
+`DAEMON.md` has a complete unit.
 
 ## Install
 
