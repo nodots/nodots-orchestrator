@@ -54,12 +54,15 @@ function targetFor(cfg, issue) {
 // A target with verify (config.js) admits one verifier run at a time, so the
 // worker stops at a "[VERIFY]:" PR the queue picks up. These lines replace the
 // contract's "[READY]:" title and VERIFIED stamp; "[READY]" is never said.
-function buildPrompt(cfg, { issue, id, sc, workerId, target, attempt, reason, handoffPresent }) {
+// The worker cannot read outside its worktree, so the in-repo contract wins
+// when the worktree has one; the plugin's copy is named only when it does not.
+function buildPrompt(cfg, { issue, id, sc, workerId, target, attempt, reason, handoffPresent, worktree }) {
   const queued = Boolean(target.verify);
   const title = queued ? `[VERIFY]: ${id}` : `[READY]: ${id}`;
+  const inRepo = Boolean(worktree) && fs.existsSync(path.join(worktree, '.claude', 'worker-contract.md'));
   const lines = [
     `You are worker ${workerId} executing work package ${id} (issue #${issue.number} in ${cfg.repo}) in repository ${target.repo}.`,
-    `Follow the worker contract at ${cfg.contractPath}, in order. It governs everything below.`,
+    `Follow the worker contract at ${inRepo ? '.claude/worker-contract.md in this worktree' : cfg.contractPath}, in order. It governs everything below.`,
     `Your lane is .agentic/cells/${sc.branch}/SCOPE.json in this worktree. Execution pattern: ${(sc.execution && sc.execution.pattern) || 'solo'}.`,
     `Read the package with: gh issue view ${issue.number} --repo ${cfg.repo}`,
     `Branch ${sc.branch} is checked out and already pushed. Commit on it. Open the PR against ${target.defaultBranch} with a title starting "${title}" and a body containing "Closes #${issue.number}".`,
@@ -120,16 +123,31 @@ function prepareWorktree(cfg, tracker, { target, id, sc }) {
     const rel = path.join('.agentic', 'cells', ...sc.branch.split('/'), 'SCOPE.json');
     const want = JSON.stringify(sc, null, 2) + '\n';
     let have = null; try { have = fs.readFileSync(path.join(worktree, rel), 'utf8'); } catch { /* absent */ }
-    let recut = false;
-    if (have !== want) {
+    const recut = have !== want;
+    if (recut) {
       fs.mkdirSync(path.dirname(path.join(worktree, rel)), { recursive: true });
       fs.writeFileSync(path.join(worktree, rel), want);
+    }
+    // A lane on disk is not a claim. A launch that died before its commit (an
+    // ignored .agentic/, say) left the file untracked, so commit it here: a
+    // never-committed lane as "<ID>: scope", like a new worktree's, and a lane
+    // that changed against HEAD as a re-cut. Only the lane is committed.
+    const tracked = g(['ls-files', '--error-unmatch', '--', rel], worktree).status === 0;
+    if (!tracked || g(['diff', '--quiet', 'HEAD', '--', rel], worktree).status !== 0) {
       const a = g(['add', '--', rel], worktree);
-      const c = a.status === 0 ? g(['-c', 'user.name=fleet', '-c', 'user.email=fleet@nodots.invalid', 'commit', '-q', '-m', `${id}: scope re-cut`], worktree) : a;
-      if (c.status !== 0) return { ok: false, stage: 'recut', error: c.error || c.stderr.trim() };
-      const p = g(['push', 'origin', sc.branch], worktree);
-      if (p.status !== 0) return { ok: false, stage: 'push', error: p.error || p.stderr.trim(), worktree };
-      recut = true;
+      if (a.status !== 0) return { ok: false, stage: 'commit', error: a.error || a.stderr.trim() };
+      const c = g(['-c', 'user.name=fleet', '-c', 'user.email=fleet@nodots.invalid', 'commit', '-q', '-m', tracked ? `${id}: scope re-cut` : `${id}: scope`, '--', rel], worktree);
+      if (c.status !== 0) return { ok: false, stage: tracked ? 'recut' : 'commit', error: c.error || c.stderr.trim() };
+    }
+    // Push when the branch does not track its own remote branch, or is ahead
+    // of it. Plain push, never forced: a rejection is someone else's claim.
+    const u = g(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], worktree);
+    const ownUpstream = u.status === 0 && u.stdout.trim() === `origin/${sc.branch}`;
+    const ahead = ownUpstream ? g(['rev-list', '--count', '@{u}..HEAD'], worktree) : null;
+    if (ahead && ahead.status !== 0) return { ok: false, stage: 'worktree', error: ahead.error || ahead.stderr.trim() };
+    if (!ownUpstream || Number(ahead.stdout.trim()) > 0) {
+      const p = g(['push', '-u', 'origin', sc.branch], worktree);
+      if (p.status !== 0) return { ok: false, stage: 'claim', error: `push of adopted ${sc.branch} was rejected; another worker may own it: ${p.error || p.stderr.trim()}`, worktree };
     }
     const h = g(['rev-parse', 'HEAD'], worktree);
     return { ok: true, worktree, headSha: h.stdout.trim(), created: false, adopted: true, recut, remoteExisted: exists.exists };
@@ -199,7 +217,7 @@ function launch(cfg, tracker, store, req, persist) {
   const sessionId = crypto.randomUUID();
   const handoffPresent = fs.existsSync(path.join(prep.worktree, 'HANDOFF.md'))
     || fs.existsSync(path.join(prep.worktree, '.agentic', 'cells', ...req.sc.branch.split('/'), 'HANDOFF.md'));
-  const prompt = buildPrompt(cfg, { issue: req.issue, id: req.id, sc: req.sc, workerId: req.workerId, target, attempt, reason: req.reason, handoffPresent });
+  const prompt = buildPrompt(cfg, { issue: req.issue, id: req.id, sc: req.sc, workerId: req.workerId, target, attempt, reason: req.reason, handoffPresent, worktree: prep.worktree });
   const args = buildArgs(cfg, { prompt, tier: req.tier, sessionId });
 
   const record = {
