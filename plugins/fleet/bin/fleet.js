@@ -10,6 +10,8 @@
  *   fleet status [--json]                               local state and live sessions, read-only
  *   fleet resume --reason <text>                        clear the stop latch
  *   fleet doctor                                        binaries, plugin, labels, contract, hooks
+ *   fleet daemon --config <a.json> [--config <b.json> ...] [--interval <minutes>]
+ *                                                       cycle --apply per config on an interval and on worker exit
  *
  * Config: --config, else FLEET_CONFIG, else ./fleet.config.json.
  * Exit codes: 0 ok · 1 a label write failed · 64 usage · 69 missing binary ·
@@ -29,13 +31,15 @@ const trust = require('../src/trust');
 const scope = require('../src/scope');
 
 function parse(argv) {
-  const out = { _: [], flags: {} };
+  // flags.config keeps the last --config, as before; configs keeps every one,
+  // for the daemon.
+  const out = { _: [], flags: {}, configs: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const k = a.slice(2);
       const next = argv[i + 1];
-      if (['config', 'reason', 'issue'].includes(k)) { out.flags[k] = next; i++; }
+      if (['config', 'reason', 'issue', 'interval'].includes(k)) { out.flags[k] = next; i++; if (k === 'config') out.configs.push(next); }
       else out.flags[k] = true;
     } else out._.push(a);
   }
@@ -43,7 +47,7 @@ function parse(argv) {
 }
 
 function usage(code = EXIT.usage) {
-  process.stderr.write(fs.readFileSync(__filename, 'utf8').split('\n').slice(4, 17).map(l => l.replace(/^ \*\s?/, '')).join('\n') + '\n');
+  process.stderr.write(fs.readFileSync(__filename, 'utf8').split('\n').slice(4, 19).map(l => l.replace(/^ \*\s?/, '')).join('\n') + '\n');
   process.exit(code);
 }
 
@@ -54,9 +58,22 @@ function config(flags) {
 }
 
 function main() {
-  const { _: pos, flags } = parse(process.argv.slice(2));
+  const { _: pos, flags, configs } = parse(process.argv.slice(2));
   const cmd = pos[0];
   if (!cmd || flags.help || cmd === 'help') usage(cmd ? EXIT.ok : EXIT.usage);
+
+  if (cmd === 'daemon') {
+    // Runs until SIGTERM/SIGINT; each cycle is `fleet cycle --apply` for one config.
+    const files = configs.length ? configs : [process.env.FLEET_CONFIG || 'fleet.config.json'];
+    if (files.some(f => f === undefined)) { process.stderr.write('fleet daemon: --config needs a file\n'); process.exit(EXIT.usage); }
+    if ('interval' in flags && flags.interval === undefined) { process.stderr.write('fleet daemon: --interval needs a number of minutes\n'); process.exit(EXIT.usage); }
+    try { require('../src/daemon').start({ files, intervalMinutes: flags.interval, fleetBin: __filename }); }
+    catch (e) {
+      if (e.code !== 'EUSAGE' && e.code !== 'ECONFIG') throw e;
+      process.stderr.write(`${e.message}\n`); process.exit(EXIT.usage);
+    }
+    return;
+  }
 
   if (cmd === 'cycle') {
     const cfg = config(flags);

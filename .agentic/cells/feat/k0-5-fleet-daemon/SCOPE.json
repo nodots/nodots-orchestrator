@@ -1,0 +1,34 @@
+{
+  "feature": "k0-5-fleet-daemon",
+  "project": "nodots-orchestrator",
+  "branch": "feat/k0-5-fleet-daemon",
+  "allowedPaths": [
+    "plugins/fleet/src/daemon.js",
+    "plugins/fleet/bin/fleet.js",
+    "plugins/fleet/tests/daemon.test.sh",
+    "plugins/fleet/DAEMON.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/src/report.js",
+    "plugins/fleet/src/tracker.js",
+    "plugins/fleet/src/store.js",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/**",
+    "plugins/agentic-work-packages/**",
+    "**/plugin.json",
+    ".github/**"
+  ],
+  "dependsOn": [
+    "feat/k0-4-epic-scope"
+  ],
+  "estimatedScope": "a scheduler around the existing cycle: interval and exit-file triggers per config, no overlap, clean stop",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
