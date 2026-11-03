@@ -26,6 +26,7 @@ const reapMod = require('../src/reap');
 const report = require('../src/report');
 const { run, isAlive } = require('../src/exec');
 const trust = require('../src/trust');
+const scope = require('../src/scope');
 
 function parse(argv) {
   const out = { _: [], flags: {} };
@@ -150,6 +151,15 @@ function main() {
     } else check(false, `gh label list ${cfg.repo}`, labels.error || labels.stderr.trim());
     const epic = tracker.viewIssue(cfg.repo, cfg.epic);
     check(epic.ok, `epic #${cfg.epic}`, epic.ok ? epic.issue.title : epic.error);
+    // A package is an open issue that is agent-ready or already carries a
+    // cell:* label; a cycle acts only on those whose **Part of** names the epic.
+    const list = tracker.listIssues(cfg.repo);
+    if (list.ok) {
+      const packages = list.issues.filter(i => String(i.state).toUpperCase() === 'OPEN'
+        && i.labels.some(l => l === 'agent-ready' || l.startsWith('cell:')));
+      const inEpic = packages.filter(i => scope.partOf(i.body) === cfg.epic).length;
+      check(true, `packages of epic #${cfg.epic}`, `${inEpic} open in ${cfg.repo}, ${packages.length - inEpic} open outside the epic`);
+    } else check(false, `issue list ${cfg.repo}`, list.error);
     process.exit(bad ? EXIT.internal : EXIT.ok);
   }
 
