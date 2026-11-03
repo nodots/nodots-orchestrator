@@ -20,6 +20,13 @@
  *             is not posted again at the head its last run failed or was refused at
  * Which PRs wait is never stored: it is the sync's cell:awaiting-lab, every cycle.
  *
+ * kind "manual": the verifier is a person or a script outside fleet. The stage
+ * makes no request and keeps no run in flight; it lists the queue in the report
+ * in the order a lab-runner target would post it, and returns its length as
+ * `waiting`, which the cycle counts as live work for the streak. The stamp and
+ * title rules below apply unchanged, so a PR stamped at its head by someone
+ * else is retitled [READY]: (or left so) and the sync takes it off the queue.
+ *
  * Dry run: no POST, no PR comment, no title edit, no latch. A GET is a read and
  * is made, so the report can say what the cycle would do with a finished run.
  */
@@ -86,14 +93,23 @@ function slot(state, repo) {
 
 // Runs recorded in flight across every verify target, without asking anyone.
 function inFlightCount(cfg, state) {
-  return cfg.targets.filter(t => t.verify && state.verify && state.verify[t.repo] && state.verify[t.repo].inFlight).length;
+  return cfg.targets.filter(t => t.verify && t.verify.kind !== 'manual' && state.verify && state.verify[t.repo] && state.verify[t.repo].inFlight).length;
 }
 
-// stage(ctx) -> { requests: [{ session, next: 'verify-failed', reason }], verifying, latched }
+// PRs queued on manual targets, read from the sync alone (no PR list needed).
+function manualWaiting(cfg, sync) {
+  const repos = new Set(cfg.targets.filter(t => t.verify && t.verify.kind === 'manual').map(t => t.repo));
+  if (!repos.size) return 0;
+  const awaiting = new Set((sync.rows || []).filter(x => x.to === 'cell:awaiting-lab').map(x => x.number));
+  return ((sync.state && sync.state.issues) || []).filter(si => awaiting.has(si.number) && si.pr && repos.has(si.repo)).length;
+}
+
+// stage(ctx) -> { requests: [{ session, next: 'verify-failed', reason }], verifying, waiting, latched }
+// waiting: PRs queued on manual targets, for which no run is ever in flight.
 // ctx: { cfg, state, apply, tracker, pulls, pullsFailed (Set of repos), sync, issues, at, alarm, r, http? }
 // Mutates state.verify, state.latched (apply only) and r (verify notes, movement).
 function stage({ cfg, state, apply, tracker, pulls, pullsFailed = new Set(), sync, issues, at, alarm, r, http = request }) {
-  const out = { requests: [], verifying: 0, latched: false };
+  const out = { requests: [], verifying: 0, waiting: 0, latched: false };
   const targets = cfg.targets.filter(t => t.verify);
   if (!targets.length) return out;
   const { currentStamp } = require(path.join(cfg.scriptsDir, 'stamp.js'));
@@ -104,6 +120,7 @@ function stage({ cfg, state, apply, tracker, pulls, pullsFailed = new Set(), syn
   for (const t of targets) {
     if (out.latched) break;
     const vs = slot(state, t.repo);
+    const manual = t.verify.kind === 'manual';
     const base = String(t.verify.url).replace(/\/+$/, '');
     const acted = new Set();
     const note = (pr, action, detail) => r.verify.push({ target: t.repo, pr, action, detail });
@@ -113,8 +130,10 @@ function stage({ cfg, state, apply, tracker, pulls, pullsFailed = new Set(), syn
 
     // Without this target's PR list nothing here can be judged: a finished
     // result would read as a closed PR. The record is kept for next cycle.
+    // A manual target's queue still waits on its verifier: the sync's count stands in.
     if (pullsFailed.has(t.repo)) {
-      if (vs.inFlight) out.verifying += 1;
+      if (manual) out.waiting += synced.filter(si => awaiting.has(si.number) && si.pr && si.repo === t.repo).length;
+      else if (vs.inFlight) out.verifying += 1;
       note(vs.inFlight ? vs.inFlight.pr : '-', 'skipped', 'the PR list for this target failed (pulls-failed)');
       continue;
     }
@@ -142,7 +161,7 @@ function stage({ cfg, state, apply, tracker, pulls, pullsFailed = new Set(), syn
     }
 
     // The run in flight: unfinished, leave it; unreachable, keep it; finished, act.
-    if (vs.inFlight) {
+    if (!manual && vs.inFlight) {
       const f = vs.inFlight;
       const g = http('GET', `${base}/runs/${encodeURIComponent(f.runId)}`);
       if (!g.ok || g.status !== 200 || !g.json || typeof g.json !== 'object') {
@@ -164,7 +183,7 @@ function stage({ cfg, state, apply, tracker, pulls, pullsFailed = new Set(), syn
       if (!awaiting.has(si.number) || !si.pr || si.repo !== t.repo) continue;
       const p = prOf(si.pr.number);
       if (!isOpen(p) || acted.has(p.number)) continue;
-      const last = vs.failed[p.number];
+      const last = manual ? null : vs.failed[p.number];
       if (last && last.headSha === p.headRefOid) { note(p.number, 'held', `last run ${last.kind} at this head ${short(p.headRefOid)}`); continue; }
       const iss = issues.find(i => i.number === si.number);
       const ex = iss ? scope.extract(iss.body) : { scope: null };
@@ -174,6 +193,13 @@ function stage({ cfg, state, apply, tracker, pulls, pullsFailed = new Set(), syn
       cands.push({ si, p, id, rank });
     }
     cands.sort((a, b) => a.rank - b.rank || a.p.number - b.p.number);
+
+    // A manual verifier is not asked: the queue is reported in order and counted.
+    if (manual) {
+      cands.forEach((c, n) => note(c.p.number, 'queued', `${n + 1} of ${cands.length}: ${c.id} at ${short(c.p.headRefOid)}, for the manual verifier`));
+      out.waiting += cands.length;
+      continue;
+    }
 
     for (const c of cands) {
       const pr = c.p.number;
@@ -271,4 +297,4 @@ function stage({ cfg, state, apply, tracker, pulls, pullsFailed = new Set(), syn
   return out;
 }
 
-module.exports = { stage, request, summary, inFlightCount, SUITE_LABEL };
+module.exports = { stage, request, summary, inFlightCount, manualWaiting, SUITE_LABEL };

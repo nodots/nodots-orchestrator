@@ -73,6 +73,14 @@ Every cycle ends in exactly one outcome (the cycle contract):
     `[VERIFY]: <id>` PR carrying the selection `ci.verifiedBy` says how to list;
     they do not run the verifier, take its lock, or stamp `VERIFIED`. Expect
     `[VERIFY]` PRs from that target, not `[READY]`.
+    If a person or a script outside fleet verifies the target, use
+    `verify: { "kind": "manual", "suite": "<id>" }` (no `url`; `suite` optional,
+    but the worker prompt names it) instead. The worker prompt is the same as
+    for `lab-runner`. fleet makes no request:
+    the report lists the queue as `queued`, gates first, then oldest, and the
+    waiting PRs keep the streak from latching. Verify each PR, comment
+    `VERIFIED: <suite> @ <full head sha>` on it, and retitle it `[READY]:`
+    (the next cycle retitles it if you do not); it then leaves the queue.
   - `launch-ci-check-failed`: the CI state could not be read (auth, network,
     API error). The launch is refused, never assumed healthy.
   - `escalation-cap`: a package failed `maxEscalations` times. Read its log
