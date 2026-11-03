@@ -125,6 +125,12 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     for (const x of reaped.reaped) {
       if (x.outcome === 'pr') r.movement.push({ package: x.id, issue: x.issue, artifact: { type: 'pr', ref: x.artifact.ref, detail: x.detail } });
       if (x.outcome === 'parked') { r.parked.push(x); if (x.alarm) alarm('blocker-overdue', x.alarm, x.issue); }
+      // A worker killed from outside (no exit file) is never movement: its
+      // relaunch below is reported here and not as a dispatch.
+      if (x.outcome === 'vanished') {
+        const held = x.reason === 'worker-vanished-repeat';
+        alarm(held ? 'worker-vanished-repeat' : 'worker-vanished', `${x.id} ${x.detail}${held ? '' : `; relaunching at attempt ${x.attempt}`}`, x.issue);
+      }
     }
 
     // FLEET_ONLY_ISSUE narrows `fleet launch <issue>` to one package without a
@@ -226,6 +232,10 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
         if (q.from) { q.from.status = 'retry'; q.from.retry = { next: q.next, reason: q.reason, why: `launch-${out.stage}: ${out.error}` }; }
         continue;
       }
+      const vanishedRelaunch = q.reason === 'worker-vanished';
+      // A vanished relaunch held over from an earlier cycle (wip-cap, a failed
+      // launch) is named here, so no launch in this report goes unexplained.
+      if (vanishedRelaunch && q.from && q.from.status === 'retry') alarm('worker-vanished', `${q.id} relaunched at attempt ${q.attempt}, held since it vanished (${q.from.retry.why})`, q.issue.number);
       if (q.from && q.from.status === 'retry') { q.from.status = 'closed'; delete q.from.retry; }
       slots -= 1;
       r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null, adopted: Boolean(out.adopted), recut: Boolean(out.recut), ci: out.session.ci || null });
@@ -235,15 +245,19 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       if (!q.relaunch || state.dispatches[q.id].length < q.attempt) {
         state.dispatches[q.id].push({ n: q.attempt, tier: q.tier, reason: q.reason, runId: out.session.sessionId || null, ts: at, recovered: Boolean(q.relaunch) || undefined });
       }
-      if (!out.dryRun) r.movement.push({ package: q.id, issue: q.issue.number, artifact: { type: 'dispatch', ref: q.sc.branch, detail: `attempt ${q.attempt}` } });
+      if (vanishedRelaunch) r.launched[r.launched.length - 1].vanished = true;
+      if (!out.dryRun && !vanishedRelaunch) r.movement.push({ package: q.id, issue: q.issue.number, artifact: { type: 'dispatch', ref: q.sc.branch, detail: `attempt ${q.attempt}` } });
     }
 
     // 6. outcome, streak, latch
     const liveAfter = reaped.live.length + r.launched.filter(l => l.pid).length;
+    // A worker relaunched after vanishing is not evidence of progress, so it
+    // does not hold the streak down; if it survives, the next cycle sees it live.
+    const liveForStreak = reaped.live.length + r.launched.filter(l => l.pid && !l.vanished).length;
     r.counts = counts(issues, sync.state, { length: liveAfter }, cfg, vr.verifying);
     // Faults that make the cycle an alarm when nothing moved. A WIP-cap hold
     // is not one: a full fleet with nothing else to do is exhaustion.
-    const FAULT = /(-failed$|^locked$|^latched$|^escalation-cap$|^launch-|^unlaunchable$|^verify-(unreachable|refused|not-reverted|bad-sha)$)/;
+    const FAULT = /(-failed$|^locked$|^latched$|^escalation-cap$|^launch-|^unlaunchable$|^worker-vanished(-repeat)?$|^verify-(unreachable|refused|not-reverted|bad-sha)$)/;
     // A verify fault is an alarm even beside movement: each one needs a look
     // (a lab not reverted, a verifier that cannot be reached, a refused PR, a
     // record that cannot be stamped). verify-stale is not one: the PR is queued again.
@@ -259,7 +273,7 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       // A verifier run in flight is live work: waiting on it is not idleness.
       // So is a manual target's queue: its verifier is outside fleet.
       if (r.outcome === 'movement') state.streak = 0;
-      else if (liveAfter === 0 && vr.verifying === 0 && vr.waiting === 0) state.streak += 1;
+      else if (liveForStreak === 0 && vr.verifying === 0 && vr.waiting === 0) state.streak += 1;
       if (state.streak >= cfg.noMovementLimit && !state.latched) {
         const parked = Object.values(state.sessions).filter(s => s.status === 'parked').map(s => `${s.id} (#${s.issue})`);
         state.latched = { at, streak: state.streak, reason: `${state.streak} consecutive cycles without movement${parked.length ? `; parked and waiting on a decision: ${parked.join(', ')}` : ''}` };
