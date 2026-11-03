@@ -4,8 +4,9 @@
  * The tracker is the bus. This is the only module that talks to gh, so what
  * the runtime reads and writes there is listable in one place:
  *   reads:  issue list (with bodies), issue view, PR list, issue comments
- *   writes: add/remove one label, post one comment
- * It never edits an issue body or a SCOPE.json, and never touches a session.
+ *   writes: add/remove one label, post one comment, post one PR comment on a
+ *           target repo, edit one PR title (the verify stage's retitle)
+ * It never edits an issue body, a PR body or a SCOPE.json, and never touches a session.
  */
 
 const { run, runJson } = require('./exec');
@@ -59,6 +60,17 @@ class Tracker {
   comment(repo, number, body) {
     const r = run(this.gh, ['issue', 'comment', String(number), '--repo', repo, '--body-file', '-'], { input: body });
     return r.status === 0 ? { ok: true, url: r.stdout.trim() } : { ok: false, error: r.error || r.stderr.trim() };
+  }
+
+  // A comment on a pull request in the repo that holds it (a target, not the host).
+  prComment(repo, number, body) {
+    const r = run(this.gh, ['pr', 'comment', String(number), '--repo', repo, '--body-file', '-'], { input: body });
+    return r.status === 0 ? { ok: true, url: r.stdout.trim() } : { ok: false, error: r.error || r.stderr.trim() };
+  }
+
+  editPrTitle(repo, number, title) {
+    const r = run(this.gh, ['pr', 'edit', String(number), '--repo', repo, '--title', title]);
+    return r.status === 0 ? { ok: true } : { ok: false, error: r.error || r.stderr.trim() };
   }
 
   // The CI state a worker would run under: enabled workflows, and the newest
