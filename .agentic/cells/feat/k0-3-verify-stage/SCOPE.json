@@ -1,0 +1,36 @@
+{
+  "feature": "k0-3-verify-stage",
+  "project": "nodots-orchestrator",
+  "branch": "feat/k0-3-verify-stage",
+  "allowedPaths": [
+    "plugins/fleet/src/verify.js",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/report.js",
+    "plugins/fleet/src/tracker.js",
+    "plugins/fleet/tests/verify-stage.test.sh",
+    "plugins/fleet/tests/stubs/verifier.js",
+    "plugins/fleet/tests/stubs/gh.js",
+    "plugins/fleet/tests/stubs/claude.sh",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/fleet/SKILL.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/launch.js",
+    "plugins/agentic-work-packages/**",
+    "**/plugin.json",
+    ".github/**"
+  ],
+  "dependsOn": [
+    "feat/k0-1-verify-config",
+    "feat/k0-2-awaiting-lab-label",
+    "feat/k0-4-epic-scope"
+  ],
+  "estimatedScope": "one cycle stage over the verifier contract, tracker writes, report lines, a stub verifier",
+  "execution": {
+    "model": "strongest",
+    "pattern": "implement+review",
+    "window": "largest available; autocompact on",
+    "agents": []
+  }
+}

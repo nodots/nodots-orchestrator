@@ -44,7 +44,8 @@ decides what the report asks it to decide.
 Every cycle ends in exactly one outcome (the cycle contract):
 
 - **Movement**: named packages with the artifact that proves it (a `dispatch`
-  with its branch, a `pr`, a `merged` label). Nothing to do.
+  with its branch, a `pr`, a `merged` label, a `verified` stamp from the
+  verify stage). Nothing to do.
 - **Exhaustion**: nothing was dispatchable; the counts say why (queued, active,
   in review, blocked, live sessions, free WIP slots). Nothing to do unless the
   counts look wrong.
@@ -78,6 +79,25 @@ Every cycle ends in exactly one outcome (the cycle contract):
     under `<stateDir>/logs/`, decide whether to split it, widen the plan, or
     re-cut it as a new package. The runtime holds it until you act.
   - `blocker-overdue`: a parked `BLOCKER.md` carries a date that has passed.
+  - `verify-not-reverted`: a verifier run finished without reverting the lab,
+    so the lab may still hold that PR's change. The fleet is **latched**:
+    nothing launches or verifies. Restore the lab, then
+    `fleet resume --reason "<what you restored>"`.
+  - `verify-unreachable`: the verifier did not answer. The in-flight record is
+    kept and read again next cycle; start the runner on its configured port.
+  - `verify-refused`: the verifier answered 409 for a reason other than a run
+    already going. The reason is commented on the PR, and the PR is skipped
+    until its head changes.
+  - `verify-bad-sha`: the run record's `verify.headSha` is not a full
+    40-character lowercase sha, so it was not stamped. Fix the runner.
+  - `verify-pr-missing`: a run finished for a PR that is not in the target's
+    PR list (past the page limit). The record is kept; raise `FLEET_PAGE_LIMIT`.
+  - `verify-post-failed`, `verify-write-failed`, `verify-redispatch-failed`:
+    the POST got an unexpected answer, a PR comment or title edit failed, or a
+    failed PR's worker could not be re-dispatched (no closed session on this
+    machine). The detail names which.
+  - `verify-stale` is reported, not an alarm: the PR head moved during the run,
+    the result was discarded, and the PR is posted again.
   - `latched`: three consecutive cycles without movement (configurable). The
     runtime stops starting cycles. Read the last reports, then
     `fleet resume --reason "<what you concluded>"`.

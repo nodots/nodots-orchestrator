@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # claude stub for the fleet fixture tests. Records how it was invoked, then
 # behaves per CLAUDE_STUB_MODE_<PACKAGE> (package id with . -> _):
-#   pr       commit a file in lane, push, register a PR in the gh stub, exit 0
+#   pr       commit a file in lane, push, register a PR in the gh stub, exit 0.
+#            The title follows the prompt: "[VERIFY]:" when the prompt asks for
+#            it, "[READY]:" otherwise.
+#   pr-update  a second attempt on a package that has a PR: once the file
+#            CLAUDE_STUB_GATE exists (when set; up to 60 s), commit new content
+#            on the branch, push, and set that PR's headRefOid in the gh stub
 #   silent   print a result and exit 0 with nothing to show
 #   fail     exit 3
 #   blocker  write BLOCKER.md with a known Kind, exit 0
@@ -23,13 +28,27 @@ case "$MODE" in
     mkdir -p src && printf 'work for %s\n' "$PKG" > "src/$PKG.txt"
     git add src && git -c user.name=stub -c user.email=stub@example.invalid commit -q -m "$PKG: implement" && git push -q origin HEAD || exit 9
     branch=$(git rev-parse --abbrev-ref HEAD); sha=$(git rev-parse HEAD)
+    prefix='[READY]:'; case "$*" in *'title starting "[VERIFY]:'*) prefix='[VERIFY]:' ;; esac
     node -e '
       const fs=require("fs"),p=process.env.GH_STUB_DIR+"/prs.json";
       const prs=JSON.parse(fs.readFileSync(p,"utf8"));
       const n=200+prs.length;
-      prs.push({number:n,title:"[READY]: "+process.argv[1]+" done",body:"Closes #"+process.env.FLEET_ISSUE,state:"OPEN",headRefName:process.argv[2],headRefOid:process.argv[3],isDraft:false,url:"https://example.invalid/pr/"+n,repo:process.env.CLAUDE_STUB_TARGET});
-      fs.writeFileSync(p,JSON.stringify(prs,null,2));' "$PKG" "$branch" "$sha"
+      prs.push({number:n,title:process.argv[4]+" "+process.argv[1]+" done",body:"Closes #"+process.env.FLEET_ISSUE,state:"OPEN",headRefName:process.argv[2],headRefOid:process.argv[3],isDraft:false,url:"https://example.invalid/pr/"+n,repo:process.env.CLAUDE_STUB_TARGET});
+      fs.writeFileSync(p,JSON.stringify(prs,null,2));' "$PKG" "$branch" "$sha" "$prefix"
     result "opened PR"; exit 0 ;;
+  pr-update)
+    if [ -n "${CLAUDE_STUB_GATE:-}" ]; then i=0; until [ -e "$CLAUDE_STUB_GATE" ] || [ $i -ge 120 ]; do sleep 0.5; i=$((i + 1)); done; fi
+    mkdir -p src && printf 'attempt %s for %s\n' "$n" "$PKG" >> "src/$PKG.txt"
+    git add src && git -c user.name=stub -c user.email=stub@example.invalid commit -q -m "$PKG: attempt $n" && git push -q origin HEAD || exit 9
+    branch=$(git rev-parse --abbrev-ref HEAD); sha=$(git rev-parse HEAD)
+    node -e '
+      const fs=require("fs"),p=process.env.GH_STUB_DIR+"/prs.json";
+      const prs=JSON.parse(fs.readFileSync(p,"utf8"));
+      const pr=prs.find(x=>x.headRefName===process.argv[1]&&x.state==="OPEN");
+      if(!pr){process.stderr.write("claude stub: no open PR on "+process.argv[1]+"\n");process.exit(9);}
+      pr.headRefOid=process.argv[2];
+      fs.writeFileSync(p,JSON.stringify(prs,null,2));' "$branch" "$sha" || exit 9
+    result "updated PR"; exit 0 ;;
   silent) result "did nothing"; exit 0 ;;
   fail) echo "boom" >&2; exit 3 ;;
   blocker)

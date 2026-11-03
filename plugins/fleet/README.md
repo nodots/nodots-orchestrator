@@ -5,7 +5,7 @@ pass:
 
 ```
 fleet cycle --apply
-  lock → sync-cells.sh --apply → promote → assign-cells.sh --apply → launch → reap → report → unlock
+  lock → sync-cells.sh --apply → promote → assign-cells.sh --apply → reap → verify → launch → report → unlock
 ```
 
 - **sync** derives every `cell:*` label from branches, PRs and `BLOCKER.md`
@@ -44,9 +44,45 @@ fleet cycle --apply
   its head branch equals the package branch (title and body are ignored). A
   parked session whose blocker is removed is relaunched only if the package
   has no PR in any state; otherwise it is closed as `pr`.
+- **verify** runs for each target with `verify`, after reap and before launch,
+  and keeps one verifier run in flight per target (`src/verify.js`):
+  - A run recorded in `state.json` (`verify.<repo>.inFlight`) is read with
+    `GET <url>/runs/<id>`. Unfinished, it is left; it counts as live, so
+    waiting on it never raises the no-movement streak.
+  - With nothing in flight, the next `cell:awaiting-lab` PR is posted with
+    `POST <url>/<suite>/verify {"pr": n}`: gates (`V<n>`) first, then packages
+    whose `dependsOn` all merged, then the oldest. A PR is skipped at the head
+    its last run failed or was refused at.
+  - Pass (`exitCode` 0, `verify.reverted` true, `verify.headSha` a full
+    40-character sha equal to the PR head): a `VERIFIED: lab-impacted @ <sha>`
+    comment with a summary of the run, then `[VERIFY]:` is retitled
+    `[READY]:`. Movement `verified`.
+  - Fail (`exitCode` not 0): the summary is commented on the PR and the
+    package's worker is re-dispatched at the same tier with reason
+    `verify-failed: <first unexpected test>`. It counts toward
+    `maxEscalations`; at the cap the package is held with `escalation-cap`.
+  - A head that moved since the POST discards the result (`verify-stale`);
+    the PR is posted again next cycle.
+  - A 409 `a run is already going` is retried next cycle. Any other 409 is
+    commented on the PR, raises `verify-refused`, and the next PR is tried.
+  - `verify.reverted` not true raises `verify-not-reverted` and **latches the
+    fleet**: nothing launches or verifies until `fleet resume --reason <text>`.
+  - An open `[READY]:` PR on a verify target with no stamp at its head (a push
+    after the stamp) is retitled `[VERIFY]:` and queued again. A `[VERIFY]:` PR
+    with a stamp at its head is retitled `[READY]:`.
+  - When the target's PR list fails (`pulls-failed`), the stage skips the
+    target and keeps the record.
+  - `verify-unreachable` and `verify-pr-missing` (the record is kept),
+    `verify-refused`, `verify-not-reverted`, `verify-bad-sha`, `verify-post-failed`,
+    `verify-write-failed` and `verify-redispatch-failed` make the cycle an
+    alarm. `verify-stale` does not.
+  - A dry run makes no POST, comment or title edit; it reports what it would
+    do. `fleet launch <issue>` runs no verify stage.
 - **report** posts one Movement / Exhaustion / Alarm comment on the epic, with
   a marker so a re-post is a no-op, and keeps the no-movement streak that
-  latches the fleet after `noMovementLimit` cycles.
+  latches the fleet after `noMovementLimit` cycles. For a config with a verify
+  target the counts add `awaiting-lab` and `verifying`; every other report is
+  unchanged.
 
 A cycle acts on one epic: the packages whose header line says
 `**Part of** #<epic>`, the same rule `sync-cells.sh --epic` applies. Other

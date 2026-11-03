@@ -4,10 +4,12 @@
 //   issues.json   base issues [{number,title,body,labels[],state}]
 //   labels.json   label overrides written by `issue edit`  {number: [labels]}
 //   prs.json      pull requests [{number,title,body,state,headRefName,headRefOid,isDraft,url,repo}]
-//   comments.json {issueNumber: [{id, body, created_at}]}
+//   comments.json {"<repo>#<number>": [{id, body, created_at}]}, keyed by the repo the
+//                 comment was written to (`issue comment` and `pr comment` alike)
 //   ci.json       {workflows:[{name,state}], runs:[{created_at}], fail:bool} for the
 //                 Actions endpoints; absent means one active workflow and a run just now
-//   writes.log    one line per write: "edit <n> +label -label" / "comment <n>"
+//   writes.log    one line per write: "edit <n> +label -label" / "comment <repo> <n>" /
+//                 "title <repo> <n> <new title>" (`pr edit --title`, which rewrites prs.json)
 // Branches and BLOCKER.md come from the bare remote at GH_STUB_REMOTE.
 const fs = require('fs');
 const path = require('path');
@@ -54,13 +56,26 @@ if (a === 'issue' && b === 'edit') {
   log(`edit ${n} ${flags('--add-label').map(l => '+' + l).join(' ')} ${flags('--remove-label').map(l => '-' + l).join(' ')}`.trim());
   process.exit(0);
 }
-if (a === 'issue' && b === 'comment') {
+if ((a === 'issue' || a === 'pr') && b === 'comment') {
   const n = Number(argv[2]);
+  const repo = flag('--repo');
   const body = fs.readFileSync(0, 'utf8');
   const all = rd('comments.json', {});
-  all[n] = [...(all[n] || []), { id: Date.now(), body, created_at: new Date().toISOString() }];
-  wr('comments.json', all); log(`comment ${n}`);
+  const key = `${repo}#${n}`;
+  all[key] = [...(all[key] || []), { id: Date.now(), body, created_at: new Date().toISOString() }];
+  wr('comments.json', all); log(`comment ${repo} ${n}`);
   out(`https://example.invalid/${n}#c\n`); process.exit(0);
+}
+if (a === 'pr' && b === 'edit') {
+  const n = Number(argv[2]);
+  const repo = flag('--repo');
+  const title = flag('--title');
+  if (title === null) { process.stderr.write('gh stub: pr edit needs --title\n'); process.exit(1); }
+  const prs = rd('prs.json', []);
+  const p = prs.find(x => x.number === n && (!x.repo || x.repo === repo));
+  if (!p) { process.stderr.write(`gh stub: no PR #${n} in ${repo}\n`); process.exit(1); }
+  p.title = title; wr('prs.json', prs); log(`title ${repo} ${n} ${title}`);
+  out(`https://example.invalid/pr/${n}\n`); process.exit(0);
 }
 if (a === 'pr' && b === 'list') {
   const repo = flag('--repo');
@@ -88,9 +103,9 @@ if (a === 'api') {
   if ((m = /contents\/(.*?BLOCKER\.md)\?ref=(.+)$/.exec(ep))) {
     try { execFileSync('git', ['--git-dir', REMOTE, 'cat-file', '-e', `${m[2]}:${m[1]}`], { stdio: 'ignore' }); process.exit(0); } catch { process.exit(1); }
   }
-  if ((m = /issues\/(\d+)\/comments/.exec(ep))) {
+  if ((m = /repos\/(.+?)\/issues\/(\d+)\/comments/.exec(ep))) {
     const all = rd('comments.json', {});
-    const list = all[Number(m[1])] || [];
+    const list = all[`${m[1]}#${Number(m[2])}`] || [];
     // One JSON value per line, as --paginate --jq '... | @json' prints.
     const jq = flag('--jq') || '';
     const rows = /\.body/.test(jq) && !/id/.test(jq) ? list.map(c => c.body) : list.map(c => ({ id: c.id, body: c.body, created_at: c.created_at }));
