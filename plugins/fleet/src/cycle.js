@@ -135,7 +135,7 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // joins this cycle's launch requests below.
     const vr = only === null
       ? verifyMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync, issues, at, alarm, r })
-      : { requests: [], verifying: verifyMod.inFlightCount(cfg, state), latched: false };
+      : { requests: [], verifying: verifyMod.inFlightCount(cfg, state), waiting: verifyMod.manualWaiting(cfg, sync), latched: false };
     reaped.requests.push(...vr.requests);
 
     // 5. launch: owned, queued, labeled packages without a session; plus relaunch/escalation requests.
@@ -257,8 +257,9 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
 
     if (apply) {
       // A verifier run in flight is live work: waiting on it is not idleness.
+      // So is a manual target's queue: its verifier is outside fleet.
       if (r.outcome === 'movement') state.streak = 0;
-      else if (liveAfter === 0 && vr.verifying === 0) state.streak += 1;
+      else if (liveAfter === 0 && vr.verifying === 0 && vr.waiting === 0) state.streak += 1;
       if (state.streak >= cfg.noMovementLimit && !state.latched) {
         const parked = Object.values(state.sessions).filter(s => s.status === 'parked').map(s => `${s.id} (#${s.issue})`);
         state.latched = { at, streak: state.streak, reason: `${state.streak} consecutive cycles without movement${parked.length ? `; parked and waiting on a decision: ${parked.join(', ')}` : ''}` };

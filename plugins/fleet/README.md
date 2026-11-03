@@ -32,9 +32,13 @@ fleet cycle --apply
   `verifiedBy` is required with `external`, so the exemption is never silent.
   A target whose verifier admits one run at a time also declares
   `"verify": { "kind": "lab-runner", "url": "http://127.0.0.1:<port>", "suite": "<id>" }`.
-  `url` must be loopback, `suite` must match `^[A-Za-z0-9_-]+$`, `lab-runner`
-  is the only kind, and `ci.gate` must be `external`; anything else is a config
-  error. A worker on that target opens its PR titled `[VERIFY]: <id>`, never
+  `url` must be loopback, `suite` must match `^[A-Za-z0-9_-]+$`, and `ci.gate`
+  must be `external`; anything else is a config error. A target verified by a
+  person or a script outside fleet declares `"verify": { "kind": "manual" }`
+  instead: it needs no `url` (one is refused, since nothing is requested), and
+  `suite` is optional. The worker prompt is the same for both kinds; it names
+  the suite, so set one (without it the prompt reads `suite undefined`).
+  A worker on that target opens its PR titled `[VERIFY]: <id>`, never
   `[READY]`. It does not run the verifier, claim any lock it uses, or post a
   `VERIFIED` stamp, and it pastes into the PR body the selection its target's
   tooling lists, as `ci.verifiedBy` describes.
@@ -78,6 +82,13 @@ fleet cycle --apply
     alarm. `verify-stale` does not.
   - A dry run makes no POST, comment or title edit; it reports what it would
     do. `fleet launch <issue>` runs no verify stage.
+  - A `manual` target makes no request and keeps no run in flight. The stage
+    reports its `cell:awaiting-lab` PRs as `queued`, in the order above; only
+    a failed title edit (`verify-write-failed`) can alarm. Its waiting PRs count as live for the streak, so a
+    fleet waiting on a person does not latch. The outside verifier comments
+    `VERIFIED: <suite> @ <full head sha>` and retitles `[READY]:`; a stamp
+    without the retitle is retitled by the stage, as for `lab-runner`. Either
+    way the PR leaves the queue.
 - **report** posts one Movement / Exhaustion / Alarm comment on the epic, with
   a marker so a re-post is a no-op, and keeps the no-movement streak that
   latches the fleet after `noMovementLimit` cycles. For a config with a verify

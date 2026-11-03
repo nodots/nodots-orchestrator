@@ -18,7 +18,7 @@ const PERMISSION_MODES = new Set(['acceptEdits', 'auto', 'dontAsk', 'default', '
 const APPROVAL_MODES = new Set(['off', 'branch-protection', 'ruleset']);
 const CI_GATES = new Set(['github-actions', 'external']);
 const WORKER_ID = /^[A-Za-z0-9_-]+$/;
-const VERIFY_KINDS = new Set(['lab-runner']);
+const VERIFY_KINDS = new Set(['lab-runner', 'manual']);
 const SUITE_ID = /^[A-Za-z0-9_-]+$/;
 
 const DEFAULTS = {
@@ -75,6 +75,9 @@ function loadConfig(file) {
 // verifier is reached on loopback only, and the suite id goes into a request,
 // so both are checked here rather than trusted. ci.gate must be external: a
 // target verified by GitHub Actions has no queue to hand the PR to.
+// kind "manual": the verifier is a person or a script outside fleet. fleet
+// makes no request, so a url is refused rather than ignored. suite is optional;
+// the worker prompt (launch.js) names it, and prints "undefined" without it.
 function isLoopback(hostname) {
   const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
   return h === 'localhost' || h === '::1' || /^127(\.\d{1,3}){3}$/.test(h);
@@ -83,6 +86,12 @@ function validateVerify(v, ci, i) {
   const at = `targets[${i}].verify`;
   if (!v || typeof v !== 'object' || Array.isArray(v)) fail(`${at} must be an object {kind, url, suite}`);
   if (!VERIFY_KINDS.has(v.kind)) fail(`${at}.kind [${v.kind}] must be one of ${[...VERIFY_KINDS].join(', ')}`);
+  if (v.kind === 'manual') {
+    if (ci.gate !== 'external') fail(`${at} requires targets[${i}].ci.gate external: a target with a verify queue is not verified by GitHub Actions`);
+    if (v.url !== undefined) fail(`${at}.url is not used by kind manual: fleet makes no request to a manual verifier; remove it`);
+    if (v.suite !== undefined && (typeof v.suite !== 'string' || !SUITE_ID.test(v.suite))) fail(`${at}.suite [${v.suite}] must match ${SUITE_ID}`);
+    return v.suite === undefined ? { kind: 'manual' } : { kind: 'manual', suite: v.suite };
+  }
   let u;
   try { u = new URL(String(v.url)); } catch { fail(`${at}.url [${v.url}] is not a URL`); }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') fail(`${at}.url must be http or https`);
