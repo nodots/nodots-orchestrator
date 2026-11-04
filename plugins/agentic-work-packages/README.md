@@ -36,7 +36,7 @@ Claude Code plugin bundling the Nodots agentic development workflow:
   worker runs under, installed as `.claude/worker-contract.md` and imported
   from the repo's own `CLAUDE.md`.
 
-The model was proven on a multi-phase program in `nodots/backgammon`
+The model was proven on a multi-phase program in a private repo
 (~30 packages, five phases, four concurrent agents).
 
 ## Install
