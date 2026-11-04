@@ -26,6 +26,7 @@ git -C "$TMP/clone" checkout -q -b main 2>/dev/null || true
 git -C "$TMP/clone" config user.email f@example.invalid; git -C "$TMP/clone" config user.name fixture
 printf '# api\n' > "$TMP/clone/README.md"
 git -C "$TMP/clone" add -A && git -C "$TMP/clone" commit -qm init && git -C "$TMP/clone" push -q -u origin main
+fixture_standards "$TMP/clone" && git -C "$TMP/clone" push -q origin main
 
 STUB="$TMP/stub"; mkdir -p "$STUB" "$TMP/gh" "$TMP/claude-log"
 cp "$HERE/stubs/gh.js" "$STUB/gh.js"

@@ -1,0 +1,46 @@
+{
+  "feature": "s1-2a-fixtures-publish-manifest",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s1-2a-fixtures-publish-manifest",
+  "allowedPaths": [
+    "plugins/fleet/tests/lib.sh",
+    "plugins/fleet/tests/fixture-standards.test.sh",
+    "plugins/fleet/tests/adoption.test.sh",
+    "plugins/fleet/tests/ci-preconditions.test.sh",
+    "plugins/fleet/tests/cycle.test.sh",
+    "plugins/fleet/tests/daemon.test.sh",
+    "plugins/fleet/tests/epic-scope.test.sh",
+    "plugins/fleet/tests/v4-gate.test.sh",
+    "plugins/fleet/tests/vanished.test.sh",
+    "plugins/fleet/tests/verify-config.test.sh",
+    "plugins/fleet/tests/verify-manual.test.sh",
+    "plugins/fleet/tests/verify-stage.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    ".claude/**",
+    "plugins/fleet/src/**",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/**",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/fleet/tests/standards-launch.test.sh",
+    "plugins/fleet/tests/standards-init.test.sh",
+    "plugins/agentic-work-packages/**",
+    "evals/**",
+    "docs/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one shared fixture helper, one test, one call in each of ten suites",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
