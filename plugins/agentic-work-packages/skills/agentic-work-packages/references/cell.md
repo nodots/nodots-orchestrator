@@ -98,7 +98,7 @@ own problem at someone else's expense.
 End with the standing closers:
 
 ```
-- [ ] Tests pass · build/typecheck passes · lint passes
+- [ ] Every check in `.claude/standards.json` passes
 - [ ] `[READY]:` PR opened, linked to this package
 ```
 
@@ -153,7 +153,7 @@ and `gate-verify` packages; delete for `solo`)_
 - [ ] <observable behaviour, ideally under a named test>
 - [ ] <negative case: what must be rejected or must not happen>
 - [ ] Existing <suite> passes unchanged
-- [ ] Tests pass · build/typecheck passes · lint passes
+- [ ] Every check in `.claude/standards.json` passes
 - [ ] `[READY]:` PR opened, linked to this package
 
 ### Dependencies

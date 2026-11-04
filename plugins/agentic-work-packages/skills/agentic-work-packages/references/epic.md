@@ -167,7 +167,7 @@ The gaps this epic closes:
 ## Definition of done (every package)
 
 - [ ] Acceptance criteria met
-- [ ] Tests pass · build/typecheck passes · lint passes
+- [ ] Every check in `.claude/standards.json` passes
 - [ ] `SCOPE.json` respected (no edits outside `allowedPaths`)
 - [ ] `[READY]:` PR opened, linked to the package issue
 

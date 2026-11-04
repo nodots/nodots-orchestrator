@@ -224,3 +224,5 @@ next action, never the inference.
   verified before the wave, not after.
 - Release and deploy **sequencing is a package**, in dependency order.
 - Deploy gates require the **feature to be exercised**, not artifacts inspected.
+- Every target repo publishes **`.claude/standards.json`**, and the planner reads
+  its `rules[]` for a lane before writing the package.

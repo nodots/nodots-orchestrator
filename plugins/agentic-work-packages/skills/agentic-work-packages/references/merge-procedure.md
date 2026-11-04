@@ -103,17 +103,17 @@ grep -r "from.*<changed-package>" packages/*/src --include="*.ts" -l
 ```
 
 For example, a change to `acme-types` is tested in `acme-types` and in
-`acme-core`, because core imports types. Run the tests in each, then the build
-and lint:
+`acme-core`, because core imports types. Run every check in the changed
+package's `.claude/standards.json`, then every check in each dependent's, each
+in the order its manifest lists them:
 
 ```bash
-cd packages/<changed-package> && npm test
-cd packages/<dependent-package> && npm test
-npm run build
-npm run lint
+cd packages/<changed-package> && <each check command, in manifest order>
+cd packages/<dependent-package> && <each check command, in manifest order>
 ```
 
-All must pass. If any fails, abort, mark the PR not ready, and leave feedback.
+The merge procedure names no tool; the commands are the repo's, read from its
+manifest (`standards.md`). All must pass. If any fails, abort, mark the PR not ready, and leave feedback.
 
 **5. Merge to the target.** Squash for features:
 
@@ -217,10 +217,9 @@ Merge #<n> — <timestamp>
 **Commits:** 1 (squashed)
 **Status:** success
 
-**Tests run:**
-  - npm test: <count>, all passing
-  - npm run build: OK
-  - npm run lint: OK
+**Checks run** (named as in `.claude/standards.json`):
+  - <check name>: <summary output, e.g. count passing>
+  - <check name>: OK
 
 **Next ready:** <package> (depends on this one, now unblocked)
 ```

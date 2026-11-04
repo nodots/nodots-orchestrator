@@ -107,6 +107,13 @@ to `.claude/worker-contract.md` and import it with `@.claude/worker-contract.md`
 from the hand-authored part of the repo's `CLAUDE.md`. It is not shipped as
 `AGENTS.md` on purpose — see `references/coordination.md` §The worker contract.
 
+Install the standards manifest in the same pass: `.claude/standards.json`, next
+to the contract, generated with `fleet standards init` or written by hand, and
+checked with `assets/scripts/check-standards.js`. It names the repo's checks and
+rule documents; the plugin ships no standards (`references/standards.md`). The
+preamble hook, `assets/hooks/standards-preamble.js` (`SessionStart`), ships with
+the other two and prints the preamble the manifest names.
+
 **7a. Brief workers on the working agreements** — `references/working-agreements.md`:
 test-first, dead gates, no silent fallbacks, boundary round-trip tests, release
 sequencing, destructive-command safety, reporting. Package acceptance criteria
@@ -148,7 +155,8 @@ before filing the package.
       `forbiddenPaths` except the one package that owns them
 - [ ] Packages with no unmet dependencies are marked ready and queued
 - [ ] Packages needing human judgement are **not** marked agent-ready
-- [ ] Every target repo carries both hooks — scope and handoff — and the worker contract
+- [ ] Every target repo carries both hooks — scope and handoff — and the worker
+      contract, and a `.claude/standards.json` that `check-standards.js` accepts
 
 ## Files
 
@@ -169,12 +177,16 @@ before filing the package.
 | `references/context-management.md` | What belongs in a file rather than in a session's context |
 | `references/agent-teams.md` | Running a package with an agent team inside one lane |
 | `references/working-agreements.md` | Proof of done: test-first, dead gates, boundaries, release order, reporting |
+| `references/standards.md` | The `.claude/standards.json` manifest: a repo's checks, rule documents and preamble |
 | `references/adapter-github.md` | GitHub Issues mechanics |
 | `references/adapter-jira.md` | Jira mechanics |
 | `assets/hooks/enforce-scope.js` | PreToolUse scope hook, no dependencies |
 | `assets/hooks/require-handoff.js` | Stop hook: no exit from a dirty lane without written state; also runs as an opt-in `TaskCompleted` hook |
 | `assets/hooks/enforce-scope-staged.js` | Opt-in git pre-commit check: staged files against the lane, so it also catches shell-mediated writes |
 | `assets/hooks/session-start-install-deps.sh` | Opt-in `SessionStart` hook for remote sessions: installs dependencies and flags a wrong-repository checkout |
+| `assets/hooks/standards-preamble.js` | `SessionStart` hook: prints the preamble the repo's manifest names, and nothing in a repo without one |
+| `assets/standards.schema.json` | JSON Schema for `.claude/standards.json` |
+| `assets/scripts/check-standards.js` | Validates a repo's `.claude/standards.json` against the schema |
 | `assets/settings-snippet-optional.json` | Wiring for the opt-in `TaskCompleted` and `SessionStart` hooks |
 | `assets/github-issue-templates/` | GitHub issue templates: work package, blocker, contract change |
 | `assets/retrospective-template.md` | Template for a per-program retrospective |

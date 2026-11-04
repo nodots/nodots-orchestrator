@@ -1,0 +1,39 @@
+{
+  "feature": "s0-4-references-name-manifest",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s0-4-references-name-manifest",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/cell.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/gate.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/epic.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/merge-procedure.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/cross-repo.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/adapter-github.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/working-agreements.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/SKILL.md",
+    "plugins/agentic-work-packages/README.md",
+    "docs/agentic-work-packages.md",
+    "docs/working-agreements.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/standards.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/**",
+    "plugins/fleet/**",
+    "evals/**",
+    ".claude/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "text edits across references, SKILL.md and docs",
+  "execution": {
+    "model": "default",
+    "pattern": "solo",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
