@@ -174,8 +174,10 @@ node "$PLUGIN/bin/fleet.js" standards init --target acme/api --write   # write i
 
 - `--target` must be one of `targets[]`; the draft is built from its
   `localPath`.
-- Checks come from `package.json` scripts: `lint`, `typecheck` and `build`
-  become `npm run <name>`, and `test` becomes `npm test`, in that order. With
+- Checks come from `package.json` `scripts`: each of `lint`, `typecheck` and
+  `build` found there becomes a check that runs that script with the package
+  manager, and `test` becomes the package manager's test command, in that
+  order. With
   no `package.json`, `checks[]` is empty and the draft does not validate: the
   command does not guess a check it cannot see, and the notes say what to add.
 - Rules are `CLAUDE.md`, `CONTRIBUTING.md` and `AGENTS.md`, where present at
