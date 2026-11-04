@@ -21,13 +21,18 @@
 
 ## Next
 
-Review and merge. Nothing is left in this package.
+Review and merge. The only open item is the #141 edit described under Plan check.
 
 ## Plan check
 
 Package issue still matches: no
 
-Updated #141. The issue said to run the fixture "through `--state` like the
+#141 is NOT yet updated. This session could not write to the issue: both
+`gh issue edit` and `gh issue comment` need approval, and nobody can grant it
+here. The divergence is stated in the body of PR #142. The coordinator should
+edit #141's scope-of-work line to match the paragraph below.
+
+The issue said to run the fixture "through `--state` like the
 existing cases". A `--state` file holds state that is already matched:
 `sync-cells.sh:352` calls `collect_state`, where the matcher runs
 (`sync-cells.sh:199-289`), only when `--state` is absent. So a `--state`
