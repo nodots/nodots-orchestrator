@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md", "packages/web/src/index.js"],
+  "expect": "rules[0].paths[0]: \"packages/api/**\" matches no tracked file",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [{ "doc": "CONTRIBUTING.md", "paths": ["packages/api/**"], "check": "test" }]
+  }
+}

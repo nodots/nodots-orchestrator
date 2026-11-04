@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "rules[0].severity: unknown key",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [{ "doc": "CONTRIBUTING.md", "check": "test", "severity": "high" }]
+  }
+}

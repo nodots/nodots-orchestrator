@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "checks[0].name: \"Lint_All\" must match ^[a-z][a-z0-9-]*$",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "Lint_All", "command": "make lint" }],
+    "rules": []
+  }
+}

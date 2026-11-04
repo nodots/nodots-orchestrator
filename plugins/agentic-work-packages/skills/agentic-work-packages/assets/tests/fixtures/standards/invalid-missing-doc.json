@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "rules[0].doc: \"STYLE.md\" is not a tracked file",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [{ "doc": "STYLE.md#naming", "check": "test" }]
+  }
+}

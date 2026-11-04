@@ -1,0 +1,10 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "plugins[0].version: unknown key",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [],
+    "plugins": [{ "name": "example-plugin", "marketplace": "example", "version": "1.0" }]
+  }
+}
