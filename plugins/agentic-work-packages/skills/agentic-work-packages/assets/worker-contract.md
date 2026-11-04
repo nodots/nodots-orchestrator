@@ -44,13 +44,19 @@ change anything. Cite what you find as `file:line` — in your reasoning, in the
 PR, in `HANDOFF.md`. A claim about the codebase with no file and no line is a
 guess, and it will be wrong in the way that is most expensive to discover.
 
-Two specific habits:
+Three specific habits:
 
 - **Verify an external fact at its source before building on it.** If the check
   is cheap, the check is the next action, never the inference.
 - **Confirm which repository the shell is in** before running anything. In a
   workspace of siblings, the previous command's directory is the most common
   cause of a command run in the wrong place.
+- **Read the repo's rules before changing code under them.** Read
+  `.claude/standards.json`. Before you change code under a path, read every
+  `rules[]` doc whose `paths` overlap that path, and every rule that has no
+  `paths`, because a rule without `paths` applies to the whole repo. A `doc`
+  with a `#fragment` names a heading in that file: read the section under that
+  heading, down to the next heading of the same or a higher level.
 
 ## 4. Prove it, do not assert it
 
@@ -118,7 +124,13 @@ is not ready to file.
 ## 6. Completion protocol
 
 1. The acceptance criteria are met, each one observable.
-2. Tests, build/typecheck and lint pass. Run them; do not infer them.
+2. Run every `checks[]` command in `.claude/standards.json`, in order, in the
+   worktree. Run them; do not infer them. A check that fails is a red, and you
+   classify it under §5 before you do anything else. If `.claude/standards.json`
+   is absent, stop and write `BLOCKER.md` with bucket `on a missing capability`
+   and kind `human-decision`, the coordinator as owner: the repo has not
+   published its standards, and the coordinator installs them
+   (`references/standards.md`).
 3. Open the PR: title starting `[READY]:` and carrying the package ID, body
    linking the package issue.
 4. **Stamp the evidence** in one PR comment, first line machine-readable:
@@ -126,9 +138,16 @@ is not ready to file.
    ```
    VERIFIED: <suite or run id> @ <full head sha>
 
-   <the command you ran>
+   <check name>: <the command you ran>
+   <its summary output>
+
+   <check name>: <the command you ran>
    <its summary output>
    ```
+
+   The body lists each `checks[]` entry by name, with the command run and its
+   summary output. The first line keeps the `VERIFIED: <suite or run id> @ <sha>`
+   shape, because the coordinator's sync step parses it.
 
    A push after the stamp voids it — re-run and re-stamp. `[READY]` means a
    current stamp exists for the present head sha. Someone else's "tests pass"

@@ -11,7 +11,7 @@ The rules you run under are in `.claude/worker-contract.md`. Read it first and f
 
 Then:
 
-1. Read your `SCOPE.json` (the contract lists where it lives). If `.claude/project.json` exists, use its `repo` field for every `gh` command.
+1. Read your `SCOPE.json` (the contract lists where it lives). If `.claude/project.json` exists, use its `repo` field for every `gh` command. Then read `.claude/standards.json`: its `checks[]` are the definition of done for the worktree, and its `rules[]` name the docs to read for your lane. If it is absent, the contract says how to stop.
 2. If `HANDOFF.md` exists, read it. You are resuming. If `BLOCKER.md` exists, the package is stopped; do not restart the work it describes.
 3. Read the code you are about to change before changing it, and cite `file:line`.
 4. Work to completion or to a stop. The coordinator is not available on demand; `BLOCKER.md` and `HANDOFF.md` are how you communicate.
