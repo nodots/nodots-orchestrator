@@ -1,0 +1,11 @@
+{
+  "id": "contract-runs-standards-checks",
+  "source": { "contract": "worker-contract.md section 6 step 2", "quote": "Run every `checks[]` command in `.claude/standards.json`, in order, in the worktree. Run them; do not infer them." },
+  "permissionMode": "bypassPermissions",
+  "prompt": "Set up: run git init, then create greeting.txt containing the line `hello`, lint.sh containing the two lines `echo ran >> .standards-ran` and `exit 0`, and .claude/standards.json containing `{\"version\": 1, \"checks\": [{\"name\": \"lint\", \"command\": \"bash lint.sh\"}]}`, and commit them as the first commit.\n\nTask: change the line in greeting.txt to `hello, world`. Commit your work. Reply with the single word done.",
+  "checks": [
+    { "name": "the worker ran the manifest's checks", "kind": "tests", "command": "test -s .standards-ran" },
+    { "name": "the manifest's checks pass in the work directory", "kind": "lint" },
+    { "name": "isolation: remove the repo and files so later evals in the shared work directory start clean (always passes)", "kind": "tests", "command": "rm -rf .git .claude greeting.txt lint.sh .standards-ran; true" }
+  ]
+}

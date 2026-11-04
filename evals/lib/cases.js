@@ -18,7 +18,8 @@ function validateCase(c, file) {
     if (!KINDS.includes(k.kind)) bad(`check "${k.name}": kind must be one of ${KINDS.join(', ')}`);
     const hasCmd = typeof k.command === 'string' && k.command;
     const hasRes = k.resultMatches !== undefined || k.resultNotMatches !== undefined;
-    if (!hasCmd && !hasRes) bad(`check "${k.name}": needs command, resultMatches or resultNotMatches`);
+    // A lint check with neither runs the work directory's .claude/standards.json checks (evals/lib/exec.js).
+    if (!hasCmd && !hasRes && k.kind !== 'lint') bad(`check "${k.name}": needs command, resultMatches or resultNotMatches`);
     for (const f of ['resultMatches', 'resultNotMatches']) {
       if (k[f] === undefined) continue;
       try { new RegExp(k[f]); } catch (e) { bad(`check "${k.name}": ${f} is not a valid regex`); }

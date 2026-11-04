@@ -23,6 +23,7 @@ for name in api web; do
   git -C "$TMP/$name" config user.email f@example.invalid; git -C "$TMP/$name" config user.name fixture
   printf '# %s\n' "$name" > "$TMP/$name/README.md"
   git -C "$TMP/$name" add -A && git -C "$TMP/$name" commit -qm init && git -C "$TMP/$name" push -q -u origin main
+  fixture_standards "$TMP/$name" && git -C "$TMP/$name" push -q origin main
 done
 
 STUB="$TMP/stub"; mkdir -p "$STUB" "$TMP/gh" "$TMP/claude-log"

@@ -30,6 +30,7 @@ git -C "$TMP/api" checkout -q -b main 2>/dev/null || true
 git -C "$TMP/api" config user.email f@example.invalid; git -C "$TMP/api" config user.name fixture
 printf '# api\n' > "$TMP/api/README.md"
 git -C "$TMP/api" add -A && git -C "$TMP/api" commit -qm init && git -C "$TMP/api" push -q -u origin main
+fixture_standards "$TMP/api" && git -C "$TMP/api" push -q origin main
 
 # --- stubs -------------------------------------------------------------------
 STUB="$TMP/stub"; VDIR="$TMP/verifier"; mkdir -p "$STUB" "$TMP/gh" "$TMP/claude-log" "$VDIR"
