@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "standards.schema.json",
+  "title": "Repository standards manifest (.claude/standards.json)",
+  "description": "Structure only. The rules a schema cannot state are enforced by scripts/check-standards.js and listed in references/standards.md: check names are unique; each rule's doc file part is a tracked file; each paths glob matches at least one tracked file; a rule's check names a check; the preamble is a tracked file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "checks", "rules"],
+  "properties": {
+    "version": { "const": 1 },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "command"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "command": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["doc", "check"],
+        "properties": {
+          "doc": {
+            "type": "string",
+            "description": "Repo-relative path to a tracked file, with an optional #fragment."
+          },
+          "paths": {
+            "description": "Globs over tracked files: ** any depth, * within one segment. null is the same as absent.",
+            "oneOf": [
+              { "type": "null" },
+              { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+            ]
+          },
+          "check": {
+            "description": "The name of a check, or null (reported as a warning).",
+            "oneOf": [{ "type": "null" }, { "type": "string" }]
+          }
+        }
+      }
+    },
+    "preamble": {
+      "description": "Repo-relative path to a tracked file. null is the same as absent.",
+      "oneOf": [{ "type": "null" }, { "type": "string" }]
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "marketplace"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+          "marketplace": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" }
+        }
+      }
+    }
+  }
+}

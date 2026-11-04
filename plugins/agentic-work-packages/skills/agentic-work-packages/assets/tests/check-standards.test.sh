@@ -113,7 +113,7 @@ for fx in "$FIX"/invalid-*.json; do
   assert_eq "standards: $MANIFEST: $(field "$fx" 'd.expect')" "$err" "$name: stderr is exactly its defect, one line"
   assert_empty "$(cat "$TMP/$name.out")" "$name: --json prints nothing on failure"
 done
-assert_eq 15 "$n_invalid" "all fifteen invalid fixtures were found"
+assert_eq 14 "$n_invalid" "all fourteen invalid fixtures were found (unknown key at four levels)"
 
 # --- several defects: one line each, all in the standards: <path>: shape -------
 mkdir -p "$TMP/multi/.claude"
@@ -212,5 +212,14 @@ out=$(node -e '
 ' "$SCRIPT")
 assert_eq '{"ok":false,"manifest":null,"defects":["manifest: must be a JSON object"]}' "$out" \
   "validateStandards: a non-object manifest is a defect and yields no manifest"
+
+out=$(node -e '
+  const fs = require("fs");
+  const { validateStandards } = require(process.argv[1]);
+  const files = JSON.parse(fs.readFileSync(process.argv[2], "utf8")).files;
+  const r = validateStandards({ text: fs.readFileSync(process.argv[3], "utf8"), files });
+  process.stdout.write(JSON.stringify({ ok: r.ok, defects: r.defects }));
+' "$SCRIPT" "$FIX/valid.json" "$TMP/valid.json")
+assert_eq '{"ok":true,"defects":[]}' "$out" "validateStandards: the normalized manifest is itself valid"
 
 finish
