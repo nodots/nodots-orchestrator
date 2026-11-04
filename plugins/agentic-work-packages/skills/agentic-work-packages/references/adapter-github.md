@@ -101,7 +101,7 @@ machine-readable:
 ```
 VERIFIED: unit+e2e @ 6f1c0a4e9b2d8a15c7e340bb91d2f5a8c0e7b3d6
 
-npm test
+<check command>
 142 passed, 0 skipped
 ```
 

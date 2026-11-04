@@ -5,7 +5,8 @@ Claude Code plugin bundling the Nodots agentic development workflow:
 - **Skill** `agentic-work-packages` — decompose work into an issue hierarchy
   autonomous agents can execute in parallel: epics, path-scoped work packages
   ("cells"/"waves"), and blocking verification gates. Tracker-neutral core with
-  GitHub Issues and Jira adapters.
+  GitHub Issues and Jira adapters. Standards are the repo's, read from
+  `.claude/standards.json`; the plugin ships no coding standards.
 - **Hooks** — two, both wired automatically on install.
   - `enforce-scope.js` (`PreToolUse` on `Edit|Write`) enforces the active work
     package's `SCOPE.json` path lanes. An out-of-lane write is denied with the

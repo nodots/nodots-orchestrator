@@ -167,7 +167,7 @@ silent drop.
 ### Acceptance criteria
 - [ ] Illegal move from a client produces MoveRejected, game state unchanged
 - [ ] Property test passes: no illegal move is ever broadcast
-- [ ] Tests pass · TypeScript compiles · lint passes
+- [ ] Every check in `.claude/standards.json` passes
 - [ ] `[READY]:` PR opened, linked to this cell
 
 ### Dependencies

@@ -51,12 +51,13 @@ done
 
 ### 2. Implement in dependency order
 
-Build and verify each repo before moving to the next:
+Build and verify each repo before moving to the next. Each repo runs the checks
+its own `.claude/standards.json` lists, in manifest order, before the commit:
 
 ```
-types:  write code -> npm run build -> commit
-core:   write code -> npm run build -> npm test -> commit
-api:    write code -> npm run build -> commit
+types:  write code -> types' manifest checks -> commit
+core:   write code -> core's manifest checks -> commit
+api:    write code -> api's manifest checks -> commit
 ```
 
 Each repo consumes its upstream through a `file:../types` or `file:../core`
@@ -106,12 +107,13 @@ branch moved.
 
 ### 6. Verify the whole chain
 
-After all PRs are merged, confirm the full chain builds:
+After all PRs are merged, confirm the full chain passes, each repo running its
+own manifest checks in order:
 
 ```bash
-cd packages/types && npm run build
-cd ../core && npm run build && npm test
-cd ../api && npm run build
+cd packages/types && <each check in types' .claude/standards.json>
+cd ../core && <each check in core's .claude/standards.json>
+cd ../api && <each check in api's .claude/standards.json>
 ```
 
 ## Schema migrations

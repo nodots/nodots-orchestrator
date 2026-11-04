@@ -194,3 +194,4 @@ Style rules earn their place the same way: they are worth writing down only when
 - Release and deploy **sequencing is a cell**, in dependency order, with the trigger repo last (§7).
 - Deploy gates require the **feature to be exercised**, not the artifacts inspected (§6).
 - The epic states the project's **domain invariants** or links the repo file that does (§12).
+- Every target repo publishes **`.claude/standards.json`**, and the planner reads its `rules[]` for a lane before writing the package.
