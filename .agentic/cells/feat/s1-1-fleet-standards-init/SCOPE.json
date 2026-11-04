@@ -27,7 +27,8 @@
     ".claude/**"
   ],
   "dependsOn": [
-    "test/sv0-standards-gate"
+    "test/sv0-standards-gate",
+    "feat/s1-1a-invariant-exempts-init"
   ],
   "estimatedScope": "one command, one module, one test, one README section",
   "execution": {
