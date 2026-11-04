@@ -1,0 +1,33 @@
+{
+  "feature": "s0-1-standards-schema",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s0-1-standards-schema",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/standards.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/standards.schema.json",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/check-standards.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/check-standards.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/fixtures/standards/**"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/SKILL.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+    "plugins/fleet/**",
+    "evals/**",
+    "docs/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one reference, one schema, one validator with fixtures",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
