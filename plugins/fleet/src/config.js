@@ -101,6 +101,22 @@ function validateVerify(v, ci, i) {
   return { kind: v.kind, url: v.url, suite: v.suite };
 }
 
+// standards: where the target publishes its standards manifest. Launch reads it
+// from the default branch and refuses a target without a valid one (launch.js).
+// The string "off" launches without one, and the dry run and report say so.
+const DEFAULT_STANDARDS_MANIFEST = '.claude/standards.json';
+function validateStandardsField(s, i) {
+  const at = `targets[${i}].standards`;
+  if (s === undefined) return { manifest: DEFAULT_STANDARDS_MANIFEST };
+  if (s === 'off') return 'off';
+  if (!s || typeof s !== 'object' || Array.isArray(s)) fail(`${at} must be {"manifest": "<relative path>"} or "off"`);
+  const m = s.manifest;
+  if (typeof m !== 'string' || !m) fail(`${at}.manifest must be a non-empty relative path`);
+  if (path.isAbsolute(m) || m.startsWith('/')) fail(`${at}.manifest [${m}] must be relative to the target repo root`);
+  if (m.split(/[\\/]/).includes('..')) fail(`${at}.manifest [${m}] must not contain a ".." segment`);
+  return { manifest: m };
+}
+
 function validate(raw, baseDir) {
   const c = { ...DEFAULTS, ...raw, models: { ...DEFAULTS.models, ...(raw.models || {}) } };
 
@@ -128,6 +144,7 @@ function validate(raw, baseDir) {
       ci: ci.gate === 'external' ? { gate: 'external', verifiedBy: ci.verifiedBy.trim() } : { gate: 'github-actions' },
     };
     if (t.verify !== undefined) target.verify = validateVerify(t.verify, ci, i);
+    target.standards = validateStandardsField(t.standards, i);
     return target;
   });
 

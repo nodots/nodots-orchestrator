@@ -23,6 +23,15 @@ function summarize(r) {
   return `fleet cycle ${r.cycleId}: ${head}; streak=${r.streak}${r.latched ? ' LATCHED' : ''}`;
 }
 
+// The launched row's standards record (launch.js): "off", or the check names
+// and how many of the manifest's rules overlap the lane. A row without one
+// (a record from before the field existed) adds nothing.
+function standardsNote(s) {
+  if (s === 'off') return ' · standards: off';
+  if (!s || typeof s !== 'object') return '';
+  return ` · standards: ${s.checks.join(', ')} (${s.applicable} of ${s.rules} rules in lane)`;
+}
+
 function render(r) {
   const lines = [MARKER(r.cycleId), `## fleet cycle ${r.cycleId} — ${r.outcome.toUpperCase()}`, '', `_${r.at}_`, ''];
   if (r.movement.length) {
@@ -41,7 +50,7 @@ function render(r) {
   }
   if (r.launched.length) {
     lines.push('**Launched**');
-    for (const l of r.launched) lines.push(`- ${l.id} (#${l.issue}) → worker:${l.worker} ${l.mode} tier=${l.tier} attempt=${l.attempt} on ${l.branch}${l.ci && l.ci.gate === 'external' ? ` · CI external: ${l.ci.verifiedBy}` : ''}`);
+    for (const l of r.launched) lines.push(`- ${l.id} (#${l.issue}) → worker:${l.worker} ${l.mode} tier=${l.tier} attempt=${l.attempt} on ${l.branch}${l.ci && l.ci.gate === 'external' ? ` · CI external: ${l.ci.verifiedBy}` : ''}${standardsNote(l.standards)}`);
     lines.push('');
   }
   if (r.reaped.length) {

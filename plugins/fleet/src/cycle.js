@@ -238,7 +238,7 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       if (vanishedRelaunch && q.from && q.from.status === 'retry') alarm('worker-vanished', `${q.id} relaunched at attempt ${q.attempt}, held since it vanished (${q.from.retry.why})`, q.issue.number);
       if (q.from && q.from.status === 'retry') { q.from.status = 'closed'; delete q.from.retry; }
       slots -= 1;
-      r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null, adopted: Boolean(out.adopted), recut: Boolean(out.recut), ci: out.session.ci || null });
+      r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null, adopted: Boolean(out.adopted), recut: Boolean(out.recut), ci: out.session.ci || null, standards: out.session.standards || null });
       // A relaunch repeats a dispatch rather than adding one, except when the
       // original's record was lost to a crash before it was written.
       if (!state.dispatches[q.id]) state.dispatches[q.id] = [];

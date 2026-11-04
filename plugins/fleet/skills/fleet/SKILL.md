@@ -83,6 +83,20 @@ Every cycle ends in exactly one outcome (the cycle contract):
     (the next cycle retitles it if you do not); it then leaves the queue.
   - `launch-ci-check-failed`: the CI state could not be read (auth, network,
     API error). The launch is refused, never assumed healthy.
+  - `launch-standards-missing`: the target's default branch (as fetched into
+    its local clone, `origin/<defaultBranch>`) has no standards manifest at
+    `targets[].standards.manifest` (default `.claude/standards.json`). Publish
+    one on that branch; nothing was launched for that target. Setting
+    `"standards": "off"` on the target launches without one, and every
+    launched row for it then says `standards: off`.
+  - `launch-standards-unreadable`: git could not list or read the default
+    branch in the local clone; the detail says which command failed and why.
+    Fix the clone or `defaultBranch`.
+  - `launch-standards-invalid`: the manifest fails `check-standards.js`; the
+    detail lists every defect. Also raised when the worktree's copy differs
+    from the one read on the default branch (it changed between the two reads,
+    or an adopted branch carries another); the branch is then pushed but no
+    worker started. Fix the manifest on the default branch.
   - `escalation-cap`: a package failed `maxEscalations` times. Read its log
     under `<stateDir>/logs/`, decide whether to split it, widen the plan, or
     re-cut it as a new package. The runtime holds it until you act.
@@ -110,6 +124,12 @@ Every cycle ends in exactly one outcome (the cycle contract):
     runtime stops starting cycles. Read the last reports, then
     `fleet resume --reason "<what you concluded>"`.
   - `locked`: another cycle is running. Wait.
+
+Each **Launched** row ends in its standards: ` · standards: <check names>
+(<n> of <m> rules in lane)`, the checks the worker was told to run and how many
+of the manifest's rules overlap its lane, or ` · standards: off` for a target
+that launches without a manifest. An `off` row means nothing told the worker
+the repo's rules.
 
 **Parked** packages are workers that stopped with a `BLOCKER.md` carrying a
 known `Kind`. They are yours to resolve per `coordination.md` §`BLOCKER.md`;
