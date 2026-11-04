@@ -145,10 +145,27 @@ while IFS= read -r line; do
 done <<< "$frag_report"
 
 # --- 4. the text invariant ----------------------------------------------------
-grep_out=$(git -C "$ROOT" grep -n -E 'lint passes|npm run|npm test|TypeScript compiles' -- plugins docs ':!*/tests/*' 2>&1)
+TEXT_PATTERN='lint passes|npm run|npm test|TypeScript compiles'
+TEXT_PATHSPECS=(plugins docs ':!*/tests/*')
+grep_out=$(git -C "$ROOT" grep -n -E "$TEXT_PATTERN" -- "${TEXT_PATHSPECS[@]}" 2>&1)
 rc=$?
 assert_eq 1 "$rc" "text: git grep ran and matched nothing (exit 1)"
 assert_empty "$grep_out" "text: no tool or command name in plugins or docs outside tests"
+
+# The exemption is one file wide: the same grep, on a repo that commits the
+# exempt file and plugins/fleet/README.md with a command in each, names the
+# README and only the README.
+EXEMPT="$TMP/exempt"
+mkdir -p "$EXEMPT/plugins/fleet/src"
+git_q init -q "$EXEMPT"
+printf 'npm run lint\n' > "$EXEMPT/plugins/fleet/README.md"
+printf 'npm run lint\n' > "$EXEMPT/plugins/fleet/src/standards.js"
+git_q -C "$EXEMPT" add -A
+git_q -C "$EXEMPT" commit -q -m fixture
+grep_out=$(git -C "$EXEMPT" grep -n -E "$TEXT_PATTERN" -- "${TEXT_PATHSPECS[@]}" 2>&1)
+rc=$?
+assert_eq 0 "$rc" "text/exempt: git grep matches the README (exit 0)"
+assert_eq "plugins/fleet/README.md:1:npm run lint" "$grep_out" "text/exempt: the grep names the README and only the README"
 
 grep_out=$(grep -n -iE 'lint|typecheck|npm' "$ROOT/$CONTRACT_ASSET" 2>&1)
 rc=$?
