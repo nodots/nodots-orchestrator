@@ -2,7 +2,7 @@
 
 **Status:** documented from practice, 2026-08-10; restructured 2026-09-06 so that no rule is stated twice
 **Where the rules live:** the `agentic-work-packages` plugin skill in this repo, under `plugins/agentic-work-packages/skills/agentic-work-packages/`. That skill is the single source for every rule in this model. This document is the narrative around it: what the model is, what it replaced, and one complete worked example. Sections that used to restate a rule now point at the file that owns it — there is one copy to keep correct, not two.
-**Canonical examples:** [nodots/backgammon#360](https://github.com/nodots/backgammon/issues/360) (AI Engine + Plugin Platform — executed, 25+ cells) and [nodots/backgammon#406](https://github.com/nodots/backgammon/issues/406) (Human vs Human Play — planned to the same model). These live in a private repo; §9 is a fictional worked example, invented to the same shape, for readers without access.
+**Canonical examples:** two programs in a private repo (one executed, 25+ cells; one planned to the same model). §9 is a fictional worked example, invented to the same shape, for readers without access.
 **Lineage:** `nodots/auto-shop` (cells, SCOPE.json, phase gates) → `docs/autonomous-claude-system.md` + #15 (daemon-style orchestrator design, superseded) → the live pattern below (Claude coordinator + worktree-isolated subagents)
 
 ---

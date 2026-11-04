@@ -272,7 +272,7 @@ assert_contains "$(printf '%s' "$OUT" | grep -E '^#32 ' || true)" "cell:blocked"
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#33 ' || true)" "unchanged" "no BLOCKER.md anywhere leaves an active package alone"
 
 # --- a PR that merely mentions an issue is not that issue's PR -------------
-# Regression from nodots-tms: T5.1c's PR body said "skips two routes (T5.1d,
+# Regression from a host repo: T5.1c's PR body said "skips two routes (T5.1d,
 # #363, must delete the list)", and sync relabelled #363 cell:merged on the
 # strength of T5.1c's merge. Only a title reference or a closing keyword counts.
 cat > "$STUB/gh" <<'GH'
@@ -487,7 +487,7 @@ assert_contains "$OUT2" "B1.1" "the package that needs it is named"
 assert_not_contains "$OUT2" "0 label(s) would change" "an uncovered repo never reports a clean result"
 
 # --- --epic limits the run to one epic's packages ---------------------------
-# Regression from nodots-tms: a host repo with ~290 historical packages made
+# Regression from a host repo with ~290 historical packages that made
 # the per-package BLOCKER.md and PR-comment calls run past fleet's 10-minute
 # limit, so a cycle for a six-package epic never derived anything. A package
 # belongs to an epic by its header line: **Part of** #<epic>.

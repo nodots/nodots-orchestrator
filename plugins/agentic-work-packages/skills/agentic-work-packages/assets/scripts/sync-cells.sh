@@ -228,8 +228,8 @@ const refsIssue = (pr, n) =>
 
 // Each package names its target repo on its header line:
 //   **Part of** #1 · **Phase 1 · name** · **Repo:** `owner/repo`
-// A bare name is qualified with the host's owner, so `backgammon-core` and
-// `nodots/backgammon-core` mean the same thing.
+// A bare name is qualified with the host's owner, so `acme-core` and
+// `acme/acme-core` mean the same thing.
 const owner = String(repo).split('/')[0];
 const qualify = r => (r.includes('/') ? r : `${owner}/${r}`);
 const declaredRepo = body => {
