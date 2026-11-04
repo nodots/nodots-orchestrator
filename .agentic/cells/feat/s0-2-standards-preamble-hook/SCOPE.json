@@ -1,0 +1,38 @@
+{
+  "feature": "s0-2-standards-preamble-hook",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s0-2-standards-preamble-hook",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/hooks/standards-preamble.js",
+    "plugins/agentic-work-packages/hooks/hooks.json",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/standards-preamble.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/settings-snippet.json",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/standards-preamble.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/enforce-scope.js",
+    "plugins/agentic-work-packages/hooks/require-handoff.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/enforce-scope.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/require-handoff.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/enforce-scope-staged.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/session-start-install-deps.sh",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/SKILL.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+    "plugins/fleet/**",
+    "evals/**",
+    "docs/**",
+    ".claude/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one SessionStart hook, two copies, one test",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
