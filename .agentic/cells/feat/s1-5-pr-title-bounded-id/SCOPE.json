@@ -1,0 +1,32 @@
+{
+  "feature": "s1-5-pr-title-bounded-id",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s1-5-pr-title-bounded-id",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/sync-cells.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/sync-cells.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    ".claude/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/assign-cells.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/aei-epic.js",
+    "plugins/fleet/**",
+    "evals/**",
+    "docs/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one matcher line and a regression fixture",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
