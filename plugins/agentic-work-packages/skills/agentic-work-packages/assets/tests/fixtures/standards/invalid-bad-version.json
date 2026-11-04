@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "version: must be the integer 1",
+  "manifest": {
+    "version": 2,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": []
+  }
+}

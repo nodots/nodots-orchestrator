@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "checks[0].command: must be a non-empty string",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "" }],
+    "rules": []
+  }
+}

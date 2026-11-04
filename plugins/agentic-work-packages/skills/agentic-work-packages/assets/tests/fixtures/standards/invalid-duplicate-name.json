@@ -1,0 +1,12 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "checks[1].name: \"test\" is not unique",
+  "manifest": {
+    "version": 1,
+    "checks": [
+      { "name": "test", "command": "make test" },
+      { "name": "test", "command": "make check" }
+    ],
+    "rules": []
+  }
+}

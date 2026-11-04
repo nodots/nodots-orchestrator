@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "standards: CONTRIBUTING.md: rule has no check",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [{ "doc": "CONTRIBUTING.md", "check": null }]
+  }
+}

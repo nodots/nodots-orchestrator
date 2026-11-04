@@ -1,0 +1,24 @@
+{
+  "files": [
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    ".claude/standards-preamble.md",
+    "packages/web/src/index.js",
+    "packages/web/src/app/view.js"
+  ],
+  "manifest": {
+    "version": 1,
+    "checks": [
+      { "name": "lint", "command": "make lint" },
+      { "name": "type-check", "command": "make types" },
+      { "name": "test", "command": "make test" }
+    ],
+    "rules": [
+      { "doc": "CLAUDE.md#ui-rules", "paths": ["packages/web/**"], "check": "lint" },
+      { "check": "test", "doc": "CONTRIBUTING.md" },
+      { "doc": "CLAUDE.md", "paths": ["packages/*/src/*.js", "**/view.js"], "check": "type-check" }
+    ],
+    "preamble": ".claude/standards-preamble.md",
+    "plugins": [{ "name": "example-plugin", "marketplace": "example.market_1" }]
+  }
+}
