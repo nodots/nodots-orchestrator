@@ -56,6 +56,16 @@ assert_file() {
   if [ -f "$1" ]; then _pass "$2"; else _fail "$2" "no such file: $1"; fi
 }
 
+# fixture_standards <clone dir> — commit a valid .claude/standards.json in a
+# fixture clone, so a launch that requires the manifest takes the real path.
+# The caller pushes. Silent on success; non-zero on any git failure.
+fixture_standards() {
+  mkdir -p "$1/.claude" || return 1
+  printf '{"version": 1, "checks": [{"name": "test", "command": "true"}], "rules": []}\n' > "$1/.claude/standards.json" || return 1
+  git -C "$1" add .claude/standards.json || return 1
+  git -C "$1" commit -q -m "fixture: standards manifest" || return 1
+}
+
 # finish — print the tally and set the script's exit status.
 finish() {
   printf '  --- %d checks, %d failed\n' "$TESTS_RUN" "$TESTS_FAILED"
