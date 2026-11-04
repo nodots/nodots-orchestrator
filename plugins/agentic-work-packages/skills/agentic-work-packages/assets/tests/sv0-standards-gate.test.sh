@@ -146,7 +146,8 @@ done <<< "$frag_report"
 
 # --- 4. the text invariant ----------------------------------------------------
 TEXT_PATTERN='lint passes|npm run|npm test|TypeScript compiles'
-TEXT_PATHSPECS=(plugins docs ':!*/tests/*')
+# The init command's drafting table writes a target's own commands (decision S1.1-text on #117).
+TEXT_PATHSPECS=(plugins docs ':!*/tests/*' ':!plugins/fleet/src/standards.js')
 grep_out=$(git -C "$ROOT" grep -n -E "$TEXT_PATTERN" -- "${TEXT_PATHSPECS[@]}" 2>&1)
 rc=$?
 assert_eq 1 "$rc" "text: git grep ran and matched nothing (exit 1)"
