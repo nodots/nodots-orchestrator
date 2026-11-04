@@ -30,7 +30,8 @@
     ".claude/**"
   ],
   "dependsOn": [
-    "test/sv0-standards-gate"
+    "test/sv0-standards-gate",
+    "feat/s1-2a-fixtures-publish-manifest"
   ],
   "estimatedScope": "one config field, three refusal stages, prompt lines, one test",
   "execution": {
