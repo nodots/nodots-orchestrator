@@ -1,0 +1,33 @@
+{
+  "feature": "s0-3-contract-reads-standards",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s0-3-contract-reads-standards",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/worker-contract.md",
+    ".claude/worker-contract.md",
+    "plugins/agentic-work-packages/agents/cell-worker.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/SKILL.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/**",
+    "plugins/fleet/**",
+    "evals/**",
+    "docs/**",
+    ".claude/hooks/**",
+    ".claude/settings.json"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "text in three files, no code",
+  "execution": {
+    "model": "default",
+    "pattern": "solo",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
