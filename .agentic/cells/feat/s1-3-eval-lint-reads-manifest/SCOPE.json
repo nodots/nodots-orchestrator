@@ -1,0 +1,40 @@
+{
+  "feature": "s1-3-eval-lint-reads-manifest",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s1-3-eval-lint-reads-manifest",
+  "allowedPaths": [
+    "evals/lib/cases.js",
+    "evals/lib/exec.js",
+    "evals/schema.json",
+    "evals/README.md",
+    "evals/cases/contract-runs-standards-checks.json",
+    "evals/tests/standards-check.test.js",
+    "evals/tests/stubs/claude.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "evals/run.js",
+    "evals/gates/**",
+    "evals/budget.json",
+    "evals/baseline.json",
+    "evals/spend.json",
+    "plugins/**",
+    "docs/**",
+    ".claude/**"
+  ],
+  "dependsOn": [
+    "test/sv0-standards-gate"
+  ],
+  "estimatedScope": "one check kind extension, one case, one fixture test",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

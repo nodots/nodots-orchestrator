@@ -1,6 +1,8 @@
 'use strict';
 // Run claude -p once per eval, read its cost, and run the case's checks.
 
+const fs = require('fs');
+const path = require('path');
 const { spawnSync } = require('child_process');
 
 // Cost from claude's --output-format json output: one result object, or JSON lines
@@ -45,9 +47,38 @@ function runClaude({ bin, prompt, allowance, model, permissionMode, workdir, tim
   };
 }
 
+// A lint check with no command and no regex runs every checks[].command in the work
+// directory's .claude/standards.json, in order, stopping at the first that fails.
+// The manifest is not validated: the eval asserts behavior, not manifest validity.
+function runManifestChecks(workdir, timeoutSeconds) {
+  const file = path.join(workdir, '.claude', 'standards.json');
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); }
+  catch (e) {
+    if (e.code === 'ENOENT') return 'no .claude/standards.json in the work directory';
+    return `cannot read .claude/standards.json: ${e.message}`;
+  }
+  let manifest;
+  try { manifest = JSON.parse(text); }
+  catch (e) { return `.claude/standards.json is not valid JSON: ${e.message}`; }
+  const list = manifest && Array.isArray(manifest.checks) ? manifest.checks : null;
+  if (!list) return '.claude/standards.json has no checks array';
+  for (const c of list) {
+    const name = c && c.name;
+    if (!c || typeof c.command !== 'string') return `${name} has no command`;
+    const r = spawnSync('bash', ['-c', c.command], { cwd: workdir, encoding: 'utf8', timeout: timeoutSeconds * 1000 });
+    if (r.status !== 0) return `${name} exited ${r.status === null ? 'abnormally' : r.status}: ${c.command}`;
+  }
+  return null;
+}
+
 function runChecks(checks, { workdir, resultText, timeoutSeconds }) {
   return checks.map(k => {
     const problems = [];
+    if (k.kind === 'lint' && !k.command && k.resultMatches === undefined && k.resultNotMatches === undefined) {
+      const problem = runManifestChecks(workdir, timeoutSeconds);
+      if (problem) problems.push(problem);
+    }
     if (k.command) {
       const r = spawnSync('bash', ['-c', k.command], { cwd: workdir, encoding: 'utf8', timeout: timeoutSeconds * 1000 });
       if (r.status !== 0) problems.push(`command exited ${r.status === null ? 'abnormally' : r.status}: ${k.command}`);

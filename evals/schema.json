@@ -13,7 +13,15 @@
         "resultMatches": { "type": "string", "description": "Regex the claude result text must match." },
         "resultNotMatches": { "type": "string", "description": "Regex the claude result text must not match." }
       },
-      "anyOf": [{ "required": ["command"] }, { "required": ["resultMatches"] }, { "required": ["resultNotMatches"] }]
+      "anyOf": [
+        { "required": ["command"] },
+        { "required": ["resultMatches"] },
+        { "required": ["resultNotMatches"] },
+        {
+          "description": "A lint check with no command and no regex runs every checks[].command in the work directory's .claude/standards.json, in order; it fails when the manifest is absent or unparsable, or on the first command that exits non-zero.",
+          "properties": { "kind": { "const": "lint" } }
+        }
+      ]
     },
     "case": {
       "type": "object",

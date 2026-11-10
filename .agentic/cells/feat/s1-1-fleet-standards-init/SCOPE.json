@@ -1,0 +1,40 @@
+{
+  "feature": "s1-1-fleet-standards-init",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s1-1-fleet-standards-init",
+  "allowedPaths": [
+    "plugins/fleet/src/standards.js",
+    "plugins/fleet/bin/fleet.js",
+    "plugins/fleet/README.md",
+    "plugins/fleet/tests/standards-init.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/report.js",
+    "plugins/fleet/skills/**",
+    "plugins/fleet/fleet.config.example.json",
+    "plugins/agentic-work-packages/**",
+    "evals/**",
+    "docs/**",
+    ".claude/**"
+  ],
+  "dependsOn": [
+    "test/sv0-standards-gate",
+    "feat/s1-1a-invariant-exempts-init"
+  ],
+  "estimatedScope": "one command, one module, one test, one README section",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

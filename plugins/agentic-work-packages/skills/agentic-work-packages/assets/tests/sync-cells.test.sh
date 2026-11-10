@@ -315,6 +315,87 @@ assert_not_contains "$(printf '%s' "$OUT" | grep -E '^#42 ' || true)" "merged" "
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#43 ' || true)" "cell:merged" "Fixes: owner/repo#43 claims the PR"
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#44 ' || true)" "cell:merged" "#44 in the PR title claims the PR"
 
+# --- a PR title claims a package only by the bounded package id -------------
+# Regression from this repo: package S1.1 (#124) was relabelled cell:merged when
+# S1.1a's PR merged, because the title rule was a plain substring test and
+# "[READY]: S1.1a — ..." contains "S1.1". The matcher runs in the collector, so
+# the fixture goes through the gh stub; a --state file is already matched.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 124, "title": "S1.1 — fleet standards init drafts each target's commands", "state": "OPEN",
+   "labels": [{"name": "cell:queued"}]},
+  {"number": 137, "title": "S1.1a — The text invariant exempts the file that drafts a target's commands", "state": "CLOSED",
+   "labels": [{"name": "cell:active"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[{"number": 139, "title": "[READY]: S1.1a — The text invariant exempts the file that drafts a target's commands",
+  "body": "Closes #137", "state": "MERGED",
+  "headRefName": "feat/s1-1a-invariant-exempts-init", "headRefOid": "1111111111111111111111111111111111111111"}]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development feat/s1-1a-invariant-exempts-init feat/s1-1-fleet-standards-init ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>/dev/null)
+r137=$(printf '%s' "$OUT" | grep -E '^#137 ' || true)
+r124=$(printf '%s' "$OUT" | grep -E '^#124 ' || true)
+assert_contains "$r137" "cell:merged" "S1.1a's merged PR claims S1.1a (#137)"
+assert_not_contains "$r124" "cell:merged" "S1.1 (#124) is not claimed by the PR titled S1.1a"
+assert_contains "$r124" "cell:active" "S1.1 (#124) derives from its own branch, with no PR"
+
+# The digit boundary, and the title rule still working with no closing keyword.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 151, "title": "S1.1 Title only", "state": "OPEN", "labels": [{"name": "cell:active"}]},
+  {"number": 152, "title": "M1.3 Validation", "state": "OPEN", "labels": [{"name": "cell:queued"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[
+  {"number": 161, "title": "[READY]: S1.1 — x", "body": "no keyword here", "state": "MERGED",
+   "headRefName": "feat/s1-1-x", "headRefOid": "2222222222222222222222222222222222222222"},
+  {"number": 162, "title": "[READY]: M1.30 — x", "body": "no keyword here", "state": "MERGED",
+   "headRefName": "feat/m1-30-x", "headRefOid": "3333333333333333333333333333333333333333"}
+]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>/dev/null)
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#151 ' || true)" "cell:merged" "S1.1 claims a PR titled [READY]: S1.1 — x with no closing keyword"
+assert_not_contains "$(printf '%s' "$OUT" | grep -E '^#152 ' || true)" "cell:merged" "M1.3 does not claim the PR titled [READY]: M1.30 — x"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#152 ' || true)" "unchanged" "M1.3 with no PR and no branch is left alone"
+
 # --- an open [VERIFY] PR waiting on the verifier is awaiting-lab ------------
 # A [VERIFY]: PR with no current stamp is queued for the lab, not active: a
 # worker still writing code and a PR waiting for the verifier look identical
