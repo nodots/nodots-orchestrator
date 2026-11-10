@@ -1,0 +1,43 @@
+{
+  "feature": "s1-2-launch-requires-manifest",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s1-2-launch-requires-manifest",
+  "allowedPaths": [
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/report.js",
+    "plugins/fleet/fleet.config.example.json",
+    "plugins/fleet/skills/fleet/SKILL.md",
+    "plugins/fleet/tests/standards-launch.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/README.md",
+    "plugins/fleet/src/standards.js",
+    "plugins/fleet/src/verify.js",
+    "plugins/fleet/src/reap.js",
+    "plugins/fleet/src/daemon.js",
+    "plugins/agentic-work-packages/**",
+    "evals/**",
+    "docs/**",
+    ".claude/**"
+  ],
+  "dependsOn": [
+    "test/sv0-standards-gate",
+    "feat/s1-2a-fixtures-publish-manifest"
+  ],
+  "estimatedScope": "one config field, three refusal stages, prompt lines, one test",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
