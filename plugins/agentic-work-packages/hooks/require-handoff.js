@@ -4,7 +4,7 @@
 /*
  * Stop hook: a worker leaves written state, or it does not leave.
  *
- * On a non-default branch with uncommitted changes and neither HANDOFF.md nor
+ * On a branch that is neither the default nor develop, with uncommitted changes and neither HANDOFF.md nor
  * BLOCKER.md present, the turn is blocked from ending, naming both files. This
  * is what makes "the coordinator is not available on demand" survivable: the
  * next session — or the next agent — resumes from a file rather than from a
@@ -15,7 +15,7 @@
  * Default: block, in two states: the one above, and a HANDOFF.md that has no
  *   "Plan check" section (a "Plan check" heading and a line
  *   "Package issue still matches: yes" or "no"). A clean tree, the default
- *   branch, a BLOCKER.md (exempt from the Plan check), or a HANDOFF.md with the
+ *   branch, develop, a BLOCKER.md (exempt from the Plan check), or a HANDOFF.md with the
  *   section all allow the stop; the hook is silent whenever it allows.
  * Fail posture: open, and loud. Any error exits 0 after one stderr line naming
  *   this hook and the error, the same posture as enforce-scope.js. A handoff
@@ -55,6 +55,9 @@ const HANDOFF = 'HANDOFF.md';
 const BLOCKER = 'BLOCKER.md';
 const CELL_DIRS = ['.agentic', '.auto-shop'];
 const FALLBACK_DEFAULTS = ['main', 'master', 'development'];
+// An integration branch that is not the remote's default (master is the
+// default, develop takes the merges): not a package lane either.
+const INTEGRATION_BRANCHES = ['develop'];
 const PLAN_HEADING = /^#{1,6}[ \t]*Plan check[ \t]*$/im;
 const PLAN_ANSWER = /^[ \t]*Package issue still matches:[ \t]*(yes|no)[ \t]*$/im;
 const PLAN_LINE = 'Package issue still matches: yes';
@@ -136,6 +139,7 @@ process.stdin.on('end', () => {
 
     const def = defaultBranch(root);
     if (def && branch === def) process.exit(0);        // default branch: not a package
+    if (INTEGRATION_BRANCHES.includes(branch)) process.exit(0); // integration branch: not a package
 
     const dirty = git(root, ['status', '--porcelain']);
     if (!dirty) process.exit(0);                       // nothing uncommitted to describe

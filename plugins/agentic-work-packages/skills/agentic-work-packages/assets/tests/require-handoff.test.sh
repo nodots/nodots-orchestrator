@@ -53,6 +53,16 @@ run_stop
 assert_eq 0 "$EXIT" "default branch: exit 0"
 assert_empty "$OUT" "default branch: no block, whatever the tree looks like"
 
+# --- 1b. an integration branch that is not the default, dirty: allowed -------
+# A repo whose default is master and whose integration branch is develop: a
+# session sitting on develop is not in a package lane, and the repo's own rules
+# forbid writing a HANDOFF.md there, so the hook must not demand one.
+git -C "$REPO" checkout -q -b develop
+run_stop
+assert_eq 0 "$EXIT" "develop, not the default: exit 0"
+assert_empty "$OUT" "develop, not the default: no block, it is an integration branch"
+git -C "$REPO" checkout -q development
+
 # --- 2. feature branch, clean: allowed ---------------------------------------
 rm -f "$REPO/scratch.txt"
 git -C "$REPO" checkout -q -b feat/thing
