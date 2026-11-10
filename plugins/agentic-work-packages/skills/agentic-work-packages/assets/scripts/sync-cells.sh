@@ -270,7 +270,7 @@ for (const issue of issues) {
   const brPool = branches.filter(inScope);
 
   const pr = prPool.find(p => refsIssue(p, issue.number))
-          || (id && prPool.find(p => String(p.title).includes(id)))
+          || (id && prPool.find(p => idMatcher(id).test(String(p.title))))
           || null;
   const brMatch = pr ? null : (id ? brPool.find(b => idMatcher(id).test(b.name)) : null);
   const branch = pr ? pr.headRefName : (brMatch ? brMatch.name : null);
