@@ -151,6 +151,45 @@ node "$PLUGIN/bin/fleet.js" resume --reason "reviewed the last three reports; qu
 `skills/fleet/SKILL.md` tells a coordinator Claude session how to drive it and
 what each alarm asks for.
 
+## Standards
+
+A target's `.claude/standards.json` is its standards manifest: the check
+commands a worker runs before it opens a `[READY]` PR, and the rule documents
+it reads before it changes code under them. The target repo owns the file; the
+contract and every validation rule are in
+[`references/standards.md`](../agentic-work-packages/skills/agentic-work-packages/references/standards.md),
+and the plugin's `check-standards.js` is the one validator.
+
+Launch requires a valid manifest on the target's default branch (S1.2), as it
+requires enabled CI. `"standards": "off"` on a target in `fleet.config.json`
+disables that requirement for that target; it is the one exception, and it is
+reported.
+
+`fleet standards init` drafts a manifest from what the clone already has:
+
+```bash
+node "$PLUGIN/bin/fleet.js" standards init --target acme/api           # print the draft
+node "$PLUGIN/bin/fleet.js" standards init --target acme/api --write   # write it to the clone
+```
+
+- `--target` must be one of `targets[]`; the draft is built from its
+  `localPath`.
+- Checks come from `package.json` `scripts`: each of `lint`, `typecheck` and
+  `build` found there becomes a check that runs that script with the package
+  manager, and `test` becomes the package manager's test command, in that
+  order. With
+  no `package.json`, `checks[]` is empty and the draft does not validate: the
+  command does not guess a check it cannot see, and the notes say what to add.
+- Rules are `CLAUDE.md`, `CONTRIBUTING.md` and `AGENTS.md`, where present at
+  the root, each with `"check": null`. `.claude/worker-contract.md` is never a
+  rule. The draft has `version` 1, no `preamble` and no `plugins`.
+- The draft JSON goes to stdout and the notes to stderr. The draft is then
+  validated with `check-standards.js` against the clone's tracked files: exit 0
+  when it validates, 1 when it does not, with the defects on stderr.
+- `--write` writes `<localPath>/.claude/standards.json` and refuses, with exit
+  1, when that file exists. The command never stages, commits or pushes; review
+  the file and commit it yourself.
+
 ## Approval enforcement
 
 `approvalEnforcement` in `fleet.config.json` is `off` by default. While `off`,
@@ -197,7 +236,7 @@ Where a mechanism is unavailable:
 ## Layout
 
 ```
-bin/fleet.js        CLI: cycle, launch, reap, status, resume, doctor
+bin/fleet.js        CLI: cycle, launch, reap, status, resume, doctor, daemon, standards init
 src/config.js       fleet.config.json, defaults, GH_BIN/GIT_BIN/CLAUDE_BIN seams
 src/exec.js         argv-array process execution, detached spawn, liveness
 src/scripts.js      runs sync-cells.sh and assign-cells.sh, parses their rows
@@ -208,6 +247,7 @@ src/launch.js       worktree + scope commit + plain push + detached claude -p
 src/reap.js         liveness, timeout, pure classify()
 src/store.js        atomic state file, cycle lock
 src/report.js       report JSON, rendering, idempotent post
+src/standards.js    drafts a target's .claude/standards.json from its clone
 src/cycle.js        the pass
 tests/*.test.sh     fixture tests (bash + node builtins; gh and claude stubbed, git real)
 ```
