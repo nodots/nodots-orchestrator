@@ -1,7 +1,7 @@
 # HANDOFF: S1.2 — launch requires a valid manifest
 
-Stopped on BLOCKER.md (S1.2-B2): this branch is not merged with
-`origin/development`, and the session could not run `git merge`.
+Attempt 3: `origin/development` is merged (S1.2-B2 resolved).
+`bash scripts/test.sh` ends ALL PASS. The `[READY]: S1.2` PR is open.
 
 ## Done (attempt 2)
 - `plugins/fleet/tests/standards-launch.test.sh`, committed first. Against the
@@ -31,12 +31,7 @@ Stopped on BLOCKER.md (S1.2-B2): this branch is not merged with
   standards row.
 
 ## Next
-1. Coordinator: merge `origin/development` (3157f7e or later) into this branch
-   and push. Its diff touches no file this package changed.
-2. Run `bash scripts/test.sh` and require `ALL PASS`. On the unmerged tree it
-   fails only in the ten suites #140 fixed, plus v0-gate.
-3. Open the `[READY]: S1.2` PR against `development` with "Closes #125", then
-   stamp `VERIFIED` per the contract §6.
+- Review and merge the `[READY]: S1.2` PR.
 
 ## Notes for review
 - `readWorktreeStandards` (the changed-between-reads refusal) has no fixture
