@@ -1,0 +1,43 @@
+{
+  "feature": "sv1-standards-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/sv1-standards-gate",
+  "allowedPaths": [
+    "plugins/fleet/tests/sv1-standards-gate.test.sh",
+    "evals/gates/sv1-standards.test.js"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "plugins/fleet/src/**",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/**",
+    "evals/lib/**",
+    "evals/run.js",
+    "evals/cases/**",
+    "evals/schema.json",
+    "plugins/agentic-work-packages/**",
+    "docs/**",
+    ".claude/**"
+  ],
+  "dependsOn": [
+    "feat/s1-1-fleet-standards-init",
+    "feat/s1-2-launch-requires-manifest",
+    "feat/s1-3-eval-lint-reads-manifest",
+    "feat/s1-1a-invariant-exempts-init",
+    "feat/s1-2a-fixtures-publish-manifest",
+    "feat/s1-5-pr-title-bounded-id"
+  ],
+  "estimatedScope": "two gate tests over the phase-1 readers",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
