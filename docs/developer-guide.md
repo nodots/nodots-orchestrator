@@ -8,7 +8,7 @@ Nobody runs these tools by hand. You direct work at the level of the epic
 the tools, under the hooks and permissions in `.claude/`. The commands below
 are what those sessions run, so you can read a transcript, answer a permission
 prompt or check a claim against the output. For what you say to a coordinator
-session at each stage of a program, see [cheat-sheet.md](cheat-sheet.md).
+session at each stage of a program, see the plugin's [cheat sheet](../plugins/agentic-work-packages/skills/agentic-work-packages/references/cheat-sheet.md).
 
 This guide describes tools, not rules. Where it touches a rule of the model
 (lanes, stamps, blockers, handoffs), the plugin `references/` and the worker
