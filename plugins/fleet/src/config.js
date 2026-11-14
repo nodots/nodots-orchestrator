@@ -16,7 +16,10 @@ const path = require('path');
 const MODES = new Set(['local', 'cloud', 'external']);
 const PERMISSION_MODES = new Set(['acceptEdits', 'auto', 'dontAsk', 'default', 'plan', 'bypassPermissions']);
 const APPROVAL_MODES = new Set(['off', 'branch-protection', 'ruleset']);
+const CI_GATES = new Set(['github-actions', 'external']);
 const WORKER_ID = /^[A-Za-z0-9_-]+$/;
+const VERIFY_KINDS = new Set(['lab-runner', 'manual']);
+const SUITE_ID = /^[A-Za-z0-9_-]+$/;
 
 const DEFAULTS = {
   wipCap: 4,
@@ -67,6 +70,53 @@ function loadConfig(file) {
   return validate(raw, path.dirname(abs));
 }
 
+// verify: a target whose verifier admits one run at a time. A worker there does
+// not run the verifier; it stops at a "[VERIFY]:" PR the queue picks up. The
+// verifier is reached on loopback only, and the suite id goes into a request,
+// so both are checked here rather than trusted. ci.gate must be external: a
+// target verified by GitHub Actions has no queue to hand the PR to.
+// kind "manual": the verifier is a person or a script outside fleet. fleet
+// makes no request, so a url is refused rather than ignored. suite is optional;
+// the worker prompt (launch.js) names it, and prints "undefined" without it.
+function isLoopback(hostname) {
+  const h = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return h === 'localhost' || h === '::1' || /^127(\.\d{1,3}){3}$/.test(h);
+}
+function validateVerify(v, ci, i) {
+  const at = `targets[${i}].verify`;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) fail(`${at} must be an object {kind, url, suite}`);
+  if (!VERIFY_KINDS.has(v.kind)) fail(`${at}.kind [${v.kind}] must be one of ${[...VERIFY_KINDS].join(', ')}`);
+  if (v.kind === 'manual') {
+    if (ci.gate !== 'external') fail(`${at} requires targets[${i}].ci.gate external: a target with a verify queue is not verified by GitHub Actions`);
+    if (v.url !== undefined) fail(`${at}.url is not used by kind manual: fleet makes no request to a manual verifier; remove it`);
+    if (v.suite !== undefined && (typeof v.suite !== 'string' || !SUITE_ID.test(v.suite))) fail(`${at}.suite [${v.suite}] must match ${SUITE_ID}`);
+    return v.suite === undefined ? { kind: 'manual' } : { kind: 'manual', suite: v.suite };
+  }
+  let u;
+  try { u = new URL(String(v.url)); } catch { fail(`${at}.url [${v.url}] is not a URL`); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') fail(`${at}.url must be http or https`);
+  if (!isLoopback(u.hostname)) fail(`${at}.url host [${u.hostname}] must be loopback (127.0.0.0/8, localhost or ::1)`);
+  if (typeof v.suite !== 'string' || !SUITE_ID.test(v.suite)) fail(`${at}.suite [${v.suite}] must match ${SUITE_ID}`);
+  if (ci.gate !== 'external') fail(`${at} requires targets[${i}].ci.gate external: a target with a verify queue is not verified by GitHub Actions`);
+  return { kind: v.kind, url: v.url, suite: v.suite };
+}
+
+// standards: where the target publishes its standards manifest. Launch reads it
+// from the default branch and refuses a target without a valid one (launch.js).
+// The string "off" launches without one, and the dry run and report say so.
+const DEFAULT_STANDARDS_MANIFEST = '.claude/standards.json';
+function validateStandardsField(s, i) {
+  const at = `targets[${i}].standards`;
+  if (s === undefined) return { manifest: DEFAULT_STANDARDS_MANIFEST };
+  if (s === 'off') return 'off';
+  if (!s || typeof s !== 'object' || Array.isArray(s)) fail(`${at} must be {"manifest": "<relative path>"} or "off"`);
+  const m = s.manifest;
+  if (typeof m !== 'string' || !m) fail(`${at}.manifest must be a non-empty relative path`);
+  if (path.isAbsolute(m) || m.startsWith('/')) fail(`${at}.manifest [${m}] must be relative to the target repo root`);
+  if (m.split(/[\\/]/).includes('..')) fail(`${at}.manifest [${m}] must not contain a ".." segment`);
+  return { manifest: m };
+}
+
 function validate(raw, baseDir) {
   const c = { ...DEFAULTS, ...raw, models: { ...DEFAULTS.models, ...(raw.models || {}) } };
 
@@ -77,11 +127,25 @@ function validate(raw, baseDir) {
   c.targets = c.targets.map((t, i) => {
     if (!t || typeof t.repo !== 'string') fail(`targets[${i}].repo is required`);
     if (typeof t.localPath !== 'string') fail(`targets[${i}].localPath is required`);
-    return {
+    // ci: where this target's changes are verified. "github-actions" (the default) makes launch
+    // require an enabled workflow and a recent run on defaultBranch. "external" is for a target
+    // whose verification runs outside GitHub Actions (another CI, a lab, a device farm); launch
+    // then skips that check, and verifiedBy has to say what verifies the work instead, because
+    // the worker is told it and the dry run reports it. It is never silent.
+    const ci = t.ci === undefined ? { gate: 'github-actions' } : t.ci;
+    if (!ci || typeof ci !== 'object' || !CI_GATES.has(ci.gate)) fail(`targets[${i}].ci.gate must be one of ${[...CI_GATES].join(', ')}`);
+    if (ci.gate === 'external' && (typeof ci.verifiedBy !== 'string' || !ci.verifiedBy.trim())) {
+      fail(`targets[${i}].ci.verifiedBy is required when ci.gate is external: name what verifies this target's changes`);
+    }
+    const target = {
       repo: t.repo.includes('/') ? t.repo : `${c.repo.split('/')[0]}/${t.repo}`,
       localPath: path.resolve(baseDir, t.localPath),
       defaultBranch: t.defaultBranch || 'main',
+      ci: ci.gate === 'external' ? { gate: 'external', verifiedBy: ci.verifiedBy.trim() } : { gate: 'github-actions' },
     };
+    if (t.verify !== undefined) target.verify = validateVerify(t.verify, ci, i);
+    target.standards = validateStandardsField(t.standards, i);
+    return target;
   });
 
   if (!c.workers || typeof c.workers !== 'object' || Object.keys(c.workers).length === 0) fail('workers must map at least one id to {mode}');

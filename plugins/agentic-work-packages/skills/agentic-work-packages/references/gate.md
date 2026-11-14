@@ -76,7 +76,7 @@ phase's packages are built)_
 - [ ] <positive end-to-end assertion>
 - [ ] <negative assertion — what must be refused, asserted at more than one point>
 - [ ] <existing suites remain green>
-- [ ] Tests pass · build/typecheck passes · lint passes
+- [ ] Every check in `.claude/standards.json` passes
 - [ ] `[READY]:` PR opened, linked to this gate
 
 ### Dependencies

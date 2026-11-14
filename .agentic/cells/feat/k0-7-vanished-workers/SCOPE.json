@@ -1,0 +1,31 @@
+{
+  "feature": "k0-7-vanished-workers",
+  "project": "nodots-orchestrator",
+  "branch": "feat/k0-7-vanished-workers",
+  "allowedPaths": [
+    "plugins/fleet/src/reap.js",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/tests/vanished.test.sh",
+    "plugins/fleet/README.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/src/report.js",
+    "plugins/fleet/src/tracker.js",
+    "plugins/fleet/bin/**",
+    "plugins/agentic-work-packages/**",
+    "**/plugin.json",
+    ".github/**"
+  ],
+  "dependsOn": [
+    "feat/k0-3-verify-stage"
+  ],
+  "estimatedScope": "classify a dead session with no exit file as an alarm, cap repeat relaunches, one doc note",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

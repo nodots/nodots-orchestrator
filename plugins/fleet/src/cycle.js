@@ -1,7 +1,8 @@
 'use strict';
 
 /*
- * One pass: lock → sync → promote → assign → launch → reap → report → unlock.
+ * One pass: lock → sync → promote → assign → reap → verify → launch → report → unlock.
+ * verify runs only for targets with `verify` (src/verify.js).
  *
  * Every step reads the tracker fresh; the only local memory is the session
  * table, the dispatch history and the no-movement streak. A failure in sync
@@ -24,18 +25,23 @@ const scope = require('./scope');
 const launchMod = require('./launch');
 const reapMod = require('./reap');
 const report = require('./report');
+const verifyMod = require('./verify');
 
 const EXIT = { ok: 0, labelWriteFailed: 1, usage: 64, missingBinary: 69, internal: 70, truncated: 75, latched: 78, locked: 79 };
 
 function cycleId() { return `${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}-${crypto.randomBytes(2).toString('hex')}`; }
 
-function counts(issues, syncState, live, cfg) {
+// awaitingLab and verifying exist only for a config with a verify target, so
+// every other config's report renders as it did before the verify stage.
+function counts(issues, syncState, live, cfg, verifying = 0) {
   const labelOf = i => (i.labels || []).find(l => l.startsWith('cell:')) || null;
   const open = issues.filter(i => String(i.state).toUpperCase() === 'OPEN');
   const n = l => open.filter(i => labelOf(i) === l).length;
   const merged = issues.filter(i => labelOf(i) === 'cell:merged').length;
   const inFlight = n('cell:active') + open.filter(i => labelOf(i) === 'cell:queued' && (i.labels || []).some(l => l.startsWith('worker:'))).length;
-  return { open: open.length, queued: n('cell:queued'), active: n('cell:active'), awaitingReview: n('cell:awaiting-review'), blocked: n('cell:blocked'), merged, live: live.length, wipCap: cfg.wipCap, wipFree: Math.max(0, cfg.wipCap - inFlight) };
+  const c = { open: open.length, queued: n('cell:queued'), active: n('cell:active'), awaitingReview: n('cell:awaiting-review'), blocked: n('cell:blocked'), merged, live: live.length, wipCap: cfg.wipCap, wipFree: Math.max(0, cfg.wipCap - inFlight) };
+  if ((cfg.targets || []).some(t => t.verify)) { c.awaitingLab = n('cell:awaiting-lab'); c.verifying = verifying; }
+  return c;
 }
 
 function runCycle(cfg, { apply = false, log = () => {} } = {}) {
@@ -43,7 +49,7 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
   const tracker = new Tracker(cfg.bins);
   const id = cycleId();
   const at = new Date().toISOString();
-  const r = { cycleId: id, at, dryRun: !apply, outcome: null, movement: [], counts: {}, alarms: [], launched: [], reaped: [], escalations: [], parked: [], promoted: [], assigned: [], held: [], sync: null, streak: 0, latched: null };
+  const r = { cycleId: id, at, dryRun: !apply, outcome: null, movement: [], counts: {}, alarms: [], launched: [], reaped: [], escalations: [], parked: [], promoted: [], assigned: [], held: [], verify: [], sync: null, streak: 0, latched: null };
   const alarm = (code, detail, issue) => r.alarms.push({ code, detail, issue });
 
   const lock = store.lock(cfg.maxCycleMinutes * 60000);
@@ -76,7 +82,9 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // Fresh issue list with bodies: promotion and launch read SCOPE.json from it.
     const list = tracker.listIssues(cfg.repo);
     if (!list.ok) { alarm('issues-failed', list.error); r.outcome = 'alarm'; return { report: r, exit: list.truncated ? EXIT.truncated : EXIT.internal }; }
-    let issues = list.issues;
+    // The epic's packages only, matching the sync's --epic: promotion, launch,
+    // reap and the counts never act on another program in the same host repo.
+    let issues = list.issues.filter(i => scope.partOf(i.body) === cfg.epic);
 
     // 2. promote
     const pr = promote(issues, sync.state);
@@ -110,19 +118,34 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
 
     // 4. reap first, so a slot freed this cycle can be refilled below.
     const pulls = [];
-    for (const t of cfg.targets) { const p = tracker.listPulls(t.repo); if (p.ok) pulls.push(...p.pulls.map(x => ({ ...x, repo: t.repo }))); else alarm('pulls-failed', p.error); }
+    const pullsFailed = new Set();
+    for (const t of cfg.targets) { const p = tracker.listPulls(t.repo); if (p.ok) pulls.push(...p.pulls.map(x => ({ ...x, repo: t.repo }))); else { alarm('pulls-failed', p.error); pullsFailed.add(t.repo); } }
     const reaped = reapMod.reap(cfg, state, pulls, Date.now(), s => { const x = synced.get(s.issue); return Boolean(x && x.blockerOnBranch); });
     r.reaped = reaped.reaped;
     for (const x of reaped.reaped) {
       if (x.outcome === 'pr') r.movement.push({ package: x.id, issue: x.issue, artifact: { type: 'pr', ref: x.artifact.ref, detail: x.detail } });
       if (x.outcome === 'parked') { r.parked.push(x); if (x.alarm) alarm('blocker-overdue', x.alarm, x.issue); }
+      // A worker killed from outside (no exit file) is never movement: its
+      // relaunch below is reported here and not as a dispatch.
+      if (x.outcome === 'vanished') {
+        const held = x.reason === 'worker-vanished-repeat';
+        alarm(held ? 'worker-vanished-repeat' : 'worker-vanished', `${x.id} ${x.detail}${held ? '' : `; relaunching at attempt ${x.attempt}`}`, x.issue);
+      }
     }
+
+    // FLEET_ONLY_ISSUE narrows `fleet launch <issue>` to one package without a
+    // second launch path. It launches only, so it runs no verify stage.
+    const only = process.env.FLEET_ONLY_ISSUE ? Number(process.env.FLEET_ONLY_ISSUE) : null;
+
+    // 4b. verify: one run in flight per verify target; a failure's re-dispatch
+    // joins this cycle's launch requests below.
+    const vr = only === null
+      ? verifyMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync, issues, at, alarm, r })
+      : { requests: [], verifying: verifyMod.inFlightCount(cfg, state), waiting: verifyMod.manualWaiting(cfg, sync), latched: false };
+    reaped.requests.push(...vr.requests);
 
     // 5. launch: owned, queued, labeled packages without a session; plus relaunch/escalation requests.
     const persist = rec => { state.sessions[rec.issue] = rec; if (apply) store.save(state); };
-    // FLEET_ONLY_ISSUE narrows `fleet launch <issue>` to one package without a
-    // second launch path.
-    const only = process.env.FLEET_ONLY_ISSUE ? Number(process.env.FLEET_ONLY_ISSUE) : null;
     // A package with a branch or a PR already has a worker on it, here or on
     // another account; only a reap request may relaunch it.
     const untouched = n => { const s = synced.get(n); return !s || (!s.branchExists && !s.pr); };
@@ -166,6 +189,15 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
         dispatchable += 1;
         continue;
       }
+      // A verification failure sends the worker back at the same tier; it
+      // counts toward maxEscalations like any other re-dispatch.
+      if (q.next === 'verify-failed') {
+        const escalations = Math.max(0, prior.length - 1);
+        if (escalations >= cfg.maxEscalations) { alarm('escalation-cap', `${s.id} has been re-dispatched ${escalations} time(s); last: ${q.reason}. Holding.`, s.issue); continue; }
+        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt + 1, tier: s.tier, reason: q.reason, from: s, next: 'verify-failed' });
+        dispatchable += 1;
+        continue;
+      }
       if (q.next === 'escalate') {
         const escalations = Math.max(0, prior.length - 1);
         if (escalations >= cfg.maxEscalations) { alarm('escalation-cap', `${s.id} has been escalated ${escalations} time(s); last: ${q.reason}. Holding.`, s.issue); continue; }
@@ -176,6 +208,14 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
         requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt, tier: s.tier, reason: q.reason, relaunch: true, from: s, next: 'relaunch' });
       }
       dispatchable += 1;
+    }
+
+    // A lab the verify stage found unreverted latched the fleet: nothing
+    // launches. Re-dispatches are kept for retry after `fleet resume`.
+    if (vr.latched) {
+      for (const q of requests) if (q.from) { q.from.status = 'retry'; q.from.retry = { next: q.next, reason: q.reason, why: 'latched: verify-not-reverted' }; }
+      requests.length = 0;
+      dispatchable = 0;
     }
 
     const liveNow = reaped.live.length;
@@ -192,33 +232,48 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
         if (q.from) { q.from.status = 'retry'; q.from.retry = { next: q.next, reason: q.reason, why: `launch-${out.stage}: ${out.error}` }; }
         continue;
       }
+      const vanishedRelaunch = q.reason === 'worker-vanished';
+      // A vanished relaunch held over from an earlier cycle (wip-cap, a failed
+      // launch) is named here, so no launch in this report goes unexplained.
+      if (vanishedRelaunch && q.from && q.from.status === 'retry') alarm('worker-vanished', `${q.id} relaunched at attempt ${q.attempt}, held since it vanished (${q.from.retry.why})`, q.issue.number);
       if (q.from && q.from.status === 'retry') { q.from.status = 'closed'; delete q.from.retry; }
       slots -= 1;
-      r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null, adopted: Boolean(out.adopted), recut: Boolean(out.recut) });
+      r.launched.push({ issue: q.issue.number, id: q.id, worker: q.workerId, mode: out.session.mode, tier: q.tier, attempt: q.attempt, branch: q.sc.branch, worktree: out.session.worktree, pid: out.session.pid || null, adopted: Boolean(out.adopted), recut: Boolean(out.recut), ci: out.session.ci || null, standards: out.session.standards || null });
       // A relaunch repeats a dispatch rather than adding one, except when the
       // original's record was lost to a crash before it was written.
       if (!state.dispatches[q.id]) state.dispatches[q.id] = [];
       if (!q.relaunch || state.dispatches[q.id].length < q.attempt) {
         state.dispatches[q.id].push({ n: q.attempt, tier: q.tier, reason: q.reason, runId: out.session.sessionId || null, ts: at, recovered: Boolean(q.relaunch) || undefined });
       }
-      if (!out.dryRun) r.movement.push({ package: q.id, issue: q.issue.number, artifact: { type: 'dispatch', ref: q.sc.branch, detail: `attempt ${q.attempt}` } });
+      if (vanishedRelaunch) r.launched[r.launched.length - 1].vanished = true;
+      if (!out.dryRun && !vanishedRelaunch) r.movement.push({ package: q.id, issue: q.issue.number, artifact: { type: 'dispatch', ref: q.sc.branch, detail: `attempt ${q.attempt}` } });
     }
 
     // 6. outcome, streak, latch
     const liveAfter = reaped.live.length + r.launched.filter(l => l.pid).length;
-    r.counts = counts(issues, sync.state, { length: liveAfter }, cfg);
+    // A worker relaunched after vanishing is not evidence of progress, so it
+    // does not hold the streak down; if it survives, the next cycle sees it live.
+    const liveForStreak = reaped.live.length + r.launched.filter(l => l.pid && !l.vanished).length;
+    r.counts = counts(issues, sync.state, { length: liveAfter }, cfg, vr.verifying);
     // Faults that make the cycle an alarm when nothing moved. A WIP-cap hold
     // is not one: a full fleet with nothing else to do is exhaustion.
-    const FAULT = /(-failed$|^locked$|^latched$|^escalation-cap$|^launch-|^unlaunchable$)/;
-    if (r.alarms.some(a => FAULT.test(a.code)) && r.movement.length === 0) r.outcome = 'alarm';
+    const FAULT = /(-failed$|^locked$|^latched$|^escalation-cap$|^launch-|^unlaunchable$|^worker-vanished(-repeat)?$|^verify-(unreachable|refused|not-reverted|bad-sha)$)/;
+    // A verify fault is an alarm even beside movement: each one needs a look
+    // (a lab not reverted, a verifier that cannot be reached, a refused PR, a
+    // record that cannot be stamped). verify-stale is not one: the PR is queued again.
+    const VERIFY_FAULT = /^verify-(?!stale$)/;
+    if (r.alarms.some(a => VERIFY_FAULT.test(a.code))) r.outcome = 'alarm';
+    else if (r.alarms.some(a => FAULT.test(a.code)) && r.movement.length === 0) r.outcome = 'alarm';
     else if (r.movement.length) r.outcome = 'movement';
     else if (dispatchable > 0 && r.launched.length === 0) r.outcome = 'alarm';
     else r.outcome = 'exhaustion';
     if (r.outcome === 'alarm' && !r.alarms.length) alarm('no-movement', `${dispatchable} package(s) were dispatchable and none launched`);
 
     if (apply) {
+      // A verifier run in flight is live work: waiting on it is not idleness.
+      // So is a manual target's queue: its verifier is outside fleet.
       if (r.outcome === 'movement') state.streak = 0;
-      else if (liveAfter === 0) state.streak += 1;
+      else if (liveForStreak === 0 && vr.verifying === 0 && vr.waiting === 0) state.streak += 1;
       if (state.streak >= cfg.noMovementLimit && !state.latched) {
         const parked = Object.values(state.sessions).filter(s => s.status === 'parked').map(s => `${s.id} (#${s.issue})`);
         state.latched = { at, streak: state.streak, reason: `${state.streak} consecutive cycles without movement${parked.length ? `; parked and waiting on a decision: ${parked.join(', ')}` : ''}` };

@@ -33,6 +33,7 @@ epic                    Large feature or collection of related issues
 agent-ready             No human judgement needed — safe to dispatch
 cell:queued             Dependencies merged, waiting for capacity
 cell:active             An agent is working it
+cell:awaiting-lab       PR open for the verifier, no current VERIFIED stamp
 cell:awaiting-review    PR open, needs human review
 cell:blocked            Agent stopped, needs coordinator action
 cell:merged             Complete
@@ -100,7 +101,7 @@ machine-readable:
 ```
 VERIFIED: unit+e2e @ 6f1c0a4e9b2d8a15c7e340bb91d2f5a8c0e7b3d6
 
-npm test
+<check command>
 142 passed, 0 skipped
 ```
 
@@ -117,6 +118,7 @@ branches and the PRs, and sets each `cell:*` label from what it finds:
 |---|---|
 | PR merged | `cell:merged` |
 | PR open with a current `VERIFIED` stamp | `cell:awaiting-review` |
+| PR open, title `[VERIFY]:`, no current stamp | `cell:awaiting-lab` |
 | `BLOCKER.md` on the branch | `cell:blocked` |
 | branch exists, no PR | `cell:active` |
 | none of the above | unchanged |

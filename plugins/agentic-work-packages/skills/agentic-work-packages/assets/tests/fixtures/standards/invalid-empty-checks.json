@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "checks: must be a non-empty array",
+  "manifest": {
+    "version": 1,
+    "checks": [],
+    "rules": []
+  }
+}

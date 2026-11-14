@@ -51,15 +51,112 @@ function targetFor(cfg, issue) {
   return cfg.targets.find(t => t.repo === declared) || null;
 }
 
-function buildPrompt(cfg, { issue, id, sc, workerId, target, attempt, reason, handoffPresent }) {
+// The prefix rule for "does this rule apply to the lane": the literal prefix of
+// a glob is the text before its first *, ?, [ or {, trailing / trimmed, and two
+// globs overlap when one prefix is a string prefix of the other. Deliberately
+// coarse: it can name a rule that matches nothing in the lane (packages/webapp
+// against packages/web), never omit one that does.
+function literalPrefix(glob) {
+  const s = String(glob);
+  const i = s.search(/[*?[{]/);
+  return (i === -1 ? s : s.slice(0, i)).replace(/\/+$/, '');
+}
+function pathsOverlap(a, b) {
+  const pa = literalPrefix(a), pb = literalPrefix(b);
+  return pa.startsWith(pb) || pb.startsWith(pa);
+}
+// A rule with no paths applies everywhere.
+function applicableRules(manifest, allowedPaths) {
+  const lane = allowedPaths || [];
+  return manifest.rules.filter(r => r.paths === null || r.paths.some(p => lane.some(a => pathsOverlap(p, a))));
+}
+
+function checkStandardsModule(cfg) {
+  return require(path.join(cfg.scriptsDir, 'check-standards.js'));
+}
+
+// readBranchStandards -> { ok, manifest } | { ok:false, stage, error }
+// The manifest as published on origin/<defaultBranch> of the local clone, with
+// the tracked file list of that same tree, validated by check-standards.js.
+function readBranchStandards(cfg, target) {
+  const ref = `origin/${target.defaultBranch}`;
+  const rel = path.posix.normalize(target.standards.manifest);
+  const g = args => run(cfg.bins.git, ['-C', target.localPath, ...args], { timeoutMs: 60000 });
+  const why = r => r.error || r.stderr.trim() || `exit ${r.status}`;
+  const ls = g(['ls-tree', '-r', '-z', '--name-only', ref]);
+  if (ls.status !== 0) return { ok: false, stage: 'standards-unreadable', error: `${target.repo}: git ls-tree -r --name-only ${ref} failed in ${target.localPath}, so the standards manifest cannot be read and no worker is launched: ${why(ls)}` };
+  const files = ls.stdout.split('\0').filter(Boolean);
+  if (!files.includes(rel)) return { ok: false, stage: 'standards-missing', error: `${target.repo} has no ${rel} on ${ref}; publish a standards manifest there, or set targets[].standards to "off" in fleet.config.json` };
+  const show = g(['show', `${ref}:${rel}`]);
+  if (show.status !== 0) return { ok: false, stage: 'standards-unreadable', error: `${target.repo}: git show ${ref}:${rel} failed in ${target.localPath}: ${why(show)}` };
+  const v = checkStandardsModule(cfg).validateStandards({ text: show.stdout, files });
+  if (!v.ok) return { ok: false, stage: 'standards-invalid', error: `${target.repo}: ${rel} on ${ref} is not a valid standards manifest, so no worker is launched: ${v.defects.join('; ')}` };
+  return { ok: true, manifest: v.manifest };
+}
+
+// The worktree's copy, read after prepareWorktree and validated again. A copy
+// that differs from the one read on the default branch (it changed between the
+// two reads, or an adopted branch carries another) is refused standards-invalid:
+// the prompt must describe the manifest the dry run reported.
+function readWorktreeStandards(cfg, target, worktree, expected) {
+  const rel = path.posix.normalize(target.standards.manifest);
+  const refuse = msg => ({ ok: false, stage: 'standards-invalid', error: `${target.repo}: ${rel} in ${worktree} ${msg}` });
+  let text;
+  try { text = fs.readFileSync(path.join(worktree, rel), 'utf8'); } catch (e) { return refuse(`cannot be read (${e.code || e.message}), so it differs from origin/${target.defaultBranch}`); }
+  const ls = run(cfg.bins.git, ['-C', worktree, 'ls-files', '-z'], { timeoutMs: 60000 });
+  if (ls.status !== 0) return refuse(`cannot be validated: git ls-files failed: ${ls.error || ls.stderr.trim()}`);
+  const v = checkStandardsModule(cfg).validateStandards({ text, files: ls.stdout.split('\0').filter(Boolean) });
+  if (!v.ok) return refuse(`is not a valid standards manifest: ${v.defects.join('; ')}`);
+  if (JSON.stringify(v.manifest) !== JSON.stringify(expected)) return refuse(`differs from the one on origin/${target.defaultBranch} read before the worktree was prepared`);
+  return { ok: true, manifest: v.manifest };
+}
+
+function standardsRecord(manifest, sc) {
+  if (!manifest) return 'off';
+  return { checks: manifest.checks.map(c => c.name), rules: manifest.rules.length, applicable: applicableRules(manifest, sc.allowedPaths).length };
+}
+
+function standardsLines(target, title, sc, manifest) {
+  const rel = target.standards.manifest;
+  const lines = [`Standards for ${target.repo} are in ${rel} in this worktree. Before you claim ${title}, run every check in order and quote each command with its summary in the VERIFIED stamp: ${manifest.checks.map(c => `${c.name}: ${c.command}`).join('; ')}`];
+  const rules = applicableRules(manifest, sc.allowedPaths);
+  lines.push(rules.length
+    ? `Rules for your lane; read each doc before changing code under its paths: ${rules.map(r => `${r.doc} (${r.paths ? r.paths.join(', ') : 'all paths'})`).join('; ')}`
+    : `No rule in ${rel} names paths in your lane; the checks still apply.`);
+  if (manifest.plugins.length) lines.push(`This repo's standards expect ${manifest.plugins.map(p => `${p.name}@${p.marketplace}`).join(', ')}; if a skill or hook from it is absent in this session, say so in HANDOFF.md.`);
+  return lines;
+}
+
+// A target with verify (config.js) admits one verifier run at a time, so the
+// worker stops at a "[VERIFY]:" PR the queue picks up. These lines replace the
+// contract's "[READY]:" title and VERIFIED stamp; "[READY]" is never said.
+// The worker cannot read outside its worktree, so the in-repo contract wins
+// when the worktree has one; the plugin's copy is named only when it does not.
+// standards: the worktree's validated manifest ({ manifest }); launch() passes
+// it whenever the target's standards is not "off", and refuses the launch when
+// it cannot. Absent, the prompt carries no standards lines.
+function buildPrompt(cfg, { issue, id, sc, workerId, target, attempt, reason, handoffPresent, worktree, standards }) {
+  const queued = Boolean(target.verify);
+  const title = queued ? `[VERIFY]: ${id}` : `[READY]: ${id}`;
+  const inRepo = Boolean(worktree) && fs.existsSync(path.join(worktree, '.claude', 'worker-contract.md'));
   const lines = [
     `You are worker ${workerId} executing work package ${id} (issue #${issue.number} in ${cfg.repo}) in repository ${target.repo}.`,
-    `Follow the worker contract at ${cfg.contractPath}, in order. It governs everything below.`,
+    `Follow the worker contract at ${inRepo ? '.claude/worker-contract.md in this worktree' : cfg.contractPath}, in order. It governs everything below.`,
     `Your lane is .agentic/cells/${sc.branch}/SCOPE.json in this worktree. Execution pattern: ${(sc.execution && sc.execution.pattern) || 'solo'}.`,
+    ...(standards ? standardsLines(target, title, sc, standards.manifest) : []),
     `Read the package with: gh issue view ${issue.number} --repo ${cfg.repo}`,
-    `Branch ${sc.branch} is checked out and already pushed. Commit on it. Open the PR against ${target.defaultBranch} with a title starting "[READY]: ${id}" and a body containing "Closes #${issue.number}".`,
+    `Branch ${sc.branch} is checked out and already pushed. Commit on it. Open the PR against ${target.defaultBranch} with a title starting "${title}" and a body containing "Closes #${issue.number}".`,
     'Do not change any cell:* or worker:* label. Do not edit SCOPE.json. If you need a file outside allowedPaths, stop and write BLOCKER.md.',
   ];
+  if (queued) {
+    lines.push(
+      `${target.repo} is verified through a queue that admits one run at a time (${target.verify.kind}, suite ${target.verify.suite}). For this target the PR title above and the steps below replace the contract's completion title and its VERIFIED stamp.`,
+      'Do not run the verifier, and do not claim any lock it uses. Do not post a VERIFIED stamp: the queue runs the verifier and stamps the PR.',
+      `In the PR body, paste the selection this target's tooling lists for your change. How to list it: ${target.ci.verifiedBy}.`,
+    );
+  } else if (target.ci && target.ci.gate === 'external') {
+    lines.push(`No GitHub Actions workflow verifies ${target.repo}. Verification for this target: ${target.ci.verifiedBy}. Your VERIFIED stamp must come from that run, not from a pipeline.`);
+  }
   if (attempt > 1) lines.push(`This is attempt ${attempt}.${handoffPresent ? ' HANDOFF.md is present: read it first, you are resuming.' : ''}${reason ? ` The previous attempt ended with: ${reason}.` : ''}`);
   return lines.join('\n');
 }
@@ -106,16 +203,31 @@ function prepareWorktree(cfg, tracker, { target, id, sc }) {
     const rel = path.join('.agentic', 'cells', ...sc.branch.split('/'), 'SCOPE.json');
     const want = JSON.stringify(sc, null, 2) + '\n';
     let have = null; try { have = fs.readFileSync(path.join(worktree, rel), 'utf8'); } catch { /* absent */ }
-    let recut = false;
-    if (have !== want) {
+    const recut = have !== want;
+    if (recut) {
       fs.mkdirSync(path.dirname(path.join(worktree, rel)), { recursive: true });
       fs.writeFileSync(path.join(worktree, rel), want);
+    }
+    // A lane on disk is not a claim. A launch that died before its commit (an
+    // ignored .agentic/, say) left the file untracked, so commit it here: a
+    // never-committed lane as "<ID>: scope", like a new worktree's, and a lane
+    // that changed against HEAD as a re-cut. Only the lane is committed.
+    const tracked = g(['ls-files', '--error-unmatch', '--', rel], worktree).status === 0;
+    if (!tracked || g(['diff', '--quiet', 'HEAD', '--', rel], worktree).status !== 0) {
       const a = g(['add', '--', rel], worktree);
-      const c = a.status === 0 ? g(['-c', 'user.name=fleet', '-c', 'user.email=fleet@nodots.invalid', 'commit', '-q', '-m', `${id}: scope re-cut`], worktree) : a;
-      if (c.status !== 0) return { ok: false, stage: 'recut', error: c.error || c.stderr.trim() };
-      const p = g(['push', 'origin', sc.branch], worktree);
-      if (p.status !== 0) return { ok: false, stage: 'push', error: p.error || p.stderr.trim(), worktree };
-      recut = true;
+      if (a.status !== 0) return { ok: false, stage: 'commit', error: a.error || a.stderr.trim() };
+      const c = g(['-c', 'user.name=fleet', '-c', 'user.email=fleet@nodots.invalid', 'commit', '-q', '-m', tracked ? `${id}: scope re-cut` : `${id}: scope`, '--', rel], worktree);
+      if (c.status !== 0) return { ok: false, stage: tracked ? 'recut' : 'commit', error: c.error || c.stderr.trim() };
+    }
+    // Push when the branch does not track its own remote branch, or is ahead
+    // of it. Plain push, never forced: a rejection is someone else's claim.
+    const u = g(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], worktree);
+    const ownUpstream = u.status === 0 && u.stdout.trim() === `origin/${sc.branch}`;
+    const ahead = ownUpstream ? g(['rev-list', '--count', '@{u}..HEAD'], worktree) : null;
+    if (ahead && ahead.status !== 0) return { ok: false, stage: 'worktree', error: ahead.error || ahead.stderr.trim() };
+    if (!ownUpstream || Number(ahead.stdout.trim()) > 0) {
+      const p = g(['push', '-u', 'origin', sc.branch], worktree);
+      if (p.status !== 0) return { ok: false, stage: 'claim', error: `push of adopted ${sc.branch} was rejected; another worker may own it: ${p.error || p.stderr.trim()}`, worktree };
     }
     const h = g(['rev-parse', 'HEAD'], worktree);
     return { ok: true, worktree, headSha: h.stdout.trim(), created: false, adopted: true, recut, remoteExisted: exists.exists };
@@ -162,30 +274,56 @@ function launch(cfg, tracker, store, req, persist) {
 
   // Unattended edits are only as safe as the CI that catches them. Blast
   // radius is not measured here; see references/scope-contract.md.
-  const ci = tracker.ciStatus(target.repo, target.defaultBranch);
-  if (!ci.ok) return { ok: false, stage: 'ci-check-failed', error: `cannot read CI state for ${target.repo}, so no worker is launched: ${ci.error}` };
-  if (ci.enabledWorkflows === 0) return { ok: false, stage: 'ci-disabled', error: `${target.repo} has no enabled CI workflow; enable one before unattended workers run there` };
-  const ageDays = ci.lastRunAt ? (Date.now() - Date.parse(ci.lastRunAt)) / 86400000 : Infinity;
-  if (!(ageDays <= cfg.ciMaxAgeDays)) return { ok: false, stage: 'ci-stale', error: `${target.repo}: ${ci.lastRunAt ? `the last workflow run on ${target.defaultBranch} was ${ci.lastRunAt}` : `no workflow run on ${target.defaultBranch}`}, outside the ${cfg.ciMaxAgeDays}-day window (ciMaxAgeDays)` };
+  // A target declared ci.gate "external" is verified elsewhere; its verifiedBy
+  // goes to the worker and onto the session record instead of this check.
+  const ciGate = (target.ci && target.ci.gate) || 'github-actions';
+  if (ciGate === 'github-actions') {
+    const ci = tracker.ciStatus(target.repo, target.defaultBranch);
+    if (!ci.ok) return { ok: false, stage: 'ci-check-failed', error: `cannot read CI state for ${target.repo}, so no worker is launched: ${ci.error}` };
+    if (ci.enabledWorkflows === 0) return { ok: false, stage: 'ci-disabled', error: `${target.repo} has no enabled CI workflow; enable one before unattended workers run there` };
+    const ageDays = ci.lastRunAt ? (Date.now() - Date.parse(ci.lastRunAt)) / 86400000 : Infinity;
+    if (!(ageDays <= cfg.ciMaxAgeDays)) return { ok: false, stage: 'ci-stale', error: `${target.repo}: ${ci.lastRunAt ? `the last workflow run on ${target.defaultBranch} was ${ci.lastRunAt}` : `no workflow run on ${target.defaultBranch}`}, outside the ${cfg.ciMaxAgeDays}-day window (ciMaxAgeDays)` };
+  }
+  const ciRecord = ciGate === 'external' ? { gate: 'external', verifiedBy: target.ci.verifiedBy } : { gate: 'github-actions' };
+
+  // A target without a valid standards manifest is refused like one without
+  // CI: before any worktree, branch or worker exists.
+  const standardsOff = target.standards === 'off';
+  let branchStandards = null;
+  if (!standardsOff) {
+    const s = readBranchStandards(cfg, target);
+    if (!s.ok) return s;
+    branchStandards = s.manifest;
+  }
+  const standards = standardsRecord(branchStandards, req.sc);
 
   if (req.dryRun) {
-    return { ok: true, dryRun: true, session: { issue: req.issue.number, id: req.id, branch: req.sc.branch, worktree: scope.worktreePath(cfg.worktreesDir, target.repo, req.id), target: target.repo, tier: req.tier || 'default', mode } };
+    return { ok: true, dryRun: true, session: { issue: req.issue.number, id: req.id, branch: req.sc.branch, worktree: scope.worktreePath(cfg.worktreesDir, target.repo, req.id), target: target.repo, tier: req.tier || 'default', mode, ci: ciRecord, standards } };
   }
 
   const prep = prepareWorktree(cfg, tracker, { target, id: req.id, sc: req.sc });
   if (!prep.ok) return prep;
 
+  // The worktree now exists and its branch is pushed; a refusal here leaves
+  // them for the next cycle to adopt, and starts no worker.
+  let worktreeStandards = null;
+  if (!standardsOff) {
+    const s = readWorktreeStandards(cfg, target, prep.worktree, branchStandards);
+    if (!s.ok) return s;
+    worktreeStandards = { manifest: s.manifest };
+  }
+
   const attempt = req.attempt || 1;
   const sessionId = crypto.randomUUID();
   const handoffPresent = fs.existsSync(path.join(prep.worktree, 'HANDOFF.md'))
     || fs.existsSync(path.join(prep.worktree, '.agentic', 'cells', ...req.sc.branch.split('/'), 'HANDOFF.md'));
-  const prompt = buildPrompt(cfg, { issue: req.issue, id: req.id, sc: req.sc, workerId: req.workerId, target, attempt, reason: req.reason, handoffPresent });
+  const prompt = buildPrompt(cfg, { issue: req.issue, id: req.id, sc: req.sc, workerId: req.workerId, target, attempt, reason: req.reason, handoffPresent, worktree: prep.worktree, standards: worktreeStandards });
   const args = buildArgs(cfg, { prompt, tier: req.tier, sessionId });
 
   const record = {
     issue: req.issue.number, id: req.id, worker: req.workerId, mode, target: target.repo,
     branch: req.sc.branch, worktree: prep.worktree, attempt, tier: req.tier || 'default',
-    sessionId, pid: null, procStart: null,
+    sessionId, pid: null, procStart: null, ci: ciRecord, standards,
     logPath: store.logPath(req.issue.number, attempt), exitPath: store.exitPath(req.issue.number, attempt),
     startedAt: new Date().toISOString(), launchHeadSha: prep.headSha,
     issueHash: crypto.createHash('sha256').update(`${req.issue.title}\n${req.issue.body || ''}`).digest('hex'),
@@ -213,4 +351,4 @@ function localWorktreeOnBranch(cfg, target, id, branch) {
   return r.status === 0 && r.stdout.trim() === branch ? wt : null;
 }
 
-module.exports = { localWorktreeOnBranch, launch, prepareWorktree, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS };
+module.exports = { localWorktreeOnBranch, launch, prepareWorktree, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS, pathsOverlap, applicableRules };

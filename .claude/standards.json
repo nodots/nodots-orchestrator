@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "checks": [
+    { "name": "test", "command": "bash scripts/test.sh" }
+  ],
+  "rules": [
+    { "doc": "CLAUDE.md#rules", "check": "test" },
+    { "doc": "CLAUDE.md#where-intent-and-spec-live", "check": null },
+    { "doc": "REVIEW.md", "check": null }
+  ],
+  "preamble": ".claude/standards-preamble.md"
+}

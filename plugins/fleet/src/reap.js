@@ -55,9 +55,19 @@ function prFor(session, pulls) {
 }
 
 // classify(session, facts) -> { outcome, detail, next }
-//   outcome: pr | parked | escalate | relaunch
+//   outcome: pr | parked | escalate | relaunch | vanished
 //   next:    'escalate' | 'relaunch' | null
-// Pure: facts = { exitCode, blocker, pr, logEmpty }
+// Pure: facts = { exitCode, blocker, pr, logEmpty, livedMs, lastWriteMs, logBytes }
+//   livedMs:     launch to now, the most the process can have lived
+//   lastWriteMs: launch to its last log write, the least it lived (0 if none)
+//   logBytes:    what this run wrote to the log
+//
+// vanished: the record reached `running`, so a process was spawned, and the
+// launcher's wrapper writes the exit file on every exit it lives through
+// (src/exec.js spawnDetached). No exit file means the wrapper was killed too:
+// a supervisor killing its control group, a reboot. A timeout kill also takes
+// the wrapper (signal() targets the process group), so a session reap killed
+// on timeout is classified by the timeout row, not here.
 function classify(session, facts) {
   if (facts.pr) {
     const draft = facts.pr.isDraft ? ' (draft)' : '';
@@ -70,6 +80,16 @@ function classify(session, facts) {
     }
     return { outcome: 'escalate', detail: `BLOCKER.md without a recognized Kind (${facts.blocker.kind || 'none'})`, next: 'escalate', reason: 'blocker:none' };
   }
+  if (session.status === 'running' && session.pid && !session.killedAt && facts.exitCode === null) {
+    const livedSeconds = Math.max(0, Math.round((facts.livedMs || 0) / 1000));
+    const livedMinSeconds = Math.min(livedSeconds, Math.max(0, Math.round((facts.lastWriteMs || 0) / 1000)));
+    const logBytes = facts.logBytes || 0;
+    return {
+      outcome: 'vanished', next: 'relaunch', reason: 'worker-vanished',
+      detail: `pid ${session.pid} gone with no exit file; lived ${livedMinSeconds}s to ${livedSeconds}s (last log write to reap); log ${logBytes} bytes`,
+      vanished: { pid: session.pid, livedSeconds, livedMinSeconds, logBytes },
+    };
+  }
   if (session.status === 'launching' || (facts.logEmpty && facts.exitCode === null)) {
     return { outcome: 'relaunch', detail: 'process never ran (crash before or at spawn)', next: 'relaunch', reason: 'crash-before-run' };
   }
@@ -79,8 +99,10 @@ function classify(session, facts) {
 }
 
 // reap(cfg, state, pulls, now) -> { live, reaped[], requests[] }
-// Mutates session records in state (status, outcome, termSentAt). Does not
-// save; the cycle saves once at the end.
+// Mutates session records in state (status, outcome, termSentAt) and
+// state.vanished (package id -> [{ at, attempt, logPath, logSize }], one per
+// vanishing inside sessionTimeoutMinutes). Does not save; the
+// cycle saves once at the end.
 function reap(cfg, state, pulls, now = Date.now(), blockerOnBranch = null) {
   const live = [];
   const reaped = [];
@@ -130,13 +152,38 @@ function reap(cfg, state, pulls, now = Date.now(), blockerOnBranch = null) {
       continue;
     }
 
+    const log = fs.existsSync(session.logPath) ? fs.statSync(session.logPath) : null;
+    const logSize = log ? log.size : 0;
+    const started = Date.parse(session.startedAt);
+    // A same-attempt relaunch appends to the same log, so this run's bytes are
+    // the size now less the size when this attempt last vanished.
+    const prior = ((state.vanished || {})[session.id] || []).filter(v => v.attempt === session.attempt && v.logPath === session.logPath).pop();
+    const runBytes = Math.max(0, logSize - (prior ? prior.logSize : 0));
     const facts = {
       exitCode: readExit(session.exitPath),
       blocker: blockerFor(session),
       pr: prFor(session, pulls),
-      logEmpty: !fs.existsSync(session.logPath) || fs.statSync(session.logPath).size === 0,
+      logEmpty: logSize === 0,
+      livedMs: now - started,
+      lastWriteMs: runBytes > 0 ? log.mtimeMs - started : 0,
+      logBytes: runBytes,
     };
     const c = classify(session, facts);
+    // Two vanishings of one package inside sessionTimeoutMinutes hold it: a
+    // worker that keeps being killed from outside will not be saved by a third
+    // launch. The history is keyed by package id because a relaunch replaces
+    // the session record.
+    if (c.outcome === 'vanished') {
+      state.vanished = state.vanished || {};
+      const recent = (state.vanished[session.id] || []).filter(v => now - Date.parse(v.at) <= timeoutMs);
+      recent.push({ at: new Date(now).toISOString(), attempt: session.attempt, logPath: session.logPath, logSize });
+      state.vanished[session.id] = recent;
+      if (recent.length >= 2) {
+        c.next = null;
+        c.reason = 'worker-vanished-repeat';
+        c.detail += `; vanished ${recent.length} times within ${cfg.sessionTimeoutMinutes} min, holding`;
+      }
+    }
     session.status = c.outcome === 'parked' ? 'parked' : 'closed';
     session.outcome = c.outcome;
     session.exitCode = facts.exitCode;

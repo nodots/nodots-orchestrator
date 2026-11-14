@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "checks[0].timeout: unknown key",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test", "timeout": 60 }],
+    "rules": []
+  }
+}

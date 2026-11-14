@@ -1,0 +1,40 @@
+{
+  "feature": "s0-5-own-manifest",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s0-5-own-manifest",
+  "allowedPaths": [
+    ".claude/standards.json",
+    ".claude/standards-preamble.md",
+    ".claude/hooks/standards-preamble.js",
+    ".claude/settings.json"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "CLAUDE.md",
+    "REVIEW.md",
+    ".claude/worker-contract.md",
+    ".claude/hooks/enforce-scope.js",
+    ".claude/hooks/require-handoff.js",
+    "plugins/**",
+    "evals/**",
+    "docs/**",
+    "scripts/**"
+  ],
+  "dependsOn": [
+    "feat/s0-1-standards-schema",
+    "feat/s0-2-standards-preamble-hook"
+  ],
+  "estimatedScope": "one manifest, one preamble, one hook install",
+  "execution": {
+    "model": "cheapest",
+    "pattern": "solo",
+    "window": "default; autocompact on",
+    "agents": [],
+    "verifiedBy": "node plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/check-standards.js --root . .claude/standards.json"
+  }
+}

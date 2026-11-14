@@ -5,15 +5,17 @@ pass:
 
 ```
 fleet cycle --apply
-  lock → sync-cells.sh --apply → promote → assign-cells.sh --apply → launch → reap → report → unlock
+  lock → sync-cells.sh --apply → promote → assign-cells.sh --apply → reap → verify → launch → report → unlock
 ```
 
 - **sync** derives every `cell:*` label from branches, PRs and `BLOCKER.md`
-  (the plugin's script; fleet reads its state through `--emit-state`).
+  (the plugin's script; fleet reads its state through `--emit-state`). It runs
+  with `--epic <epic>`, so only the config's epic's packages are derived.
 - **promote** adds `cell:queued` to an `agent-ready` package once every
   `dependsOn` branch has a merged PR.
-- **assign** hands queued packages to worker ids as `worker:<id>` labels, within
-  the WIP cap and the contract-change holds (the plugin's script).
+- **assign** hands the epic's queued packages to worker ids as `worker:<id>`
+  labels, within the WIP cap and the contract-change holds (the plugin's
+  script).
 - **launch**, for each queued package owned by a local worker id: a git
   worktree on the package branch, the issue's `SCOPE.json` committed as
   `<ID>: scope`, a plain push as the claim, then a detached
@@ -23,19 +25,106 @@ fleet cycle --apply
   `ciMaxAgeDays` (default 14; `launch-ci-stale`), or CI state it cannot read
   (`launch-ci-check-failed`). A package on the `cheapest` tier with no
   `execution.verifiedBy` is `unlaunchable`. Blast radius is not checked.
+  A target whose changes are verified outside GitHub Actions declares
+  `"ci": { "gate": "external", "verifiedBy": "..." }` in `fleet.config.json`;
+  launch then skips the GitHub Actions check for it, tells the worker what
+  verifies its work, and records the gate on the session and in the report.
+  `verifiedBy` is required with `external`, so the exemption is never silent.
+  A target whose verifier admits one run at a time also declares
+  `"verify": { "kind": "lab-runner", "url": "http://127.0.0.1:<port>", "suite": "<id>" }`.
+  `url` must be loopback, `suite` must match `^[A-Za-z0-9_-]+$`, and `ci.gate`
+  must be `external`; anything else is a config error. A target verified by a
+  person or a script outside fleet declares `"verify": { "kind": "manual" }`
+  instead: it needs no `url` (one is refused, since nothing is requested), and
+  `suite` is optional. The worker prompt is the same for both kinds; it names
+  the suite, so set one (without it the prompt reads `suite undefined`).
+  A worker on that target opens its PR titled `[VERIFY]: <id>`, never
+  `[READY]`. It does not run the verifier, claim any lock it uses, or post a
+  `VERIFIED` stamp, and it pastes into the PR body the selection its target's
+  tooling lists, as `ci.verifiedBy` describes.
 - **reap** classifies finished sessions: PR ⇒ movement; `BLOCKER.md` with a
   known Kind ⇒ parked for the coordinator; silent or failed ⇒ escalate one
   model tier up, up to `maxEscalations`. A PR belongs to a package only when
   its head branch equals the package branch (title and body are ignored). A
   parked session whose blocker is removed is relaunched only if the package
-  has no PR in any state; otherwise it is closed as `pr`.
+  has no PR in any state; otherwise it is closed as `pr`. A running session
+  whose process is gone and which left no exit file was killed from outside
+  (the launcher's wrapper writes the exit file on every exit it survives): it
+  is reaped as `vanished`, relaunched at the same attempt under alarm
+  `worker-vanished` (package, pid, how long it lived, log size), and is not
+  movement, so the no-movement streak still rises. A session reap killed on
+  timeout is not vanished; it escalates as `timeout`. A second vanishing of the
+  same package within `sessionTimeoutMinutes` holds it with
+  `worker-vanished-repeat` and launches nothing; like `escalation-cap`, the
+  hold stays until the coordinator acts.
+- **verify** runs for each target with `verify`, after reap and before launch,
+  and keeps one verifier run in flight per target (`src/verify.js`):
+  - A run recorded in `state.json` (`verify.<repo>.inFlight`) is read with
+    `GET <url>/runs/<id>`. Unfinished, it is left; it counts as live, so
+    waiting on it never raises the no-movement streak.
+  - With nothing in flight, the next `cell:awaiting-lab` PR is posted with
+    `POST <url>/<suite>/verify {"pr": n}`: gates (`V<n>`) first, then packages
+    whose `dependsOn` all merged, then the oldest. A PR is skipped at the head
+    its last run failed or was refused at.
+  - Pass (`exitCode` 0, `verify.reverted` true, `verify.headSha` a full
+    40-character sha equal to the PR head): a `VERIFIED: lab-impacted @ <sha>`
+    comment with a summary of the run, then `[VERIFY]:` is retitled
+    `[READY]:`. Movement `verified`.
+  - Fail (`exitCode` not 0): the summary is commented on the PR and the
+    package's worker is re-dispatched at the same tier with reason
+    `verify-failed: <first unexpected test>`. It counts toward
+    `maxEscalations`; at the cap the package is held with `escalation-cap`.
+  - A head that moved since the POST discards the result (`verify-stale`);
+    the PR is posted again next cycle.
+  - A 409 `a run is already going` is retried next cycle. Any other 409 is
+    commented on the PR, raises `verify-refused`, and the next PR is tried.
+  - `verify.reverted` not true raises `verify-not-reverted` and **latches the
+    fleet**: nothing launches or verifies until `fleet resume --reason <text>`.
+  - An open `[READY]:` PR on a verify target with no stamp at its head (a push
+    after the stamp) is retitled `[VERIFY]:` and queued again. A `[VERIFY]:` PR
+    with a stamp at its head is retitled `[READY]:`.
+  - When the target's PR list fails (`pulls-failed`), the stage skips the
+    target and keeps the record.
+  - `verify-unreachable` and `verify-pr-missing` (the record is kept),
+    `verify-refused`, `verify-not-reverted`, `verify-bad-sha`, `verify-post-failed`,
+    `verify-write-failed` and `verify-redispatch-failed` make the cycle an
+    alarm. `verify-stale` does not.
+  - A dry run makes no POST, comment or title edit; it reports what it would
+    do. `fleet launch <issue>` runs no verify stage.
+  - A `manual` target makes no request and keeps no run in flight. The stage
+    reports its `cell:awaiting-lab` PRs as `queued`, in the order above; only
+    a failed title edit (`verify-write-failed`) can alarm. Its waiting PRs count as live for the streak, so a
+    fleet waiting on a person does not latch. The outside verifier comments
+    `VERIFIED: <suite> @ <full head sha>` and retitles `[READY]:`; a stamp
+    without the retitle is retitled by the stage, as for `lab-runner`. Either
+    way the PR leaves the queue.
 - **report** posts one Movement / Exhaustion / Alarm comment on the epic, with
   a marker so a re-post is a no-op, and keeps the no-movement streak that
-  latches the fleet after `noMovementLimit` cycles.
+  latches the fleet after `noMovementLimit` cycles. For a config with a verify
+  target the counts add `awaiting-lab` and `verifying`; every other report is
+  unchanged.
+
+A cycle acts on one epic: the packages whose header line says
+`**Part of** #<epic>`, the same rule `sync-cells.sh --epic` applies. Other
+programs in the same host repo are neither synced, promoted, assigned nor
+launched: fleet passes `assign-cells.sh` the epic's open packages through
+`--state`, so the WIP cap counts only the epic's in-flight packages.
+`fleet doctor` prints how many open packages in the host repo belong to the
+epic and how many do not. One limit follows:
+
+- A `dependsOn` branch that belongs to another epic is never seen as merged,
+  because promotion reads merged branches from the epic's sync state. Keep
+  dependencies inside the epic.
 
 No daemon. State is the tracker plus `<stateDir>/state.json` (sessions,
 dispatch history, streak), written atomically. A crash mid-cycle is recovered
 on the next pass from the tracker and the worktrees.
+
+Running a cycle from a supervisor requires the workers to outlive it. Under
+systemd, set `KillMode=process` on the unit: the default
+`KillMode=control-group` kills every worker a `Type=oneshot` cycle launched as
+soon as the cycle exits, and each later cycle reports `worker-vanished`.
+`DAEMON.md` has a complete unit.
 
 ## Install
 
@@ -61,6 +150,45 @@ node "$PLUGIN/bin/fleet.js" resume --reason "reviewed the last three reports; qu
 
 `skills/fleet/SKILL.md` tells a coordinator Claude session how to drive it and
 what each alarm asks for.
+
+## Standards
+
+A target's `.claude/standards.json` is its standards manifest: the check
+commands a worker runs before it opens a `[READY]` PR, and the rule documents
+it reads before it changes code under them. The target repo owns the file; the
+contract and every validation rule are in
+[`references/standards.md`](../agentic-work-packages/skills/agentic-work-packages/references/standards.md),
+and the plugin's `check-standards.js` is the one validator.
+
+Launch requires a valid manifest on the target's default branch (S1.2), as it
+requires enabled CI. `"standards": "off"` on a target in `fleet.config.json`
+disables that requirement for that target; it is the one exception, and it is
+reported.
+
+`fleet standards init` drafts a manifest from what the clone already has:
+
+```bash
+node "$PLUGIN/bin/fleet.js" standards init --target acme/api           # print the draft
+node "$PLUGIN/bin/fleet.js" standards init --target acme/api --write   # write it to the clone
+```
+
+- `--target` must be one of `targets[]`; the draft is built from its
+  `localPath`.
+- Checks come from `package.json` `scripts`: each of `lint`, `typecheck` and
+  `build` found there becomes a check that runs that script with the package
+  manager, and `test` becomes the package manager's test command, in that
+  order. With
+  no `package.json`, `checks[]` is empty and the draft does not validate: the
+  command does not guess a check it cannot see, and the notes say what to add.
+- Rules are `CLAUDE.md`, `CONTRIBUTING.md` and `AGENTS.md`, where present at
+  the root, each with `"check": null`. `.claude/worker-contract.md` is never a
+  rule. The draft has `version` 1, no `preamble` and no `plugins`.
+- The draft JSON goes to stdout and the notes to stderr. The draft is then
+  validated with `check-standards.js` against the clone's tracked files: exit 0
+  when it validates, 1 when it does not, with the defects on stderr.
+- `--write` writes `<localPath>/.claude/standards.json` and refuses, with exit
+  1, when that file exists. The command never stages, commits or pushes; review
+  the file and commit it yourself.
 
 ## Approval enforcement
 
@@ -108,7 +236,7 @@ Where a mechanism is unavailable:
 ## Layout
 
 ```
-bin/fleet.js        CLI: cycle, launch, reap, status, resume, doctor
+bin/fleet.js        CLI: cycle, launch, reap, status, resume, doctor, daemon, standards init
 src/config.js       fleet.config.json, defaults, GH_BIN/GIT_BIN/CLAUDE_BIN seams
 src/exec.js         argv-array process execution, detached spawn, liveness
 src/scripts.js      runs sync-cells.sh and assign-cells.sh, parses their rows
@@ -119,6 +247,7 @@ src/launch.js       worktree + scope commit + plain push + detached claude -p
 src/reap.js         liveness, timeout, pure classify()
 src/store.js        atomic state file, cycle lock
 src/report.js       report JSON, rendering, idempotent post
+src/standards.js    drafts a target's .claude/standards.json from its clone
 src/cycle.js        the pass
 tests/*.test.sh     fixture tests (bash + node builtins; gh and claude stubbed, git real)
 ```

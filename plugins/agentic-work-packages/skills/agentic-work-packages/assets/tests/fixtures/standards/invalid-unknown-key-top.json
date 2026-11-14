@@ -1,0 +1,10 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "owner: unknown key",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [],
+    "owner": "someone"
+  }
+}

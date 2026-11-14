@@ -10,6 +10,9 @@
  *   fleet status [--json]                               local state and live sessions, read-only
  *   fleet resume --reason <text>                        clear the stop latch
  *   fleet doctor                                        binaries, plugin, labels, contract, hooks
+ *   fleet daemon --config <a.json> [--config <b.json> ...] [--interval <minutes>]
+ *                                                       cycle --apply per config on an interval and on worker exit
+ *   fleet standards init --target <owner/repo> [--write] draft the target's .claude/standards.json and validate it
  *
  * Config: --config, else FLEET_CONFIG, else ./fleet.config.json.
  * Exit codes: 0 ok · 1 a label write failed · 64 usage · 69 missing binary ·
@@ -26,15 +29,18 @@ const reapMod = require('../src/reap');
 const report = require('../src/report');
 const { run, isAlive } = require('../src/exec');
 const trust = require('../src/trust');
+const scope = require('../src/scope');
 
 function parse(argv) {
-  const out = { _: [], flags: {} };
+  // flags.config keeps the last --config, as before; configs keeps every one,
+  // for the daemon.
+  const out = { _: [], flags: {}, configs: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const k = a.slice(2);
       const next = argv[i + 1];
-      if (['config', 'reason', 'issue'].includes(k)) { out.flags[k] = next; i++; }
+      if (['config', 'reason', 'issue', 'interval', 'target'].includes(k)) { out.flags[k] = next; i++; if (k === 'config') out.configs.push(next); }
       else out.flags[k] = true;
     } else out._.push(a);
   }
@@ -42,7 +48,7 @@ function parse(argv) {
 }
 
 function usage(code = EXIT.usage) {
-  process.stderr.write(fs.readFileSync(__filename, 'utf8').split('\n').slice(4, 17).map(l => l.replace(/^ \*\s?/, '')).join('\n') + '\n');
+  process.stderr.write(fs.readFileSync(__filename, 'utf8').split('\n').slice(4, 20).map(l => l.replace(/^ \*\s?/, '')).join('\n') + '\n');
   process.exit(code);
 }
 
@@ -53,9 +59,22 @@ function config(flags) {
 }
 
 function main() {
-  const { _: pos, flags } = parse(process.argv.slice(2));
+  const { _: pos, flags, configs } = parse(process.argv.slice(2));
   const cmd = pos[0];
   if (!cmd || flags.help || cmd === 'help') usage(cmd ? EXIT.ok : EXIT.usage);
+
+  if (cmd === 'daemon') {
+    // Runs until SIGTERM/SIGINT; each cycle is `fleet cycle --apply` for one config.
+    const files = configs.length ? configs : [process.env.FLEET_CONFIG || 'fleet.config.json'];
+    if (files.some(f => f === undefined)) { process.stderr.write('fleet daemon: --config needs a file\n'); process.exit(EXIT.usage); }
+    if ('interval' in flags && flags.interval === undefined) { process.stderr.write('fleet daemon: --interval needs a number of minutes\n'); process.exit(EXIT.usage); }
+    try { require('../src/daemon').start({ files, intervalMinutes: flags.interval, fleetBin: __filename }); }
+    catch (e) {
+      if (e.code !== 'EUSAGE' && e.code !== 'ECONFIG') throw e;
+      process.stderr.write(`${e.message}\n`); process.exit(EXIT.usage);
+    }
+    return;
+  }
 
   if (cmd === 'cycle') {
     const cfg = config(flags);
@@ -78,6 +97,52 @@ function main() {
     const alarms = r.alarms.filter(a => a.issue === n);
     process.stdout.write(JSON.stringify({ cycleId: r.cycleId, launched: mine, alarms, dryRun: r.dryRun }, null, 2) + '\n');
     process.exit(mine.length ? EXIT.ok : (alarms.length ? EXIT.internal : exit));
+  }
+
+  if (cmd === 'standards') {
+    // Drafts a manifest for a human to commit. Reads the clone, writes at most
+    // one new file with --write, and never stages, commits or pushes.
+    if (pos[1] !== 'init') usage();
+    if (typeof flags.target !== 'string') { process.stderr.write('fleet standards init: --target <owner/repo> is required\n'); process.exit(EXIT.usage); }
+    const cfg = config(flags);
+    const target = cfg.targets.find(t => t.repo === flags.target);
+    if (!target) {
+      process.stderr.write(`fleet standards init: ${flags.target} is not in targets[] (${cfg.targets.map(t => t.repo).join(', ')})\n`);
+      process.exit(EXIT.usage);
+    }
+    const manifestPath = path.join(target.localPath, '.claude', 'standards.json');
+    if (flags.write && fs.existsSync(manifestPath)) {
+      process.stderr.write(`fleet standards init: ${manifestPath} exists; refusing to overwrite it\n`);
+      process.exit(1);
+    }
+    let draft;
+    try { draft = require('../src/standards').draftManifest(target.localPath); }
+    catch (e) { process.stderr.write(`fleet standards init: ${e.message}\n`); process.exit(1); }
+    const text = JSON.stringify(draft.manifest, null, 2) + '\n';
+    process.stdout.write(text);
+    for (const n of draft.notes) process.stderr.write(`fleet standards init: ${n}\n`);
+    if (flags.write) {
+      fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+      fs.writeFileSync(manifestPath, text, { flag: 'wx' });
+      process.stderr.write(`fleet standards init: wrote ${manifestPath}; review it and commit it yourself\n`);
+    }
+    const checker = path.join(cfg.scriptsDir, 'check-standards.js');
+    if (!fs.existsSync(checker)) { process.stderr.write(`fleet standards init: no validator at ${checker}; the draft is not validated\n`); process.exit(1); }
+    const ls = run(cfg.bins.git, ['-C', target.localPath, 'ls-files', '-z'], { timeoutMs: 60000 });
+    if (ls.status !== 0) {
+      process.stderr.write(`fleet standards init: git ls-files failed in ${target.localPath}: ${ls.error || ls.stderr.trim()}; the draft is not validated\n`);
+      process.exit(1);
+    }
+    const files = ls.stdout.split('\0').filter(Boolean);
+    const v = require(checker).validateStandards({ text, files });
+    for (const w of v.warnings) process.stderr.write(`fleet standards init: warning: ${w}\n`);
+    if (!v.ok) {
+      for (const d of v.defects) process.stderr.write(`fleet standards init: defect: ${d}\n`);
+      process.stderr.write('fleet standards init: the draft does not validate\n');
+      process.exit(1);
+    }
+    process.stderr.write('fleet standards init: the draft validates\n');
+    process.exit(EXIT.ok);
   }
 
   if (cmd === 'reap') {
@@ -130,6 +195,7 @@ function main() {
     check(fs.existsSync(cfg.contractPath), 'worker-contract.md', cfg.contractPath);
     const emit = run('bash', [path.join(cfg.scriptsDir, 'sync-cells.sh'), '--help'], { timeoutMs: 15000 });
     check(/--emit-state/.test(emit.stdout), 'sync-cells.sh supports --emit-state', 'needs agentic-work-packages >= 1.4.1');
+    check(/--epic/.test(emit.stdout), 'sync-cells.sh supports --epic', 'needs an agentic-work-packages with sync-cells.sh --epic');
     for (const t of cfg.targets) {
       check(fs.existsSync(t.localPath), `clone ${t.repo}`, t.localPath);
       const settings = path.join(t.localPath, '.claude', 'settings.json');
@@ -149,6 +215,15 @@ function main() {
     } else check(false, `gh label list ${cfg.repo}`, labels.error || labels.stderr.trim());
     const epic = tracker.viewIssue(cfg.repo, cfg.epic);
     check(epic.ok, `epic #${cfg.epic}`, epic.ok ? epic.issue.title : epic.error);
+    // A package is an open issue that is agent-ready or already carries a
+    // cell:* label; a cycle acts only on those whose **Part of** names the epic.
+    const list = tracker.listIssues(cfg.repo);
+    if (list.ok) {
+      const packages = list.issues.filter(i => String(i.state).toUpperCase() === 'OPEN'
+        && i.labels.some(l => l === 'agent-ready' || l.startsWith('cell:')));
+      const inEpic = packages.filter(i => scope.partOf(i.body) === cfg.epic).length;
+      check(true, `packages of epic #${cfg.epic}`, `${inEpic} open in ${cfg.repo}, ${packages.length - inEpic} open outside the epic`);
+    } else check(false, `issue list ${cfg.repo}`, list.error);
     process.exit(bad ? EXIT.internal : EXIT.ok);
   }
 

@@ -8,8 +8,11 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { run } = require('./exec');
+const { Tracker } = require('./tracker');
+const { partOf } = require('./scope');
 
 // "#101  cell:active -> cell:merged   (PR #201 merged)"
 // "#106  cell:queued   (unchanged: no rule matched)"
@@ -50,6 +53,9 @@ function runSync(cfg, { apply, emitPath }) {
   const script = path.join(cfg.scriptsDir, 'sync-cells.sh');
   const args = [script, '--repo', cfg.repo];
   for (const t of cfg.targets) args.push('--target', t.repo);
+  // Only the epic's packages: a host repo's other programs cost no per-package
+  // calls, and their uncollected repos cannot fail the sync.
+  args.push('--epic', String(cfg.epic));
   if (emitPath) args.push('--emit-state', emitPath);
   if (apply) args.push('--apply');
   const env = { ...process.env, GH_BIN: cfg.bins.gh };
@@ -60,14 +66,41 @@ function runSync(cfg, { apply, emitPath }) {
   return { status: r.status, error: r.error, stdout: r.stdout, stderr: r.stderr, rows: parseSyncRows(r.stdout), state, failedWrites };
 }
 
-function runAssign(cfg, { apply }) {
-  const script = path.join(cfg.scriptsDir, 'assign-cells.sh');
-  const args = [script, '--repo', cfg.repo, '--workers', cfg.workerIds.join(','), '--wip-cap', String(cfg.wipCap)];
-  if (apply) args.push('--apply');
-  const env = { ...process.env, GH_BIN: cfg.bins.gh };
-  const r = run('bash', args, { env, timeoutMs: 10 * 60 * 1000 });
-  const parsed = parseAssignRows(r.stdout);
-  return { status: r.status, error: r.error, stdout: r.stdout, stderr: r.stderr, rows: parsed.rows, load: parsed.load };
+// The open packages of the config's epic, in the shape assign-cells.sh --state
+// reads. Left to collect for itself, assign-cells.sh reads every open issue in
+// the host repo and would assign, and count toward the WIP cap, another
+// program's packages.
+function assignState(cfg, issues) {
+  return {
+    repo: cfg.repo,
+    issues: issues
+      .filter(i => String(i.state).toUpperCase() === 'OPEN' && partOf(i.body) === cfg.epic)
+      .map(i => ({ number: i.number, title: i.title, state: i.state, labels: i.labels })),
+  };
 }
 
-module.exports = { runSync, runAssign, parseSyncRows, parseAssignRows };
+function runAssign(cfg, { apply }) {
+  const list = new Tracker(cfg.bins).listIssues(cfg.repo);
+  if (!list.ok) {
+    return { status: list.truncated ? 75 : 70, error: null, stdout: '', stderr: `fleet: issue list for assign: ${list.error}\n`, rows: [], load: null };
+  }
+  let dir;
+  try { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-assign-')); }
+  catch (e) { return { status: 70, error: null, stdout: '', stderr: `fleet: no temp dir for the assign state: ${e.message}\n`, rows: [], load: null }; }
+  try {
+    const statePath = path.join(dir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(assignState(cfg, list.issues)));
+    const script = path.join(cfg.scriptsDir, 'assign-cells.sh');
+    // --state supplies the packages; --repo is where --apply writes the labels.
+    const args = [script, '--state', statePath, '--repo', cfg.repo, '--workers', cfg.workerIds.join(','), '--wip-cap', String(cfg.wipCap)];
+    if (apply) args.push('--apply');
+    const env = { ...process.env, GH_BIN: cfg.bins.gh };
+    const r = run('bash', args, { env, timeoutMs: 10 * 60 * 1000 });
+    const parsed = parseAssignRows(r.stdout);
+    return { status: r.status, error: r.error, stdout: r.stdout, stderr: r.stderr, rows: parsed.rows, load: parsed.load };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+module.exports = { runSync, runAssign, assignState, parseSyncRows, parseAssignRows };

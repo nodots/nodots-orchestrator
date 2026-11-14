@@ -100,6 +100,27 @@ A loop with no stopping condition does not fail; it continues, which looks like
 work and costs like work. Three is a default, not a law — what matters is that
 the number exists, is stated in the epic, and is counted.
 
+### Reporting to the operator
+
+What the operator says, and what the coordinator does in response, is listed in
+`cheat-sheet.md`. Four reporting rules hold without the operator asking:
+
+- **No "ready" on red.** A PR is not reported as ready, or offered for review
+  or merge, while any of its CI checks is red or still running. Report the
+  failing check by name instead.
+- **Decisions, all at once or one at a time.** When the operator asks what is
+  needed, list every decision that is theirs in one answer. When they work
+  through them, give one at a time, each with its options and a
+  recommendation, and record each answer in the decisions log.
+- **A quiet worker is reported.** A dispatched worker with no commit, PR,
+  `HANDOFF.md` or `BLOCKER.md` for longer than the epic's stated quiet window
+  (default: two cycles) is reported to the operator with what it last did. It
+  is not left to run silently.
+- **The operator is not the first tester.** Before a visual handoff, the
+  coordinator, or the worker that built it, has run the change and walked the
+  steps it hands over, and reports what it saw. A step it could not check is
+  named as unchecked.
+
 ## Execution profiles
 
 Each package declares an `execution` profile in its `SCOPE.json`: which model

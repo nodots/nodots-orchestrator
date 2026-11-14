@@ -44,7 +44,8 @@ decides what the report asks it to decide.
 Every cycle ends in exactly one outcome (the cycle contract):
 
 - **Movement**: named packages with the artifact that proves it (a `dispatch`
-  with its branch, a `pr`, a `merged` label). Nothing to do.
+  with its branch, a `pr`, a `merged` label, a `verified` stamp from the
+  verify stage). Nothing to do.
 - **Exhaustion**: nothing was dispatchable; the counts say why (queued, active,
   in review, blocked, live sessions, free WIP slots). Nothing to do unless the
   counts look wrong.
@@ -62,16 +63,73 @@ Every cycle ends in exactly one outcome (the cycle contract):
     one; nothing was launched for that target.
   - `launch-ci-stale`: the target's default branch has no workflow run inside
     `ciMaxAgeDays` (default 14). Get CI running again, or raise the window.
+    If the target is verified outside GitHub Actions, set its
+    `ci: { "gate": "external", "verifiedBy": "<what verifies it>" }` in
+    `fleet.config.json` instead; that is a statement about where proof comes
+    from, not a way to silence the alarm.
+    If the target's verifier admits one run at a time, add
+    `verify: { "kind": "lab-runner", "url": "<loopback url>", "suite": "<id>" }`
+    to it (requires `ci.gate` `external`). Its workers then stop at a
+    `[VERIFY]: <id>` PR carrying the selection `ci.verifiedBy` says how to list;
+    they do not run the verifier, take its lock, or stamp `VERIFIED`. Expect
+    `[VERIFY]` PRs from that target, not `[READY]`.
+    If a person or a script outside fleet verifies the target, use
+    `verify: { "kind": "manual", "suite": "<id>" }` (no `url`; `suite` optional,
+    but the worker prompt names it) instead. The worker prompt is the same as
+    for `lab-runner`. fleet makes no request:
+    the report lists the queue as `queued`, gates first, then oldest, and the
+    waiting PRs keep the streak from latching. Verify each PR, comment
+    `VERIFIED: <suite> @ <full head sha>` on it, and retitle it `[READY]:`
+    (the next cycle retitles it if you do not); it then leaves the queue.
   - `launch-ci-check-failed`: the CI state could not be read (auth, network,
     API error). The launch is refused, never assumed healthy.
+  - `launch-standards-missing`: the target's default branch (as fetched into
+    its local clone, `origin/<defaultBranch>`) has no standards manifest at
+    `targets[].standards.manifest` (default `.claude/standards.json`). Publish
+    one on that branch; nothing was launched for that target. Setting
+    `"standards": "off"` on the target launches without one, and every
+    launched row for it then says `standards: off`.
+  - `launch-standards-unreadable`: git could not list or read the default
+    branch in the local clone; the detail says which command failed and why.
+    Fix the clone or `defaultBranch`.
+  - `launch-standards-invalid`: the manifest fails `check-standards.js`; the
+    detail lists every defect. Also raised when the worktree's copy differs
+    from the one read on the default branch (it changed between the two reads,
+    or an adopted branch carries another); the branch is then pushed but no
+    worker started. Fix the manifest on the default branch.
   - `escalation-cap`: a package failed `maxEscalations` times. Read its log
     under `<stateDir>/logs/`, decide whether to split it, widen the plan, or
     re-cut it as a new package. The runtime holds it until you act.
   - `blocker-overdue`: a parked `BLOCKER.md` carries a date that has passed.
+  - `verify-not-reverted`: a verifier run finished without reverting the lab,
+    so the lab may still hold that PR's change. The fleet is **latched**:
+    nothing launches or verifies. Restore the lab, then
+    `fleet resume --reason "<what you restored>"`.
+  - `verify-unreachable`: the verifier did not answer. The in-flight record is
+    kept and read again next cycle; start the runner on its configured port.
+  - `verify-refused`: the verifier answered 409 for a reason other than a run
+    already going. The reason is commented on the PR, and the PR is skipped
+    until its head changes.
+  - `verify-bad-sha`: the run record's `verify.headSha` is not a full
+    40-character lowercase sha, so it was not stamped. Fix the runner.
+  - `verify-pr-missing`: a run finished for a PR that is not in the target's
+    PR list (past the page limit). The record is kept; raise `FLEET_PAGE_LIMIT`.
+  - `verify-post-failed`, `verify-write-failed`, `verify-redispatch-failed`:
+    the POST got an unexpected answer, a PR comment or title edit failed, or a
+    failed PR's worker could not be re-dispatched (no closed session on this
+    machine). The detail names which.
+  - `verify-stale` is reported, not an alarm: the PR head moved during the run,
+    the result was discarded, and the PR is posted again.
   - `latched`: three consecutive cycles without movement (configurable). The
     runtime stops starting cycles. Read the last reports, then
     `fleet resume --reason "<what you concluded>"`.
   - `locked`: another cycle is running. Wait.
+
+Each **Launched** row ends in its standards: ` · standards: <check names>
+(<n> of <m> rules in lane)`, the checks the worker was told to run and how many
+of the manifest's rules overlap its lane, or ` · standards: off` for a target
+that launches without a manifest. An `off` row means nothing told the worker
+the repo's rules.
 
 **Parked** packages are workers that stopped with a `BLOCKER.md` carrying a
 known `Kind`. They are yours to resolve per `coordination.md` §`BLOCKER.md`;

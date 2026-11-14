@@ -272,7 +272,7 @@ assert_contains "$(printf '%s' "$OUT" | grep -E '^#32 ' || true)" "cell:blocked"
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#33 ' || true)" "unchanged" "no BLOCKER.md anywhere leaves an active package alone"
 
 # --- a PR that merely mentions an issue is not that issue's PR -------------
-# Regression from nodots-tms: T5.1c's PR body said "skips two routes (T5.1d,
+# Regression from a host repo: T5.1c's PR body said "skips two routes (T5.1d,
 # #363, must delete the list)", and sync relabelled #363 cell:merged on the
 # strength of T5.1c's merge. Only a title reference or a closing keyword counts.
 cat > "$STUB/gh" <<'GH'
@@ -314,6 +314,164 @@ assert_contains "$(printf '%s' "$OUT" | grep -E '^#42 ' || true)" "unchanged"   
 assert_not_contains "$(printf '%s' "$OUT" | grep -E '^#42 ' || true)" "merged" "the mentioned package is not relabelled merged"
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#43 ' || true)" "cell:merged" "Fixes: owner/repo#43 claims the PR"
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#44 ' || true)" "cell:merged" "#44 in the PR title claims the PR"
+
+# --- a PR title claims a package only by the bounded package id -------------
+# Regression from this repo: package S1.1 (#124) was relabelled cell:merged when
+# S1.1a's PR merged, because the title rule was a plain substring test and
+# "[READY]: S1.1a — ..." contains "S1.1". The matcher runs in the collector, so
+# the fixture goes through the gh stub; a --state file is already matched.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 124, "title": "S1.1 — fleet standards init drafts each target's commands", "state": "OPEN",
+   "labels": [{"name": "cell:queued"}]},
+  {"number": 137, "title": "S1.1a — The text invariant exempts the file that drafts a target's commands", "state": "CLOSED",
+   "labels": [{"name": "cell:active"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[{"number": 139, "title": "[READY]: S1.1a — The text invariant exempts the file that drafts a target's commands",
+  "body": "Closes #137", "state": "MERGED",
+  "headRefName": "feat/s1-1a-invariant-exempts-init", "headRefOid": "1111111111111111111111111111111111111111"}]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development feat/s1-1a-invariant-exempts-init feat/s1-1-fleet-standards-init ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>/dev/null)
+r137=$(printf '%s' "$OUT" | grep -E '^#137 ' || true)
+r124=$(printf '%s' "$OUT" | grep -E '^#124 ' || true)
+assert_contains "$r137" "cell:merged" "S1.1a's merged PR claims S1.1a (#137)"
+assert_not_contains "$r124" "cell:merged" "S1.1 (#124) is not claimed by the PR titled S1.1a"
+assert_contains "$r124" "cell:active" "S1.1 (#124) derives from its own branch, with no PR"
+
+# The digit boundary, and the title rule still working with no closing keyword.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 151, "title": "S1.1 Title only", "state": "OPEN", "labels": [{"name": "cell:active"}]},
+  {"number": 152, "title": "M1.3 Validation", "state": "OPEN", "labels": [{"name": "cell:queued"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[
+  {"number": 161, "title": "[READY]: S1.1 — x", "body": "no keyword here", "state": "MERGED",
+   "headRefName": "feat/s1-1-x", "headRefOid": "2222222222222222222222222222222222222222"},
+  {"number": 162, "title": "[READY]: M1.30 — x", "body": "no keyword here", "state": "MERGED",
+   "headRefName": "feat/m1-30-x", "headRefOid": "3333333333333333333333333333333333333333"}
+]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>/dev/null)
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#151 ' || true)" "cell:merged" "S1.1 claims a PR titled [READY]: S1.1 — x with no closing keyword"
+assert_not_contains "$(printf '%s' "$OUT" | grep -E '^#152 ' || true)" "cell:merged" "M1.3 does not claim the PR titled [READY]: M1.30 — x"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#152 ' || true)" "unchanged" "M1.3 with no PR and no branch is left alone"
+
+# --- an open [VERIFY] PR waiting on the verifier is awaiting-lab ------------
+# A [VERIFY]: PR with no current stamp is queued for the lab, not active: a
+# worker still writing code and a PR waiting for the verifier look identical
+# under the branch rule, and the queue was invisible. A stale stamp does not
+# count, and a [VERIFY] PR with a blocker still reads awaiting-lab, because the
+# precedence puts the lab queue above blocked.
+cat > "$TMP/state-verify.json" <<JSON
+{
+  "repo": "example/host",
+  "targets": ["example/host"],
+  "issues": [
+    { "number": 201, "title": "V1.1 verify queue", "label": "cell:active",
+      "branch": "feat/v1-1", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 301, "title": "[VERIFY]: V1.1", "state": "OPEN", "headSha": "$SHA_HEAD", "comments": [] } },
+    { "number": 202, "title": "V1.2 verify reviewed", "label": "cell:active",
+      "branch": "feat/v1-2", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 302, "title": "[VERIFY]: V1.2", "state": "OPEN", "headSha": "$SHA_HEAD",
+              "comments": ["VERIFIED: unit @ $SHA_HEAD\n\nnpm test\n40 passed"] } },
+    { "number": 203, "title": "V1.3 verify stale", "label": "cell:active",
+      "branch": "feat/v1-3", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 303, "title": "[VERIFY]: V1.3", "state": "OPEN", "headSha": "$SHA_HEAD",
+              "comments": ["VERIFIED: unit @ $SHA_OLD\n\nnpm test\n40 passed"] } },
+    { "number": 204, "title": "V1.4 verify merged", "label": "cell:awaiting-lab",
+      "branch": "feat/v1-4", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 304, "title": "[VERIFY]: V1.4", "state": "MERGED", "headSha": "$SHA_HEAD", "comments": [] } },
+    { "number": 205, "title": "V1.5 verify blocked", "label": "cell:active",
+      "branch": "feat/v1-5", "branchExists": true, "blockerOnBranch": true,
+      "pr": { "number": 305, "title": "[VERIFY]: V1.5", "state": "OPEN", "headSha": "$SHA_HEAD", "comments": [] } },
+    { "number": 206, "title": "V1.6 ready, not verify", "label": "cell:active",
+      "branch": "feat/v1-6", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 306, "title": "[READY]: V1.6", "state": "OPEN", "headSha": "$SHA_HEAD", "comments": [] } }
+  ]
+}
+JSON
+OUT_V=$(bash "$SCRIPT" --state "$TMP/state-verify.json" 2>"$TMP/err-verify"); EXIT_V=$?
+assert_eq 0 "$EXIT_V" "a [VERIFY] fixture run exits 0"
+vrow() { printf '%s' "$OUT_V" | grep -E "^#$1 " || true; }
+assert_contains "$(vrow 201)" "cell:awaiting-lab" "an open [VERIFY] PR with no stamp is awaiting-lab"
+assert_contains "$(vrow 202)" "cell:awaiting-review" "an open [VERIFY] PR with a current stamp is awaiting-review"
+assert_contains "$(vrow 203)" "cell:awaiting-lab" "an open [VERIFY] PR with a stale stamp is awaiting-lab"
+assert_contains "$(vrow 204)" "cell:merged" "a merged [VERIFY] PR is cell:merged"
+assert_contains "$(vrow 205)" "cell:awaiting-lab" "an open [VERIFY] PR without a stamp is awaiting-lab even with a blocker on its branch"
+assert_contains "$(vrow 206)" "unchanged" "an open PR that is not [VERIFY] and has no stamp is left alone"
+assert_not_contains "$(vrow 206)" "awaiting-lab" "only a [VERIFY] title earns awaiting-lab"
+
+# The collector carries the PR title into the state, so the rule works on a
+# live repo as well as on a fixture file.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 91, "title": "W1.1 verify via collector", "state": "OPEN", "labels": [{"name": "cell:active"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[{"number": 92, "title": "[VERIFY]: W1.1", "body": "Closes #91", "state": "OPEN",
+  "headRefName": "feat/w1-1", "headRefOid": "3333333333333333333333333333333333333333"}]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development feat/w1-1 ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+OUT=$(GH_BIN="$STUB/gh" bash "$SCRIPT" --repo example/host 2>/dev/null)
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#91 ' || true)" "cell:awaiting-lab" "the collector derives awaiting-lab for an open [VERIFY] PR"
 
 # --- a truncated collection must fail loudly, never derive from partial state
 # Deriving labels from half a backlog is worse than not running: a package
@@ -408,5 +566,99 @@ assert_ne 0 "$EXIT2" "a package whose target repo was not supplied fails the run
 assert_contains "$OUT2" "example/code-b" "the uncovered repo is named"
 assert_contains "$OUT2" "B1.1" "the package that needs it is named"
 assert_not_contains "$OUT2" "0 label(s) would change" "an uncovered repo never reports a clean result"
+
+# --- --epic limits the run to one epic's packages ---------------------------
+# Regression from a host repo with ~290 historical packages that made
+# the per-package BLOCKER.md and PR-comment calls run past fleet's 10-minute
+# limit, so a cycle for a six-package epic never derived anything. A package
+# belongs to an epic by its header line: **Part of** #<epic>.
+
+# Over a state file: the filter applies to the recorded partOf.
+cat > "$TMP/state-epic.json" <<JSON
+{
+  "repo": "example/host",
+  "targets": ["example/host"],
+  "issues": [
+    { "number": 61, "title": "L1.1 in the epic", "label": "cell:queued", "partOf": 60,
+      "branch": "feat/l1-1", "branchExists": true, "blockerOnBranch": false, "pr": null },
+    { "number": 71, "title": "T1.1 another epic", "label": "cell:queued", "partOf": 70,
+      "branch": "feat/t1-1", "branchExists": true, "blockerOnBranch": false, "pr": null },
+    { "number": 72, "title": "T1.2 no parent", "label": "cell:queued",
+      "branch": "feat/t1-2", "branchExists": true, "blockerOnBranch": false, "pr": null }
+  ]
+}
+JSON
+OUT=$(bash "$SCRIPT" --state "$TMP/state-epic.json" --epic 60 --emit-state "$TMP/emitted-epic.json" 2>"$TMP/err-epic"); EXIT=$?
+assert_eq 0 "$EXIT" "--epic over a state file exits 0"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#61 ' || true)" "cell:active" "a package of the epic is derived"
+assert_empty "$(printf '%s' "$OUT" | grep -E '^#71 ' || true)" "a package of another epic is not reported"
+assert_empty "$(printf '%s' "$OUT" | grep -E '^#72 ' || true)" "a package with no Part of line is not reported"
+emitted=$(node -e 'process.stdout.write(require(process.argv[1]).issues.map(i=>i.number).join(","))' "$TMP/emitted-epic.json")
+assert_eq "61" "$emitted" "--emit-state under --epic holds only the epic's packages"
+
+# Without --epic the same file still reports every package.
+OUT=$(bash "$SCRIPT" --state "$TMP/state-epic.json" 2>/dev/null)
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#71 ' || true)" "cell:active" "without --epic every package is still derived"
+
+# A non-numeric epic is a usage error, not an empty run.
+OUT=$(bash "$SCRIPT" --state "$TMP/state-epic.json" --epic L 2>&1); EXIT=$?
+assert_eq 64 "$EXIT" "a non-numeric --epic is a usage error"
+assert_contains "$OUT" "--epic needs an issue number" "the usage error says what --epic takes"
+
+# Through the collector: no per-package call is made for another epic's
+# package, the epic is recorded, and an uncovered repo outside the epic does
+# not fail the run.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_CALLS"
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 61, "title": "L1.1 in the epic", "state": "OPEN",
+   "body": "**Part of** #60 · **Phase 1** · **Repo:** `example/host`",
+   "labels": [{"name": "cell:queued"}]},
+  {"number": 71, "title": "T1.1 another epic", "state": "CLOSED",
+   "body": "**Part of** #70 · **Phase 1** · **Repo:** `example/host`",
+   "labels": [{"name": "cell:active"}]},
+  {"number": 73, "title": "U1.1 another epic, another repo", "state": "OPEN",
+   "body": "**Part of** #70 · **Repo:** `example/elsewhere`",
+   "labels": [{"name": "cell:queued"}]},
+  {"number": 600, "title": "L1.10 epic number prefix", "state": "OPEN",
+   "body": "**Part of** #600 · **Repo:** `example/host`",
+   "labels": [{"name": "cell:queued"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[{"number": 81, "title": "[READY]: T1.1", "body": "Closes #71", "state": "MERGED",
+  "headRefName": "feat/t1-1", "headRefOid": "1111111111111111111111111111111111111111"}]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development feat/l1-1-x feat/t1-1 ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+: > "$STUB_CALLS"
+OUT=$(GH_BIN="$STUB/gh" STUB_CALLS="$STUB_CALLS" bash "$SCRIPT" --repo example/host --epic 60 \
+  --emit-state "$TMP/emitted-collector.json" 2>"$TMP/err-epic2"); EXIT=$?
+assert_eq 0 "$EXIT" "--epic through the collector exits 0 despite an uncovered repo in another epic"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#61 ' || true)" "cell:active" "the epic's package derives from its branch"
+assert_empty "$(printf '%s' "$OUT" | grep -E '^#71 ' || true)" "another epic's merged package is not reported"
+assert_empty "$(printf '%s' "$OUT" | grep -E '^#600 ' || true)" "Part of #600 does not match --epic 60"
+calls=$(cat "$STUB_CALLS")
+assert_not_contains "$calls" "ref=feat/t1-1" "no BLOCKER.md lookup is made for another epic's branch"
+assert_not_contains "$calls" "issues/81/comments" "no PR comment fetch is made for another epic's PR"
+assert_contains "$calls" "ref=feat/l1-1-x" "the epic's own branch is still checked for a blocker"
+partof=$(node -e 'process.stdout.write(String(require(process.argv[1]).issues[0].partOf))' "$TMP/emitted-collector.json")
+assert_eq "60" "$partof" "the collector records each package's epic as partOf"
 
 finish

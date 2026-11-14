@@ -40,7 +40,7 @@ This is the worker-side counterpart to the gate rule in the dispatch model: gate
 
 The most expensive incidents in the source project were not missing tests. They were tests that existed, were correct, and never executed.
 
-- **Never gate a test behind an environment flag nothing sets.** A regression test for a stuck-robot bug sat behind `RUN_GNUBG_HINTS=1` for a year. Nothing in CI, and no developer, ever set it. The bug recurred in production with its own regression test sitting green-and-skipped in the repo. If a test needs a resource CI lacks, the correct outcome is to give CI the resource or to fail the run loudly — never to skip silently.
+- **Never gate a test behind an environment flag nothing sets.** A regression test for a stuck-worker bug sat behind `RUN_SLOW_SUITE=1` for a year. Nothing in CI, and no developer, ever set it. The bug recurred in production with its own regression test sitting green-and-skipped in the repo. If a test needs a resource CI lacks, the correct outcome is to give CI the resource or to fail the run loudly — never to skip silently.
 - **Verify CI is enabled before trusting it.** One repo's workflows had been manually disabled for three months; every merge in that window shipped unchecked. Two other repos had no workflows at all, so their state was *unverifiable*, not *good*. Before a wave dispatches into a repo, confirm that repo's CI actually runs, and that its last run was for a real commit.
 - **Count skips.** A suite that reports `40 passed, 18 skipped` is reporting a problem. Coverage that differs between two machines means neither machine runs everything — establish which suites run where before quoting a coverage number.
 - **A red pipeline that nobody is alerted about is a dead gate too.** Three of these ran simultaneously in one project: disabled CI, a skipped regression suite, and a deploy job that had failed on every attempt for eleven days. Alerting on gate failure belongs in the plan, as a cell.
@@ -194,3 +194,4 @@ Style rules earn their place the same way: they are worth writing down only when
 - Release and deploy **sequencing is a cell**, in dependency order, with the trigger repo last (§7).
 - Deploy gates require the **feature to be exercised**, not the artifacts inspected (§6).
 - The epic states the project's **domain invariants** or links the repo file that does (§12).
+- Every target repo publishes **`.claude/standards.json`**, and the planner reads its `rules[]` for a lane before writing the package.

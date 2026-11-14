@@ -1,0 +1,31 @@
+{
+  "feature": "s1-1a-invariant-exempts-init",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s1-1a-invariant-exempts-init",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/sv0-standards-gate.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    ".claude/**",
+    "plugins/fleet/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/fixtures/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/**",
+    "docs/**",
+    "evals/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one pathspec exclusion and one test case in the SV0 gate",
+  "execution": {
+    "model": "default",
+    "pattern": "solo",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

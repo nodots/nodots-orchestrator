@@ -9,17 +9,18 @@
 # Precedence, first match wins:
 #   1. PR merged                              -> cell:merged
 #   2. PR open with a current VERIFIED stamp   -> cell:awaiting-review
-#   3. BLOCKER.md present on the branch        -> cell:blocked
-#   4. branch exists, no PR                    -> cell:active
-#   5. none of the above                       -> unchanged
+#   3. PR open, title [VERIFY]:, no current stamp -> cell:awaiting-lab
+#   4. BLOCKER.md present on the branch        -> cell:blocked
+#   5. branch exists, no PR                    -> cell:active
+#   6. none of the above                       -> unchanged
 #
 # "Current" means the stamp's sha is the PR's head sha. A push after the stamp
 # voids it: the evidence was produced by a tree that is no longer the one under
 # review. See references/working-agreements.md §Evidence stamps.
 #
 # Usage:
-#   sync-cells.sh --repo <owner/repo> [--target <owner/repo>]... [--apply]
-#   sync-cells.sh --state <file.json> [--apply]
+#   sync-cells.sh --repo <owner/repo> [--target <owner/repo>]... [--epic <n>] [--apply]
+#   sync-cells.sh --state <file.json> [--epic <n>] [--apply]
 #
 #   --repo    the host repo holding the issue graph
 #   --target  a repo holding branches and PRs. Repeatable: pass one per target
@@ -30,6 +31,12 @@
 #   --state   read collected state from a file instead of calling gh; the gh
 #             collector writes exactly this shape, so the derivation runs over
 #             a fixture and over a live repo through one code path
+#   --epic    derive only the packages of epic #<n>: those whose header line
+#             says **Part of** #<n>. The per-package BLOCKER.md and PR-comment
+#             calls are made for those packages only, so a host repo with a
+#             long history of other programs syncs in seconds, and a package of
+#             another program that names an uncollected repo does not fail the
+#             run. Each collected package records its epic as `partOf`.
 #   --apply   write the labels. Without it, nothing is written.
 #   --emit-state <file>
 #             after collecting (or reading --state), write the state JSON the
@@ -45,6 +52,7 @@ APPLY=0
 STATE=""
 REPO=""
 EMIT=""
+EPIC=""
 TARGETS=()
 
 while [ $# -gt 0 ]; do
@@ -54,13 +62,18 @@ while [ $# -gt 0 ]; do
     --repo) REPO="${2:-}"; shift 2 ;;
     --target) TARGETS+=("${2:-}"); shift 2 ;;
     --emit-state) EMIT="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,37p' "$0"; exit 0 ;;
+    --epic) EPIC="${2:-}"; shift 2 ;;
+    -h|--help) sed -n '2,44p' "$0"; exit 0 ;;
     *) printf 'sync-cells: unknown argument: %s\n' "$1" >&2; exit 64 ;;
   esac
 done
 
 if [ -z "$STATE" ] && [ -z "$REPO" ]; then
   printf 'sync-cells: one of --state or --repo is required.\n' >&2
+  exit 64
+fi
+if [ -n "$EPIC" ] && ! [[ "$EPIC" =~ ^[0-9]+$ ]]; then
+  printf 'sync-cells: --epic needs an issue number, got: %s\n' "$EPIC" >&2
   exit 64
 fi
 [ ${#TARGETS[@]} -gt 0 ] || TARGETS=("$REPO")
@@ -87,6 +100,11 @@ function derive(issue) {
     if (stamp) {
       return ['cell:awaiting-review',
               `PR #${pr.number} open, VERIFIED ${stamp.suite} @ ${stamp.sha.slice(0, 7)}`];
+    }
+    // A [VERIFY]: PR is the verifier's queue. Without a current stamp it is
+    // waiting on the lab, not on a worker, so it must not read as active.
+    if (/^\[VERIFY\]:/.test(String(pr.title || ''))) {
+      return ['cell:awaiting-lab', `PR #${pr.number} open, [VERIFY] awaiting the lab`];
     }
   }
   if (issue.blockerOnBranch) {
@@ -178,7 +196,7 @@ JS
   # One pass in node: match PRs to issues by the issue reference in the PR, and
   # branches to issues by the package id, which the numbering rules require to
   # appear in the issue title, the branch name and the PR title alike.
-  node - "$TMP" "$REPO" "${TARGETS[@]}" <<'JS' > "$TMP/state.json" || exit 70
+  SYNC_CELLS_EPIC="$EPIC" node - "$TMP" "$REPO" "${TARGETS[@]}" <<'JS' > "$TMP/state.json" || exit 70
 'use strict';
 const fs = require('fs'), path = require('path');
 const [dir, repo, ...targets] = process.argv.slice(2);
@@ -210,8 +228,8 @@ const refsIssue = (pr, n) =>
 
 // Each package names its target repo on its header line:
 //   **Part of** #1 · **Phase 1 · name** · **Repo:** `owner/repo`
-// A bare name is qualified with the host's owner, so `backgammon-core` and
-// `nodots/backgammon-core` mean the same thing.
+// A bare name is qualified with the host's owner, so `acme-core` and
+// `acme/acme-core` mean the same thing.
 const owner = String(repo).split('/')[0];
 const qualify = r => (r.includes('/') ? r : `${owner}/${r}`);
 const declaredRepo = body => {
@@ -219,11 +237,22 @@ const declaredRepo = body => {
   return m ? qualify(m[1]) : null;
 };
 
+// The epic a package belongs to, from the same header line: **Part of** #<n>.
+const partOf = body => {
+  const m = /\*\*Part of\*\*\s*#(\d+)(?!\d)/.exec(String(body || ''));
+  return m ? Number(m[1]) : null;
+};
+const epic = process.env.SYNC_CELLS_EPIC ? Number(process.env.SYNC_CELLS_EPIC) : null;
+
 const out = { repo, targets, issues: [] };
 const uncovered = [];
 for (const issue of issues) {
   const label = (issue.labels || []).map(l => l.name).find(n => /^cell:/.test(n));
   if (!label) continue;                       // not a package
+  const parent = partOf(issue.body);
+  // Filter before anything else, so another program's package costs no
+  // per-package call and its repo need not be collected.
+  if (epic !== null && parent !== epic) continue;
   const id = packageId(issue.title);
   const declared = declaredRepo(issue.body);
 
@@ -241,7 +270,7 @@ for (const issue of issues) {
   const brPool = branches.filter(inScope);
 
   const pr = prPool.find(p => refsIssue(p, issue.number))
-          || (id && prPool.find(p => String(p.title).includes(id)))
+          || (id && prPool.find(p => idMatcher(id).test(String(p.title))))
           || null;
   const brMatch = pr ? null : (id ? brPool.find(b => idMatcher(id).test(b.name)) : null);
   const branch = pr ? pr.headRefName : (brMatch ? brMatch.name : null);
@@ -250,11 +279,12 @@ for (const issue of issues) {
     number: issue.number,
     title: issue.title,
     label,
+    partOf: parent,
     repo: declared || (pr && pr.repo) || (brMatch && brMatch.repo) || targets[0],
     branch,
     branchExists: Boolean(branch && (brMatch || pr)),
     blockerOnBranch: false,                   // filled in by the shell below
-    pr: pr ? { number: pr.number, state: pr.state, headSha: pr.headRefOid, comments: [] } : null,
+    pr: pr ? { number: pr.number, title: pr.title, state: pr.state, headSha: pr.headRefOid, comments: [] } : null,
   });
 }
 if (uncovered.length) {
@@ -321,6 +351,18 @@ JS
 
 [ -n "$STATE" ] || collect_state
 [ -f "$STATE" ] || { printf 'sync-cells: no such state file: %s\n' "$STATE" >&2; exit 66; }
+
+# The same filter over a state file, so --state and the collector agree on what
+# --epic means and --emit-state holds only the epic's packages.
+if [ -n "$EPIC" ]; then
+  node -e '
+    const fs = require("fs");
+    const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    s.issues = (s.issues || []).filter(i => i.partOf === Number(process.argv[2]));
+    process.stdout.write(JSON.stringify(s, null, 2));
+  ' "$STATE" "$EPIC" > "$TMP/state.epic.json" || exit 70
+  STATE="$TMP/state.epic.json"
+fi
 
 if [ -n "$EMIT" ]; then
   # Write to a sibling and rename, so a reader never sees a half-written file.

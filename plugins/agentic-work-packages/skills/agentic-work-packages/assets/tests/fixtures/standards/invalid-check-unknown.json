@@ -1,0 +1,9 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "rules[0].check: \"lint\" names no check",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [{ "doc": "CONTRIBUTING.md", "check": "lint" }]
+  }
+}

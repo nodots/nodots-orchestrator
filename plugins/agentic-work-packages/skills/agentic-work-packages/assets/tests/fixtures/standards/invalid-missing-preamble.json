@@ -1,0 +1,10 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "preamble: \".claude/standards-preamble.md\" is not a tracked file",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [],
+    "preamble": ".claude/standards-preamble.md"
+  }
+}
