@@ -133,7 +133,7 @@ OUT=$(fleet cycle --json 2>/dev/null)
 assert_eq "11" "$(alarms "$OUT" launch-hooks-missing)" "C: one hook wired is still refused"
 D=$(detail "$OUT" launch-hooks-missing)
 assert_contains "$D" "require-handoff" "C: the alarm names the absent hook"
-assert_not_contains "$D" "enforce-scope is" "C: the alarm does not name the wired hook as absent"
+assert_not_contains "$D" "enforce-scope" "C: the alarm does not name the wired hook"
 
 # --- D. settings that are not JSON: refused, naming the parse failure ---------
 settings '{"hooks": '
