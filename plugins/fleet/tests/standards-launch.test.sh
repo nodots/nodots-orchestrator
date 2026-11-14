@@ -34,6 +34,10 @@ printf 'api\n' > "$TMP/clone/packages/api/index.js"
 printf '# web rules\n' > "$TMP/clone/docs/web.md"
 printf '# api rules\n' > "$TMP/clone/docs/api.md"
 printf '# all rules\n' > "$TMP/clone/docs/all.md"
+# Project settings, so an isolated launch (isolateWorkers) is not refused
+# hooks-missing, and case E's declared plugin is not refused plugin-missing.
+mkdir -p "$TMP/clone/.claude"
+printf '{"enabledPlugins": {"agentic-work-packages@example-market": true, "fleet@nodots": true}}\n' > "$TMP/clone/.claude/settings.json"
 git -C "$TMP/clone" add -A && git -C "$TMP/clone" commit -qm init && git -C "$TMP/clone" push -q -u origin main
 
 # publish <manifest-json>: commit it as .claude/standards.json on main and push.
