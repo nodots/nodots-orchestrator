@@ -8,7 +8,9 @@
     "plugins/fleet/README.md",
     "plugins/fleet/skills/fleet/SKILL.md",
     "plugins/fleet/tests/standards-isolation.test.sh",
-    "plugins/fleet/tests/lib.sh"
+    "plugins/fleet/tests/lib.sh",
+    "plugins/fleet/tests/standards-launch.test.sh",
+    "plugins/fleet/tests/sv1-standards-gate.test.sh"
   ],
   "forbiddenPaths": [
     "plugins/agentic-work-packages/hooks/**",
