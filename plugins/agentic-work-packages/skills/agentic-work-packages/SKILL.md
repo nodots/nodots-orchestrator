@@ -121,7 +121,9 @@ should name the failing test, and UI packages the browser E2E.
 
 **8. Dispatch and coordinate** — `references/coordination.md`: waves, the WIP
 cap, worktrees, `BLOCKER.md` / `HANDOFF.md`, and what to do when a package
-uncovers work nobody planned. When the workers run on other Claude accounts
+uncovers work nobody planned. `references/cheat-sheet.md` maps what the operator
+says at each stage to what the coordinator does; when the operator asks what
+they can say next, answer from it. When the workers run on other Claude accounts
 than the coordinator, add `references/multi-account.md`: the tracker is the bus,
 and `worker:<id>` labels say who owns what.
 
@@ -177,6 +179,7 @@ before filing the package.
 | `references/context-management.md` | What belongs in a file rather than in a session's context |
 | `references/agent-teams.md` | Running a package with an agent team inside one lane |
 | `references/working-agreements.md` | Proof of done: test-first, dead gates, boundaries, release order, reporting |
+| `references/cheat-sheet.md` | The operator's side: what to say to a coordinator session at each stage, and what it does in response |
 | `references/standards.md` | The `.claude/standards.json` manifest: a repo's checks, rule documents and preamble |
 | `references/adapter-github.md` | GitHub Issues mechanics |
 | `references/adapter-jira.md` | Jira mechanics |
