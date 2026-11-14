@@ -4,6 +4,8 @@ Patterns for running programs of work with coordinated AI agents, documented fro
 
 ## Contents
 
+- [Developer guide: the orchestrator tools](developer-guide.md) — reference for the two plugins, the fleet CLI and its config, the coordinator and repository scripts, evals, hooks, CI, and how to write a fixture test.
+- [Cheat sheet: running a program](../plugins/agentic-work-packages/skills/agentic-work-packages/references/cheat-sheet.md) (in the `agentic-work-packages` plugin) — what you say to a coordinator session at each stage of a program (plan, approve, run, monitor, decide, discovered work, review and merge, visual review, capacity and cost, resume, close out), what the session does in response, and what you expect without asking.
 - [Agentic Work Packages: the Cell / Wave / Gate Model](agentic-work-packages.md) — decompose a large program into a parent epic plus one issue per *cell* (one bounded feature, one branch, one `SCOPE.json`, one worker agent, one PR), dispatched in dependency-ordered *waves* by a coordinator agent, with blocking validation *gates* between phases. The narrative and a complete fictional worked example (§9); every rule it used to restate now lives once, in the `agentic-work-packages` plugin skill, and the section points there.
 - [Working Agreements for Agent-Executed Work](working-agreements.md) — how a worker is expected to *execute and prove* a work package: test-first as the default, dead gates (skipped tests, disabled CI, artifact-only deploy checks), the ban on silent fallbacks, boundary round-trip tests, multi-repo release sequencing, hook-enforced scope and handoff, destructive-command rules, and reporting discipline. Each rule names the failure that produced it.
 
