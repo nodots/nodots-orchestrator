@@ -58,9 +58,15 @@ assert_file() {
 
 # fixture_standards <clone dir> — commit a valid .claude/standards.json in a
 # fixture clone, so a launch that requires the manifest takes the real path.
+# Before it, commit a .claude/settings.json that enables agentic-work-packages
+# from a placeholder marketplace, so an isolated launch (isolateWorkers) is not
+# refused hooks-missing. The manifest is the last commit.
 # The caller pushes. Silent on success; non-zero on any git failure.
 fixture_standards() {
   mkdir -p "$1/.claude" || return 1
+  printf '{"enabledPlugins": {"agentic-work-packages@example-market": true}}\n' > "$1/.claude/settings.json" || return 1
+  git -C "$1" add .claude/settings.json || return 1
+  git -C "$1" commit -q -m "fixture: project settings" || return 1
   printf '{"version": 1, "checks": [{"name": "test", "command": "true"}], "rules": []}\n' > "$1/.claude/standards.json" || return 1
   git -C "$1" add .claude/standards.json || return 1
   git -C "$1" commit -q -m "fixture: standards manifest" || return 1

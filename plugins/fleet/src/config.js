@@ -34,6 +34,13 @@ const DEFAULTS = {
   externalStartTimeoutMinutes: 240,
   ciMaxAgeDays: 14,
   approvalEnforcement: 'off',
+  // isolateWorkers: workers run under --setting-sources project,local, so the
+  // operator's user settings, user-enabled plugins and user instruction file do
+  // not reach a target repo. The spike on #128 found a plugin enabled only in
+  // user settings does not load then, so its hooks do not run; a plugin enabled
+  // in the repo's .claude/settings.json, or hooks wired there by path, do. Launch
+  // refuses a target that provides neither (hooks-missing, plugin-missing).
+  isolateWorkers: true,
   models: { cheapest: 'haiku', default: null, strongest: 'opus' },
 };
 
@@ -162,6 +169,7 @@ function validate(raw, baseDir) {
   if (typeof c.maxBudgetUsd !== 'number' || c.maxBudgetUsd <= 0) fail('maxBudgetUsd must be a positive number');
   if (!PERMISSION_MODES.has(c.permissionMode)) fail(`permissionMode [${c.permissionMode}] is not a Claude Code permission mode`);
   if (c.permissionPrompts !== 'none' && c.permissionPrompts !== 'host') fail('permissionPrompts must be "none" or "host"');
+  if (typeof c.isolateWorkers !== 'boolean') fail(`isolateWorkers [${c.isolateWorkers}] must be true or false`);
 
   const first = c.targets[0];
   const repoName = first.repo.split('/')[1];

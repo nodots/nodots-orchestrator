@@ -36,6 +36,10 @@ cat > "$TMP/clone/package.json" <<'JSON'
 JSON
 printf '# api rules\n' > "$TMP/clone/CLAUDE.md"
 printf 'x\n' > "$TMP/clone/src/index.js"
+# Project settings, so an isolated launch (isolateWorkers) is not refused
+# hooks-missing.
+mkdir -p "$TMP/clone/.claude"
+printf '{"enabledPlugins": {"agentic-work-packages@example-market": true}}\n' > "$TMP/clone/.claude/settings.json"
 git -C "$TMP/clone" add -A && git -C "$TMP/clone" commit -qm init && git -C "$TMP/clone" push -q -u origin main
 
 STUB="$TMP/stub"; mkdir -p "$STUB" "$TMP/gh"

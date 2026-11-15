@@ -1,0 +1,41 @@
+{
+  "feature": "s2-1-operator-isolation",
+  "project": "nodots-orchestrator",
+  "branch": "feat/s2-1-operator-isolation",
+  "allowedPaths": [
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/fleet/SKILL.md",
+    "plugins/fleet/tests/standards-isolation.test.sh",
+    "plugins/fleet/tests/lib.sh",
+    "plugins/fleet/tests/standards-launch.test.sh",
+    "plugins/fleet/tests/sv1-standards-gate.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    "scripts/test.sh",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/report.js",
+    "plugins/fleet/src/standards.js",
+    "plugins/fleet/bin/**",
+    "plugins/agentic-work-packages/**",
+    "evals/**",
+    "docs/**",
+    ".claude/**"
+  ],
+  "dependsOn": [
+    "test/sv1-standards-gate"
+  ],
+  "estimatedScope": "a spike, one flag, possibly one precondition",
+  "execution": {
+    "model": "strongest",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

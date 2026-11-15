@@ -97,6 +97,19 @@ Every cycle ends in exactly one outcome (the cycle contract):
     from the one read on the default branch (it changed between the two reads,
     or an adopted branch carries another); the branch is then pushed but no
     worker started. Fix the manifest on the default branch.
+  - `launch-hooks-missing`: with `isolateWorkers` on (the default), the
+    target's `.claude/settings.json` on `origin/<defaultBranch>` does not
+    provide `enforce-scope` or `require-handoff`; the detail names which, or
+    says the file is absent, unreadable or not JSON. An isolated worker loads
+    no plugin enabled only in your user settings, so those hooks would not
+    run. Fix that file either way: wire each hook by path in a `hooks`
+    command, or set `enabledPlugins["agentic-work-packages@<marketplace>"]`
+    to `true`. Nothing was launched for that target.
+  - `launch-plugin-missing`: with `isolateWorkers` on, the standards manifest
+    declares a plugin in `plugins[]` that the same settings file does not
+    enable as `enabledPlugins["<name>@<marketplace>"]: true`; the detail names
+    it. Enable it there. `"isolateWorkers": false` in `fleet.config.json`
+    turns off both checks and the isolation with them.
   - `escalation-cap`: a package failed `maxEscalations` times. Read its log
     under `<stateDir>/logs/`, decide whether to split it, widen the plan, or
     re-cut it as a new package. The runtime holds it until you act.

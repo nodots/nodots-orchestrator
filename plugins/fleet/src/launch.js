@@ -111,6 +111,66 @@ function readWorktreeStandards(cfg, target, worktree, expected) {
   return { ok: true, manifest: v.manifest };
 }
 
+// An isolated worker (isolateWorkers, config.js) reads settings from the repo
+// only, so the target's own .claude/settings.json on origin/<defaultBranch> has
+// to provide the worker hooks and the plugins the manifest declares. A hook
+// counts when a hook command there names its file by path, or when
+// agentic-work-packages is enabled there from any marketplace.
+const PROJECT_SETTINGS = '.claude/settings.json';
+const WORKER_HOOKS = ['enforce-scope', 'require-handoff'];
+const HOOKS_PLUGIN = 'agentic-work-packages';
+
+// readBranchSettings -> { ok, settings } | { ok:false, stage, error }
+// settings is null when the file is absent from the branch.
+function readBranchSettings(cfg, target) {
+  const ref = `origin/${target.defaultBranch}`;
+  const g = args => run(cfg.bins.git, ['-C', target.localPath, ...args], { timeoutMs: 60000 });
+  const why = r => r.error || r.stderr.trim() || `exit ${r.status}`;
+  const refuse = msg => ({ ok: false, stage: 'hooks-missing', error: `${target.repo}: ${PROJECT_SETTINGS} on ${ref} ${msg}, so the worker hooks cannot be confirmed and no isolated worker is launched` });
+  const ls = g(['ls-tree', '--name-only', ref, '--', PROJECT_SETTINGS]);
+  if (ls.status !== 0) return refuse(`cannot be read: git ls-tree failed in ${target.localPath}: ${why(ls)}`);
+  if (!ls.stdout.trim()) return { ok: true, settings: null };
+  const show = g(['show', `${ref}:${PROJECT_SETTINGS}`]);
+  if (show.status !== 0) return refuse(`cannot be read: git show failed in ${target.localPath}: ${why(show)}`);
+  let settings;
+  try { settings = JSON.parse(show.stdout); } catch (e) { return refuse(`is not valid JSON (${e.message})`); }
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return refuse('is not a JSON object');
+  return { ok: true, settings };
+}
+
+function pluginEnabled(settings, key) {
+  const ep = settings && settings.enabledPlugins;
+  return Boolean(ep && typeof ep === 'object' && ep[key] === true);
+}
+
+function hookWiredByPath(settings, name) {
+  const file = new RegExp(`(^|[\\\\/"'\\s])${name}\\.js(["'\\s]|$)`);
+  const events = settings && settings.hooks && typeof settings.hooks === 'object' ? Object.values(settings.hooks) : [];
+  return events.some(groups => Array.isArray(groups) && groups.some(g => g && Array.isArray(g.hooks)
+    && g.hooks.some(h => h && typeof h.command === 'string' && file.test(h.command))));
+}
+
+// checkIsolation -> { ok } | { ok:false, stage, error }
+// manifest: the validated standards manifest, or null when standards is "off".
+function checkIsolation(cfg, target, manifest) {
+  const s = readBranchSettings(cfg, target);
+  if (!s.ok) return s;
+  const ref = `origin/${target.defaultBranch}`;
+  const settings = s.settings;
+  const viaPlugin = settings && settings.enabledPlugins && typeof settings.enabledPlugins === 'object'
+    && Object.keys(settings.enabledPlugins).some(k => k.startsWith(`${HOOKS_PLUGIN}@`) && pluginEnabled(settings, k));
+  const absent = viaPlugin ? [] : WORKER_HOOKS.filter(h => !hookWiredByPath(settings, h));
+  if (absent.length) {
+    const where = settings ? `${PROJECT_SETTINGS} on ${ref} does not provide` : `there is no ${PROJECT_SETTINGS} on ${ref} to provide`;
+    return { ok: false, stage: 'hooks-missing', error: `${target.repo}: ${where} ${absent.join(' or ')}, and an isolated worker (--setting-sources project,local) loads no plugin enabled only in user settings, so ${absent.length > 1 ? 'those hooks' : 'that hook'} would not run. Fix it in that file either way: wire each hook by path in a hooks command (node "$CLAUDE_PROJECT_DIR/.claude/hooks/<hook>.js"), or set enabledPlugins["${HOOKS_PLUGIN}@<marketplace>"] to true. Or set isolateWorkers to false in fleet.config.json` };
+  }
+  const missing = manifest ? manifest.plugins.map(p => `${p.name}@${p.marketplace}`).filter(k => !pluginEnabled(settings, k)) : [];
+  if (missing.length) {
+    return { ok: false, stage: 'plugin-missing', error: `${target.repo}: the standards manifest declares ${missing.join(', ')}, which ${PROJECT_SETTINGS} on ${ref} does not enable; an isolated worker (--setting-sources project,local) loads no plugin enabled only in user settings. Set enabledPlugins["<name>@<marketplace>"] to true there for each, or set isolateWorkers to false in fleet.config.json` };
+  }
+  return { ok: true };
+}
+
 function standardsRecord(manifest, sc) {
   if (!manifest) return 'off';
   return { checks: manifest.checks.map(c => c.name), rules: manifest.rules.length, applicable: applicableRules(manifest, sc.allowedPaths).length };
@@ -167,6 +227,7 @@ function buildArgs(cfg, { prompt, tier, sessionId }) {
     '--max-budget-usd', String(cfg.maxBudgetUsd), '--session-id', sessionId];
   const model = cfg.models[tier || 'default'];
   if (model) args.push('--model', model);
+  if (cfg.isolateWorkers) args.push('--setting-sources', 'project,local');
   return args;
 }
 
@@ -296,6 +357,11 @@ function launch(cfg, tracker, store, req, persist) {
     branchStandards = s.manifest;
   }
   const standards = standardsRecord(branchStandards, req.sc);
+
+  if (cfg.isolateWorkers) {
+    const iso = checkIsolation(cfg, target, branchStandards);
+    if (!iso.ok) return iso;
+  }
 
   if (req.dryRun) {
     return { ok: true, dryRun: true, session: { issue: req.issue.number, id: req.id, branch: req.sc.branch, worktree: scope.worktreePath(cfg.worktreesDir, target.repo, req.id), target: target.repo, tier: req.tier || 'default', mode, ci: ciRecord, standards } };

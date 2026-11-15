@@ -165,6 +165,27 @@ requires enabled CI. `"standards": "off"` on a target in `fleet.config.json`
 disables that requirement for that target; it is the one exception, and it is
 reported.
 
+Workers read their instructions from the target repo only. `isolateWorkers`
+in `fleet.config.json` (default `true`) launches each worker with
+`--setting-sources project,local`, which excludes the operator's user
+settings, the plugins enabled only there, and the user instruction file. A
+worker's hooks then have to come from the target's own `.claude/settings.json`,
+so with isolation on, launch reads that file from `origin/<defaultBranch>` and
+refuses the launch in two cases (S2.1):
+
+- `hooks-missing`: `enforce-scope` or `require-handoff` is not provided. Each
+  counts as present when a hook `command` in that file names its script by
+  path (for example `node "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-scope.js"`),
+  or when `enabledPlugins["agentic-work-packages@<marketplace>"]` is `true`
+  there, for any marketplace. An absent, unreadable or non-JSON file is refused
+  the same way.
+- `plugin-missing`: a plugin in the manifest's `plugins[]` is not enabled there
+  as `enabledPlugins["<name>@<marketplace>"]: true`. A target with
+  `"standards": "off"` has no manifest, so this check has nothing to read.
+
+`"isolateWorkers": false` drops the flag and both checks, and workers inherit
+the operator's user settings again.
+
 `fleet standards init` drafts a manifest from what the clone already has:
 
 ```bash
