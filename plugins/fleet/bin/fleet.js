@@ -9,7 +9,7 @@
  *   fleet reap   [--apply] [--json]                     classify finished sessions only
  *   fleet status [--json]                               local state and live sessions, read-only
  *   fleet resume --reason <text>                        clear the stop latch
- *   fleet doctor                                        binaries, plugin, labels, contract, hooks
+ *   fleet doctor                                        binaries, plugin, labels, contract, hooks, worktreesDir
  *   fleet daemon --config <a.json> [--config <b.json> ...] [--interval <minutes>]
  *                                                       cycle --apply per config on an interval and on worker exit
  *   fleet standards init --target <owner/repo> [--write] draft the target's .claude/standards.json and validate it
@@ -196,6 +196,11 @@ function main() {
     const emit = run('bash', [path.join(cfg.scriptsDir, 'sync-cells.sh'), '--help'], { timeoutMs: 15000 });
     check(/--emit-state/.test(emit.stdout), 'sync-cells.sh supports --emit-state', 'needs agentic-work-packages >= 1.4.1');
     check(/--epic/.test(emit.stdout), 'sync-cells.sh supports --epic', 'needs an agentic-work-packages with sync-cells.sh --epic');
+    // The launch precondition instructions-leak, for every worktree under worktreesDir.
+    if (cfg.isolateWorkers) {
+      const leaks = require('../src/launch').instructionFilesFrom(cfg.worktreesDir);
+      check(!leaks.length, `no instruction file in worktreesDir or an ancestor: ${cfg.worktreesDir}`, leaks.length ? `${leaks.join(', ')}; an isolated worker would read ${leaks.length > 1 ? 'them' : 'it'}, so launch refuses instructions-leak. Set worktreesDir to a directory with no CLAUDE.md, CLAUDE.local.md or .claude/CLAUDE.md in it or any ancestor, or set isolateWorkers to false` : '');
+    } else check(true, `no instruction file in worktreesDir or an ancestor: ${cfg.worktreesDir}`, 'not checked, isolateWorkers is false');
     for (const t of cfg.targets) {
       check(fs.existsSync(t.localPath), `clone ${t.repo}`, t.localPath);
       const settings = path.join(t.localPath, '.claude', 'settings.json');

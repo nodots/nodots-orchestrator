@@ -105,14 +105,14 @@ assert_contains "$L" "$TMP/leak-dot/.claude/CLAUDE.md" "A: doctor names the file
 # --- B. CLAUDE.md in an ancestor: refused ---------------------------------------
 phase 2 md "$TMP/leak-md/a/worktrees"
 OUT=$(fleet cycle --json 2>/dev/null)
-assert_eq "11" "$(alarms "$OUT" launch-instructions-leak)" "B: CLAUDE.md in an ancestor is refused instructions-leak"
+assert_eq "12" "$(alarms "$OUT" launch-instructions-leak)" "B: CLAUDE.md in an ancestor is refused instructions-leak"
 assert_contains "$(detail "$OUT" launch-instructions-leak)" "$TMP/leak-md/CLAUDE.md" "B: the alarm names the file"
 assert_empty "$(launched "$OUT")" "B: nothing is launched"
 
 # --- C. CLAUDE.local.md in an ancestor: refused ---------------------------------
 phase 3 local "$TMP/leak-local/a/worktrees"
 OUT=$(fleet cycle --json 2>/dev/null)
-assert_eq "11" "$(alarms "$OUT" launch-instructions-leak)" "C: CLAUDE.local.md in an ancestor is refused instructions-leak"
+assert_eq "13" "$(alarms "$OUT" launch-instructions-leak)" "C: CLAUDE.local.md in an ancestor is refused instructions-leak"
 assert_contains "$(detail "$OUT" launch-instructions-leak)" "$TMP/leak-local/CLAUDE.local.md" "C: the alarm names the file"
 assert_empty "$(launched "$OUT")" "C: nothing is launched"
 
@@ -120,6 +120,7 @@ assert_empty "$(launched "$OUT")" "C: nothing is launched"
 mkdir -p "$TMP/leak-md/a/.claude"; printf '# user\n' > "$TMP/leak-md/a/.claude/CLAUDE.md"
 phase 4 two "$TMP/leak-md/a/worktrees"
 OUT=$(fleet cycle --json 2>/dev/null)
+assert_eq "14" "$(alarms "$OUT" launch-instructions-leak)" "D: two files in the chain are refused instructions-leak"
 D=$(detail "$OUT" launch-instructions-leak)
 assert_contains "$D" "$TMP/leak-md/CLAUDE.md" "D: the alarm names the upper file"
 assert_contains "$D" "$TMP/leak-md/a/.claude/CLAUDE.md" "D: the alarm names the lower file"

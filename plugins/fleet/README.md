@@ -183,8 +183,21 @@ refuses the launch in two cases (S2.1):
   as `enabledPlugins["<name>@<marketplace>"]: true`. A target with
   `"standards": "off"` has no manifest, so this check has nothing to read.
 
-`"isolateWorkers": false` drops the flag and both checks, and workers inherit
-the operator's user settings again.
+The flag does not keep out an instruction file in an ancestor of the worktree.
+Claude Code loads `CLAUDE.md` and `.claude/CLAUDE.md` from every ancestor of
+the working directory as project instructions, so a worktree under `$HOME`
+loads the operator's `~/.claude/CLAUDE.md`. `worktreesDir` must therefore be a
+directory with no `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md` in it
+or in any ancestor, which in practice means outside `$HOME`. With isolation
+on, launch walks the ancestors of the worktree path, from its parent to `/`,
+and refuses the launch in a third case (S2.2):
+
+- `instructions-leak`: an ancestor holds one of those files. The alarm names
+  each file found. The dry run reports it, and `fleet doctor` runs the same
+  check on `worktreesDir`.
+
+`"isolateWorkers": false` drops the flag and all three checks, and workers
+inherit the operator's user settings again.
 
 `fleet standards init` drafts a manifest from what the clone already has:
 
