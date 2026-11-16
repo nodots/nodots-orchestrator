@@ -1,0 +1,28 @@
+{
+  "feature": "hv-hardening-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/hv-hardening-gate",
+  "allowedPaths": [
+    "scripts/tests/gate-h-hardening.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/**",
+    ".github/**",
+    "scripts/*.sh",
+    "scripts/*.js",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "fix/h0-4-fixture-race",
+    "feat/h0-1-secret-scanner",
+    "feat/h0-2-bash-lane-enforcement",
+    "feat/h0-3-narrow-allow-rules"
+  ],
+  "estimatedScope": "one gate suite",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
