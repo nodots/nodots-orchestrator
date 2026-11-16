@@ -117,6 +117,8 @@ assert_contains "$D" "by path" "A: the alarm names the wire-by-path fix"
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "11" "$(alarms "$OUT" launch-hooks-missing)" "A: the applied cycle refuses too"
 [ -d "$TMP/worktrees-nosettings" ] && _fail "A: no worktree is created for a refused launch" "worktrees dir exists" || _pass "A: no worktree is created for a refused launch"
+# Read at once: the launch was refused before the spawn, so no detached stub
+# exists to write here later.
 assert_empty "$(ls "$CLAUDE_STUB_LOG")" "A: no worker was started"
 
 # --- B. settings with neither form: hooks-missing ------------------------------
@@ -170,6 +172,7 @@ assert_empty "$(alarms "$OUT" launch-plugin-missing)" "G: no plugin-missing alar
 # --- H. the applied worker carries --setting-sources project,local ------------
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "11" "$(launched "$OUT")" "H: the applied cycle launches"
+wait_for_file "$CLAUDE_STUB_LOG/T1.1.*.argv"
 ARGV=$(cat "$CLAUDE_STUB_LOG"/T1.1.*.argv 2>/dev/null)
 assert_contains "$ARGV" $'--setting-sources\nproject,local' "H: the worker's arguments carry --setting-sources project,local by default"
 
@@ -182,6 +185,7 @@ assert_empty "$(alarms "$OUT" launch-plugin-missing)" "I: plugin-missing is not 
 assert_eq "12" "$(launched "$OUT")" "I: a target with no settings file launches"
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "12" "$(launched "$OUT")" "I: the applied cycle launches"
+wait_for_file "$CLAUDE_STUB_LOG/T1.2.*.argv"
 ARGV=$(cat "$CLAUDE_STUB_LOG"/T1.2.*.argv 2>/dev/null)
 assert_nonempty "$ARGV" "I: the worker was started"
 assert_not_contains "$ARGV" "--setting-sources" "I: the worker's arguments do not carry --setting-sources"

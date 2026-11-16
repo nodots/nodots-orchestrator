@@ -1,0 +1,29 @@
+{
+  "feature": "h0-4-fixture-race",
+  "project": "nodots-orchestrator",
+  "branch": "fix/h0-4-fixture-race",
+  "allowedPaths": [
+    "plugins/fleet/tests/stubs/claude.sh",
+    "plugins/fleet/tests/lib.sh",
+    "plugins/fleet/tests/adoption.test.sh",
+    "plugins/fleet/tests/standards-isolation.test.sh",
+    "plugins/fleet/tests/standards-launch.test.sh",
+    "plugins/fleet/tests/sv1-standards-gate.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/**",
+    "plugins/fleet/bin/**",
+    "plugins/agentic-work-packages/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one stub option, two helpers, waits in four suites",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

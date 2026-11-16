@@ -128,6 +128,7 @@ phase 2 applied
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "$ISSUE" "$(launched "$OUT")" "2: the applied cycle launches"
 assert_eq "{\"checks\":$NAMES,\"rules\":1,\"applicable\":1}" "$(standards "$OUT")" "2: the applied row carries the same standards record"
+wait_for_file "$CLAUDE_STUB_LOG/$ID.*.argv"
 ARGV=$(cat "$CLAUDE_STUB_LOG"/"$ID".*.argv 2>/dev/null)
 assert_nonempty "$ARGV" "2: the worker was started"
 assert_contains "$ARGV" "Standards for acme/api are in .claude/standards.json in this worktree." "2: the prompt points at the manifest"
@@ -150,6 +151,8 @@ assert_eq "$ISSUE" "$(alarms "$OUT" launch-standards-missing)" "3: the applied c
 assert_empty "$(launched "$OUT")" "3: nothing is launched"
 assert_contains "$(detail "$OUT" launch-standards-missing)" "acme/api has no .claude/standards.json on origin/main" "3: the alarm names the manifest and the branch"
 no_worktree "3: no worktree is created"
+# Read at once, here and in 4: the launch was refused before the spawn, so no
+# detached stub exists to write here later.
 assert_empty "$(ls "$CLAUDE_STUB_LOG")" "3: no worker was started"
 assert_empty "$(git --git-dir "$TMP/remote.git" for-each-ref --format='%(refname:short)' refs/heads | grep -x "$BR")" "3: no branch was pushed"
 TEXT=$(fleet cycle --apply 2>/dev/null)
@@ -180,6 +183,7 @@ TEXT=$(fleet cycle 2>/dev/null)
 assert_contains "$TEXT" "on $BR · standards: off" "5: the report line says standards: off"
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "$ISSUE" "$(launched "$OUT")" "5: the applied cycle launches"
+wait_for_file "$CLAUDE_STUB_LOG/$ID.*.argv"
 ARGV=$(cat "$CLAUDE_STUB_LOG"/"$ID".*.argv 2>/dev/null)
 assert_nonempty "$ARGV" "5: the worker was started"
 assert_not_contains "$ARGV" "Standards for" "5: the prompt carries no standards line"
