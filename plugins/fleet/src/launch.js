@@ -196,6 +196,32 @@ function checkInstructionsLeak(worktree) {
   return { ok: false, stage: 'instructions-leak', error: `${worktree} has ${found.join(', ')} in an ancestor directory, and Claude Code loads an instruction file from every ancestor of the working directory, so an isolated worker (--setting-sources project,local) would read ${found.length > 1 ? 'them' : 'it'}. Set worktreesDir in fleet.config.json to a directory with no CLAUDE.md, CLAUDE.local.md or .claude/CLAUDE.md in it or any ancestor, or set isolateWorkers to false` };
 }
 
+// Fleet's own commits (the scope commit and its re-cut) are made under the
+// human identity configured in the target clone, never one fleet makes up.
+// readIdentity -> { ok, name, email } | { ok:false, stage, error }
+// git config exits 1 for an unset key; anything else is a failure to read.
+function readIdentity(git, localPath) {
+  const fix = `git -C ${localPath} config user.name "<your name>" and git -C ${localPath} config user.email "<your email>"`;
+  const values = {};
+  for (const key of ['user.name', 'user.email']) {
+    const r = run(git, ['-C', localPath, 'config', key], { timeoutMs: 15000 });
+    if (r.status !== 0 && r.status !== 1) return { ok: false, stage: 'identity-unreadable', error: `git -C ${localPath} config ${key} failed, so the identity fleet commits under cannot be read: ${r.error || r.stderr.trim() || `exit ${r.status}`}` };
+    values[key] = r.status === 0 ? r.stdout.trim() : '';
+  }
+  const missing = Object.keys(values).filter(k => !values[k]);
+  if (missing.length) return { ok: false, stage: 'identity-missing', error: `${localPath} has no ${missing.join(' and no ')} configured, and fleet commits the scope under the clone's own identity, never a made-up one, so no worker is launched. Set it with ${fix}` };
+  return { ok: true, name: values['user.name'], email: values['user.email'] };
+}
+
+// The identity as author and committer: -c for the config, and the GIT_*
+// variables, which git would otherwise let override it from the environment.
+function commitAs(identity) {
+  return {
+    args: ['-c', `user.name=${identity.name}`, '-c', `user.email=${identity.email}`],
+    env: { ...process.env, GIT_AUTHOR_NAME: identity.name, GIT_AUTHOR_EMAIL: identity.email, GIT_COMMITTER_NAME: identity.name, GIT_COMMITTER_EMAIL: identity.email },
+  };
+}
+
 function standardsRecord(manifest, sc) {
   if (!manifest) return 'off';
   return { checks: manifest.checks.map(c => c.name), rules: manifest.rules.length, applicable: applicableRules(manifest, sc.allowedPaths).length };
@@ -266,12 +292,19 @@ function workerEnv({ workerId, issue, id }) {
 }
 
 // prepareWorktree -> { ok, worktree, headSha, created } | { ok:false, stage, error }
-function prepareWorktree(cfg, tracker, { target, id, sc }) {
+// identity: readIdentity's result for target.localPath, read again here when
+// absent, since a commit is never made without one.
+function prepareWorktree(cfg, tracker, { target, id, sc, identity }) {
   const git = cfg.bins.git;
   const worktree = scope.worktreePath(cfg.worktreesDir, target.repo, id);
   const g = (args, cwd) => run(git, ['-C', cwd || target.localPath, ...args], { timeoutMs: 120000 });
 
   if (!fs.existsSync(target.localPath)) return { ok: false, stage: 'clone', error: `no clone at ${target.localPath}` };
+
+  const who = identity || readIdentity(git, target.localPath);
+  if (!who.ok) return who;
+  const as = commitAs(who);
+  const commit = (args, cwd) => run(git, ['-C', cwd, ...as.args, 'commit', ...args], { timeoutMs: 120000, env: as.env });
 
   const f = g(['fetch', 'origin', '--prune']);
   if (f.status !== 0) return { ok: false, stage: 'fetch', error: f.error || f.stderr.trim() };
@@ -302,7 +335,7 @@ function prepareWorktree(cfg, tracker, { target, id, sc }) {
     if (!tracked || g(['diff', '--quiet', 'HEAD', '--', rel], worktree).status !== 0) {
       const a = g(['add', '--', rel], worktree);
       if (a.status !== 0) return { ok: false, stage: 'commit', error: a.error || a.stderr.trim() };
-      const c = g(['-c', 'user.name=fleet', '-c', 'user.email=fleet@nodots.invalid', 'commit', '-q', '-m', tracked ? `${id}: scope re-cut` : `${id}: scope`, '--', rel], worktree);
+      const c = commit(['-q', '-m', tracked ? `${id}: scope re-cut` : `${id}: scope`, '--', rel], worktree);
       if (c.status !== 0) return { ok: false, stage: tracked ? 'recut' : 'commit', error: c.error || c.stderr.trim() };
     }
     // Push when the branch does not track its own remote branch, or is ahead
@@ -330,7 +363,7 @@ function prepareWorktree(cfg, tracker, { target, id, sc }) {
   fs.writeFileSync(path.join(worktree, rel), JSON.stringify(sc, null, 2) + '\n');
   const a = g(['add', '--', rel], worktree);
   if (a.status !== 0) return { ok: false, stage: 'commit', error: a.error || a.stderr.trim() };
-  const c = g(['-c', 'user.name=fleet', '-c', 'user.email=fleet@nodots.invalid', 'commit', '-q', '-m', `${id}: scope`], worktree);
+  const c = commit(['-q', '-m', `${id}: scope`], worktree);
   if (c.status !== 0) return { ok: false, stage: 'commit', error: c.error || c.stderr.trim() };
 
   // Plain push. No --force of any kind: a rejection means the branch appeared
@@ -357,6 +390,9 @@ function launch(cfg, tracker, store, req, persist) {
 
   const t = trust.isTrusted(cfg.bins.git, target.localPath);
   if (!t.trusted) return { ok: false, stage: 'trust', error: `${target.localPath} is not a trusted workspace, so the worker's permissions.allow rules would be ignored under -p and it could not commit, push or open a PR; ${trust.howToTrust(t)}${t.error ? ` (${t.error})` : ''}` };
+
+  const identity = readIdentity(cfg.bins.git, target.localPath);
+  if (!identity.ok) return identity;
 
   // Unattended edits are only as safe as the CI that catches them. Blast
   // radius is not measured here; see references/scope-contract.md.
@@ -394,7 +430,7 @@ function launch(cfg, tracker, store, req, persist) {
     return { ok: true, dryRun: true, session: { issue: req.issue.number, id: req.id, branch: req.sc.branch, worktree: scope.worktreePath(cfg.worktreesDir, target.repo, req.id), target: target.repo, tier: req.tier || 'default', mode, ci: ciRecord, standards } };
   }
 
-  const prep = prepareWorktree(cfg, tracker, { target, id: req.id, sc: req.sc });
+  const prep = prepareWorktree(cfg, tracker, { target, id: req.id, sc: req.sc, identity });
   if (!prep.ok) return prep;
 
   // The worktree now exists and its branch is pushed; a refusal here leaves
@@ -444,4 +480,4 @@ function localWorktreeOnBranch(cfg, target, id, branch) {
   return r.status === 0 && r.stdout.trim() === branch ? wt : null;
 }
 
-module.exports = { localWorktreeOnBranch, launch, prepareWorktree, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS, pathsOverlap, applicableRules, instructionFilesFrom };
+module.exports = { localWorktreeOnBranch, launch, prepareWorktree, readIdentity,buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS, pathsOverlap, applicableRules, instructionFilesFrom };
