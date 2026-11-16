@@ -102,6 +102,26 @@ it found and what is missing. Once the policy is met at the head the PR is
 stands in for the `VERIFIED` stamp: without current evidence, no number of
 reviews promotes the package.
 
+## Commits carry a human identity
+
+A recorded change carries the human maintainer's identity as its author and
+committer, because a human is accountable for it, and lists no AI as author,
+committer or co-author. Workers commit under the git identity of the clone they
+run in. That an agent did the work is still recorded, by the trailer
+`Agent-Assisted: yes` in place of the co-author trailer. The trailer names no
+model or vendor: which model ran is a fact about the session, kept with the PR
+and the package issue, and a vendor name in every commit would make history an
+advertisement that goes stale when the tooling changes. The repo's
+`.claude/settings.json` sets `"attribution": {"commit": "Agent-Assisted: yes"}`,
+so Claude Code writes that trailer and no `Co-Authored-By:` trailer. The rule is
+checked, not trusted: on every pull request, CI runs
+`scripts/check-commit-identity.sh <base sha> <head sha>` over the commits the PR
+adds. It fails any commit authored or committed as `fleet` or
+`noreply@anthropic.com`, or carrying a trailer, under any key, that names a
+known AI model or vendor, and prints each commit's short sha and the reason. It
+cannot see an AI identity under a human-looking name, or a spelling outside its
+list. History is not rewritten; the check covers only what a PR adds.
+
 ## Classify a red before retrying it
 
 "It failed twice, try again" is not a rule; it is the absence of one. Every red

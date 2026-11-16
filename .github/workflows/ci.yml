@@ -19,6 +19,13 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Commits the PR adds carry no AI identity or co-author trailer
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/check-commit-identity.sh "$BASE_SHA" "$HEAD_SHA"
+
       - name: Hook copies are byte-identical and fixture tests pass
         run: bash scripts/test.sh
 
