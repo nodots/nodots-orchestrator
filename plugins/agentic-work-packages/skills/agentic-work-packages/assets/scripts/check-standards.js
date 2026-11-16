@@ -20,6 +20,8 @@
  *   validateFile(repoRoot, manifestPath = '.claude/standards.json')
  *     Reads the manifest (tracked or not) and takes `files` from
  *     `git -C <repoRoot> ls-files`. Same result shape, plus `path`.
+ *   validateReview(review) -> defects
+ *     The `review` key alone, for a reader that has no tracked file list.
  *
  * CLI:
  *   node check-standards.js [--root <dir>] [--json] [<manifest>]
@@ -37,10 +39,11 @@ const DEFAULT_MANIFEST = '.claude/standards.json';
 const CHECK_NAME = /^[a-z][a-z0-9-]*$/;
 const PLUGIN_FIELD = /^[A-Za-z0-9_.-]+$/;
 
-const TOP_KEYS = ['version', 'checks', 'rules', 'preamble', 'plugins'];
+const TOP_KEYS = ['version', 'checks', 'rules', 'preamble', 'plugins', 'review'];
 const CHECK_KEYS = ['name', 'command'];
 const RULE_KEYS = ['doc', 'paths', 'check'];
 const PLUGIN_KEYS = ['name', 'marketplace'];
+const REVIEW_KEYS = ['passes'];
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -79,6 +82,22 @@ function unknownKeys(obj, allowed, where, defects) {
   for (const k of Object.keys(obj)) {
     if (!allowed.includes(k)) defects.push(`${where ? `${where}.` : ''}${k}: unknown key`);
   }
+}
+
+// The review policy: how many independent reviews a PR needs. null is the same
+// as absent. Exported so sync-cells.sh judges a policy by the same rules without
+// the tracked file list a full manifest needs.
+function validateReview(review) {
+  const defects = [];
+  if (review === null) return defects;
+  if (!isObject(review)) {
+    defects.push('review: must be null or an object with one integer key, passes');
+    return defects;
+  }
+  unknownKeys(review, REVIEW_KEYS, 'review', defects);
+  if (!Number.isInteger(review.passes)) defects.push('review.passes: must be an integer >= 1');
+  else if (review.passes < 1) defects.push(`review.passes: ${show(review.passes)} must be >= 1`);
+  return defects;
 }
 
 function validateStandards({ text, files }) {
@@ -190,12 +209,15 @@ function validateStandards({ text, files }) {
     }
   }
 
+  if (has(m, 'review')) defects.push(...validateReview(m.review));
+
   if (defects.length > 0) return { ok: false, manifest: m, defects, warnings };
   return { ok: true, manifest: normalize(m), defects, warnings };
 }
 
 // Canonical key order; an absent preamble is null, absent plugins [], an
-// absent rule `paths` null. Only called on a manifest with no defects.
+// absent rule `paths` null, an absent review null. Only called on a manifest
+// with no defects.
 function normalize(m) {
   return {
     version: m.version,
@@ -207,6 +229,7 @@ function normalize(m) {
     })),
     preamble: has(m, 'preamble') ? m.preamble : null,
     plugins: has(m, 'plugins') ? m.plugins.map((p) => ({ name: p.name, marketplace: p.marketplace })) : [],
+    review: has(m, 'review') && m.review !== null ? { passes: m.review.passes } : null,
   };
 }
 
@@ -262,6 +285,6 @@ function main(argv) {
   return 0;
 }
 
-module.exports = { validateStandards, validateFile };
+module.exports = { validateStandards, validateFile, validateReview };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
