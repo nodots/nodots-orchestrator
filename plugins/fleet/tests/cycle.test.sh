@@ -162,6 +162,9 @@ assert_contains "$BR" "feat/t1-1-first" "the scope branch was pushed (the claim)
 MSG=$(git --git-dir "$TMP/remote.git" log --format=%s main..feat/t1-1-first | tail -1)
 assert_eq "T1.1: scope" "$MSG" "the first commit on the branch is the scope commit"
 git --git-dir "$TMP/remote.git" cat-file -e 'feat/t1-1-first:.agentic/cells/feat/t1-1-first/SCOPE.json' && _pass "SCOPE.json is committed in the cell directory" || _fail "SCOPE.json is committed in the cell directory" "missing"
+# T1.1's worker was started by the recovery cycle in A3; the stub writes .env
+# after .argv, so wait for both.
+wait_for_file "$TMP/claude-log/T1.1.1.argv"; wait_for_file "$TMP/claude-log/T1.1.1.env"
 ARGV=$(cat "$TMP/claude-log/T1.1.1.argv"); ENVF=$(cat "$TMP/claude-log/T1.1.1.env")
 assert_contains "$ARGV" "-p" "worker is launched with -p"
 assert_contains "$ARGV" "--output-format" "worker is launched with --output-format"
@@ -199,6 +202,9 @@ ARGV2=$(cat "$TMP/claude-log/T1.3.2.argv")
 assert_contains "$ARGV2" "--model" "the escalated attempt passes --model"
 assert_contains "$ARGV2" "opus" "the escalated attempt uses the strongest alias"
 assert_contains "$ARGV2" "attempt 2" "the prompt says it is attempt 2"
+# Read at once: the cycle chose not to launch T1.1 or T1.4, so no stub was
+# spawned for them. A wrong relaunch would have been spawned with T1.3's
+# attempt 2, which has already exited (wait_exit 12-2 above).
 assert_not_contains "$(ls "$TMP/claude-log")" "T1.1.2" "the package with a PR is not relaunched"
 assert_not_contains "$(ls "$TMP/claude-log")" "T1.4.2" "a parked package is not relaunched"
 assert_contains "$(grep '^edit 12' "$TMP/gh/writes.log" | tail -1)" "+cell:active" "sync derived cell:active for the branch-only package"
@@ -207,6 +213,8 @@ assert_eq "2" "$(markers)" "a second, distinct report was posted"
 # --- E. third cycle: escalation cap holds ------------------------------------
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_contains "$OUT" '"code": "escalation-cap"' "after maxEscalations the package is held with an alarm"
+# Read at once: escalation-cap holds the package before the spawn, so no
+# detached stub exists to write here later.
 assert_not_contains "$(ls "$TMP/claude-log")" "T1.3.3" "no third attempt is launched"
 assert_contains "$OUT" '"outcome": "alarm"' "an escalation cap with nothing else moving is an alarm"
 assert_contains "$OUT" '"streak": 1' "a no-movement cycle with no live session starts the streak"
@@ -216,6 +224,8 @@ assert_contains "$OUT" '"streak": 1' "a no-movement cycle with no live session s
 # removed, and the next cycle relaunches at the same tier with a re-cut scope
 # commit on the branch. Until then, nothing relaunches.
 OUT=$(fleet cycle --apply --json 2>/dev/null)
+# Read at once: a parked package is skipped before the spawn, so no detached
+# stub exists to write here later.
 assert_not_contains "$(ls "$TMP/claude-log")" "T1.4.2" "a parked package with its BLOCKER.md still present is not relaunched"
 node - "$TMP/gh/issues.json" <<'JS'
 const fs = require('fs'); const f = process.argv[2]; const issues = JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -235,6 +245,8 @@ JS
 OUT=$(fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_contains "$OUT" '"outcome": "unparked"' "the parked session is reaped as unparked once the blocker is gone"
 assert_contains "$OUT" '"code": "unlaunchable"' "a re-cut lane that contradicts itself is refused, not launched"
+# Read at once: the launch was refused before the spawn, so no detached stub
+# exists to write here later.
 assert_not_contains "$(ls "$TMP/claude-log")" "T1.4.2" "nothing launched into the refused lane"
 assert_eq "retry" "$(node -e "console.log(require('$TMP/state/state.json').sessions[13].status)")" "the refused relaunch is held for retry, not lost"
 node - "$TMP/gh/issues.json" <<'JS'
@@ -296,6 +308,8 @@ OUT=$(SYNC_CELLS_PAGE_LIMIT=1 fleet cycle --apply --json 2>/dev/null); EXIT=$?
 assert_eq 75 "$EXIT" "a sync that fills its page exits 75"
 assert_contains "$OUT" '"code": "sync-failed"' "the abort is reported as an alarm"
 assert_eq "$BEFORE" "$(edits)" "nothing was written after the aborted sync"
+# Read at once: the cycle aborted at sync, before any launch, so no detached
+# stub exists to write here later.
 assert_eq "$NLOG" "$(ls "$TMP/claude-log" | wc -l | tr -d ' ')" "nothing was launched after the aborted sync"
 
 # --- I. a live lock refuses; a dead one is taken over ------------------------
