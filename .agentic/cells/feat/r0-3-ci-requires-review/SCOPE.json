@@ -4,11 +4,11 @@
   "branch": "feat/r0-3-ci-requires-review",
   "allowedPaths": [
     "scripts/check-stamp.js",
-    "scripts/tests/check-stamp.test.sh"
+    "scripts/tests/check-stamp.test.sh",
+    ".github/workflows/stamp-check.yml"
   ],
   "forbiddenPaths": [
     "plugins/**",
-    ".github/**",
     "scripts/test.sh",
     "**/plugin.json"
   ],
