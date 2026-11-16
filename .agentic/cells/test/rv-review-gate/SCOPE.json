@@ -1,0 +1,29 @@
+{
+  "feature": "rv-review-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/rv-review-gate",
+  "allowedPaths": [
+    "plugins/fleet/tests/gate-r-review.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/**",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/agentic-work-packages/**",
+    "scripts/**",
+    "**/plugin.json",
+    ".github/**"
+  ],
+  "dependsOn": [
+    "feat/r0-1-review-policy-and-stamp",
+    "feat/r0-2-fleet-review-stage",
+    "feat/r0-3-ci-requires-review"
+  ],
+  "estimatedScope": "one gate suite",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
