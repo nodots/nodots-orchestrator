@@ -1,48 +1,43 @@
 # HANDOFF: R0.1 review policy, the REVIEWED stamp, cell:awaiting-reviewer
 
 ## Done
-- Failing tests first, committed alone (ae63682). Against the pre-change tree,
-  `check-standards.test.sh` failed 7 of 94 and `sync-cells.test.sh` 19 of 116.
-- `assets/scripts/check-standards.js`: optional top-level `review`
-  (`passes` ≥ 1, 1 ≤ `families` ≤ `passes`). `null` is the same as absent, and
-  absent normalizes to `review: null`. This had to be so, because the existing
-  check "a normalized manifest is itself valid" re-validates the output.
-  `validateReview(review)` is exported so the sync judges the key by the same
-  rules without a tracked file list.
-- `assets/scripts/stamp.js`: `REVIEW_STAMP`, `currentReviews(pr)` (head sha
-  only, first stamp per reviewer name wins), `reviewMet(policy, reviews)`.
-- `assets/scripts/sync-cells.sh`: rule 2 now splits on the policy. The collector
-  reads `.claude/standards.json` from the default branch (no `ref`), and only for
-  repos with an open PR that carries a current VERIFIED stamp, so other runs make
-  no extra call. A 404 means no policy. Any other read error exits 70. A policy
-  with a defect, or an unparsable manifest, exits 78 and names the repo and the
-  defect. The policies are recorded in the state as `reviewPolicies`, keyed by
-  repo.
-- `bootstrap-github-labels.sh`: `cell:awaiting-reviewer`.
-- `references/standards.md`: the key, its validation rules, the reader row and
-  the normalized order. `references/working-agreements.md`: a new subsection,
-  "The review stamp", under §Evidence is stamped to a sha. The issue calls that
-  section "§Evidence stamps".
+- Attempt 1: failing tests first (ae63682), then the families version of the
+  policy (b68ca39). Blocked on the fleet gh stub; decisions R-families-dropped
+  and R0.1-stub recorded on #173, lane re-cut on #174 (a3a8e80, de3fbcc).
+- Attempt 2, tests first (7711b9e): the tests rewritten to the amended spec.
+  Against the families code, `check-standards.test.sh` failed 5 of 94 and
+  `sync-cells.test.sh` 10 of 116.
+- Attempt 2, implementation (7674ac5):
+  - `assets/scripts/check-standards.js`: `review` has one key, `passes`
+    (integer >= 1). `families` is now `review.families: unknown key`. Absent or
+    `null` normalizes to `review: null`. `validateReview` stays exported for
+    the sync.
+  - `assets/scripts/stamp.js`: `REVIEW_STAMP` is the issue's regex
+    (`REVIEWED: <reviewer> @ <sha>`); `currentReviews` returns
+    `{ reviewer, sha }`, head only, first stamp per reviewer name;
+    `reviewMet` is `reviews.length >= passes`, a `null` policy met.
+  - `assets/scripts/sync-cells.sh`: the reason reads
+    `REVIEWED <names|none>; needs N reviews[, missing K reviews]`; the
+    collected policy is `{ passes }`.
+  - `references/standards.md` and `references/working-agreements.md`
+    ("The review stamp"): families removed.
+  - `plugins/fleet/tests/stubs/gh.js`: one case answers
+    `repos/<repo>/contents/.claude/standards.json` from the remote's `HEAD`,
+    else `gh: Not Found (HTTP 404)` and exit 1.
 
 ## Outside this lane, for the coordinator
-- `assets/standards.schema.json` has `additionalProperties: false`, so it now
-  rejects a manifest that the validator accepts. No test reads the schema.
-  standards.md says this file governs, so the schema is a defect until a
-  package adds `review` to it.
-- `references/adapter-github.md` (label table, line 37 and the derivation table
-  near line 120) and `docs/developer-guide.md` (around line 140) do not list
-  `cell:awaiting-reviewer` yet.
-- `plugins/fleet` (cycle/report) has no case for the new label yet. That is
-  presumably R0.2 or R0.3.
+- `assets/standards.schema.json` has `additionalProperties: false`, so it
+  rejects a manifest with `review` that the validator accepts. No test reads it.
+- `references/adapter-github.md` (label table near line 37, derivation table
+  near line 120) and `docs/developer-guide.md` (near line 140) do not list
+  `cell:awaiting-reviewer`.
+- `plugins/fleet` (cycle/report) has no case for the new label (R0.2/R0.3?).
+- The repo-root `HANDOFF.md` is G2.4's, not this package's; left untouched.
 
 ## Next
-- **Blocked**: see `BLOCKER.md` beside this file. `bash scripts/test.sh` at
-  b68ca39 ends `FAILED`. The fleet gh stub answers the new manifest read with
-  `[]`, and 32 fleet verify checks and 2 v0-gate checks fail. The stub fix is in
-  `plugins/fleet/**`, which this lane forbids.
-- Once the stub answers `contents/.claude/standards.json`, re-run
-  `bash scripts/test.sh`, then open the `[READY]: R0.1` PR against `development`
-  with "Closes #174" in the body, and stamp it. No PR is open yet.
+- `bash scripts/test.sh` at the head, then the `[READY]: R0.1` PR against
+  `development` ("Closes #174") and the VERIFIED stamp. If the PR is open,
+  check its stamp names the current head; re-run and re-stamp if not.
 - After merge: R0.2, R0.3 and RV depend on this.
 
 ## Plan check
