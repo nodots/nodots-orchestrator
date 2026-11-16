@@ -191,6 +191,89 @@ run_task_completed
 assert_eq 0 "$EXIT" "TaskCompleted on the default branch: allowed"
 git -C "$REPO" checkout -q feat/thing
 
+# --- 8. H0.2: the lane check at the stop -------------------------------------
+# The repo is on feat/thing with wip.txt untracked. Without a SCOPE.json the
+# hook behaves exactly as above: a valid handoff allows the stop.
+CELL="$REPO/.agentic/cells/feat/thing"
+mkdir -p "$CELL"
+plan_handoff yes > "$CELL/HANDOFF.md"
+run_stop
+assert_empty "$OUT" "no SCOPE.json: an untracked file with a handoff is allowed, as before"
+
+# With a lane, the out-of-lane wip.txt blocks the stop, though the handoff is valid
+printf '{ "allowedPaths": ["src/**"], "forbiddenPaths": ["src/secret/**"] }\n' > "$CELL/SCOPE.json"
+run_stop
+assert_eq 0 "$EXIT" "out-of-lane change: the block is a JSON decision"
+if blocked; then _pass "an out-of-lane change left in the tree blocks the stop"
+else _fail "an out-of-lane change left in the tree blocks the stop" "got [$OUT]"; fi
+assert_contains "$OUT" "wip.txt" "the stop block names the path"
+assert_contains "$OUT" "BLOCKER.md" "the stop block names the escalation route"
+assert_empty "$ERR" "a lane block is not an error, so stderr stays empty"
+
+# a BLOCKER.md does not excuse a change left outside the lane
+printf '# blocker\n' > "$CELL/BLOCKER.md"
+run_stop
+if blocked; then _pass "BLOCKER.md does not excuse an out-of-lane change in the tree"
+else _fail "BLOCKER.md does not excuse an out-of-lane change in the tree" "got [$OUT]"; fi
+rm -f "$CELL/BLOCKER.md"
+
+# the loop guard still wins
+run_stop --active
+assert_empty "$OUT" "stop_hook_active: the lane check does not block twice"
+
+# TaskCompleted runs the same lane check, and blocks by exit 2
+run_task_completed
+assert_eq 2 "$EXIT" "TaskCompleted, out-of-lane change: exit 2 blocks"
+assert_contains "$ERR" "wip.txt" "TaskCompleted feedback names the path"
+
+# in lane, and lane artifacts only: allowed
+rm -f "$REPO/wip.txt"
+mkdir -p "$REPO/src"
+printf 'x\n' > "$REPO/src/a.ts"
+printf '# blocker\n' > "$CELL/BLOCKER.md"
+run_stop
+assert_empty "$OUT" "in-lane changes and lane artifacts (SCOPE, HANDOFF, BLOCKER) never block"
+rm -f "$CELL/BLOCKER.md"
+
+# staged, unstaged and committed out-of-lane changes all block, on a clean tree too
+mkdir -p "$REPO/docs"
+printf 'x\n' > "$REPO/docs/staged.md"
+git -C "$REPO" add docs/staged.md
+run_stop
+assert_contains "$OUT" "docs/staged.md" "a staged out-of-lane change blocks the stop, named"
+
+git -C "$REPO" add -A
+git -C "$REPO" commit -qm "work, with an out-of-lane file"
+run_stop
+if blocked; then _pass "a committed out-of-lane change blocks the stop on a clean tree"
+else _fail "a committed out-of-lane change blocks the stop on a clean tree" "got [$OUT]"; fi
+assert_contains "$OUT" "docs/staged.md" "the committed path is named"
+
+printf 'edit\n' >> "$REPO/README.md"
+git -C "$REPO" rm -q --cached docs/staged.md
+git -C "$REPO" commit -qm "drop it from the commit" >/dev/null
+rm -f "$REPO/docs/staged.md"
+run_stop
+if blocked; then _pass "an unstaged out-of-lane edit blocks the stop"
+else _fail "an unstaged out-of-lane edit blocks the stop" "got [$OUT]"; fi
+assert_contains "$OUT" "README.md" "the unstaged path is named"
+assert_not_contains "$OUT" "docs/staged.md" "a file added and removed on the branch is not named"
+git -C "$REPO" checkout -q -- README.md
+
+# the branch now carries only in-lane work and lane artifacts: allowed
+run_stop
+assert_empty "$OUT" "a branch with only in-lane work is allowed"
+
+# the lane check does not run on the default branch
+git -C "$REPO" checkout -q development
+printf 'scratch\n' > "$REPO/scratch.txt"
+mkdir -p "$REPO/.agentic/cells/development"
+printf '{ "allowedPaths": ["src/**"] }\n' > "$REPO/.agentic/cells/development/SCOPE.json"
+run_stop
+assert_empty "$OUT" "default branch: the lane check does not run"
+rm -rf "$REPO/scratch.txt" "$REPO/.agentic/cells/development"
+git -C "$REPO" checkout -q feat/thing
+
 # --- the two shipped copies must not drift -----------------------------------
 if diff -q "$HOOK" ../../../../hooks/require-handoff.js >/dev/null 2>&1; then
   _pass "the plugin and asset copies of the hook are byte-identical"
