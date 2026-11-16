@@ -61,7 +61,7 @@ Every cycle ends in exactly one outcome (the cycle contract):
 
 - **Movement**: named packages with the artifact that proves it (a `dispatch`
   with its branch, a `pr`, a `merged` label, a `verified` stamp from the
-  verify stage). Nothing to do.
+  verify stage, a `reviewed` stamp from the review stage). Nothing to do.
 - **Exhaustion**: nothing was dispatchable; the counts say why (queued, active,
   in review, blocked, live sessions, free WIP slots). Nothing to do unless the
   counts look wrong.
@@ -171,6 +171,39 @@ Every cycle ends in exactly one outcome (the cycle contract):
     machine). The detail names which.
   - `verify-stale` is reported, not an alarm: the PR head moved during the run,
     the result was discarded, and the PR is posted again.
+  - `config-invalid`: a target's `.claude/standards.json` has a `review`
+    policy and `fleet.config.json` has no `reviewers`, so no PR there could
+    leave `cell:awaiting-reviewer`. The detail names the target. Nothing ran
+    after the sync, and the cycle exits 64. Add a reviewer:
+    `"reviewers": [{ "name": "<name>", "argv": ["<command>", "..."], "timeoutMinutes": 20 }]`,
+    where `{prompt}`, `{worktree}` and `{out}` in `argv` become the prompt
+    file, the reviewer's worktree and the verdict file. A reviewer is any
+    command; the README's example is `claude -p` on a model other than the
+    workers', with `--permission-mode plan`.
+  - `review-wrote`: a reviewer moved its worktree's HEAD or changed a file in
+    it; the detail names the reviewer and what changed. Its verdict was
+    discarded and nothing was stamped. Fix the reviewer's command or
+    permissions. Writes outside the worktree are not detected, so check that
+    the reviewer cannot push or write to the tracker.
+  - `review-invalid`: the reviewer left no verdict at `{out}`, or one that is
+    not `{"verdict":"pass"|"fail","findings":[{"file","line","claim","evidence"}]}`.
+    Read its log under `<stateDir>/review/`.
+  - `review-timeout`: the reviewer ran past its `timeoutMinutes` and was
+    killed. Nothing was stamped.
+  - `review-launch-failed`, `review-write-failed`, `review-redispatch-failed`,
+    `review-pr-missing`: the worktree, diff or manifest read failed, a PR
+    comment failed (the verdict is read again next cycle), a failed PR's
+    worker could not be re-dispatched, or the PR is past the page limit. The
+    detail names which.
+  - A reviewer that failed, wrote, timed out or gave no valid verdict at a
+    head is not run again at that head; the next reviewer in config order may
+    be. A push gives every reviewer a new head.
+  - `review-stale` is reported, not an alarm: the PR head moved during the
+    review, or the PR closed; the verdict was discarded.
+  - A review that fails is not an alarm: its findings are commented on the PR,
+    and the worker is re-dispatched at the same tier with reason
+    `review-failed: <first claim>`, counted toward `maxEscalations`. A pass
+    posts `REVIEWED: <name> @ <sha>` (movement `reviewed`).
   - `latched`: three consecutive cycles without movement (configurable). The
     runtime stops starting cycles. Read the last reports, then
     `fleet resume --reason "<what you concluded>"`.
