@@ -1,0 +1,29 @@
+{
+  "feature": "cv-merge-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/cv-merge-gate",
+  "allowedPaths": [
+    "plugins/fleet/tests/gate-c-merge.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/**",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/agentic-work-packages/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "feat/c0-1-integration-branch",
+    "feat/c0-2-merge-stage",
+    "feat/c0-3-two-level-merge-records"
+  ],
+  "estimatedScope": "one gate suite",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
