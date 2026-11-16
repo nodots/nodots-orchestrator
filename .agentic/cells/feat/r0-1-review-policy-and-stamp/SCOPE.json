@@ -10,12 +10,14 @@
     "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/check-standards.test.sh",
     "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/sync-cells.test.sh",
     "plugins/agentic-work-packages/skills/agentic-work-packages/references/standards.md",
-    "plugins/agentic-work-packages/skills/agentic-work-packages/references/working-agreements.md"
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/working-agreements.md",
+    "plugins/fleet/tests/stubs/gh.js"
   ],
   "forbiddenPaths": [
     "plugins/agentic-work-packages/hooks/**",
     "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
-    "plugins/fleet/**",
+    "plugins/fleet/src/**",
+    "plugins/fleet/bin/**",
     "scripts/**",
     "**/plugin.json",
     ".github/**"
