@@ -5,11 +5,14 @@
 # For each commit in base..head it fails the commit when:
 #   - the author or committer name is "fleet", or the email is fleet@nodots.invalid;
 #   - the author or committer email is noreply@anthropic.com;
-#   - a Co-Authored-By: line in the message names Claude, Anthropic,
-#     noreply@anthropic.com, GPT, OpenAI, Codex, Copilot, Gemini or Cursor.
-# Names, emails and trailers match case-insensitively. A Co-Authored-By: line
-# anywhere in the message counts, not only in the final trailer block. A name
-# mentioned in the body outside a Co-Authored-By: line does not.
+#   - any trailer, under any key (Co-Authored-By:, Agent-Assisted: or another),
+#     names Claude, Anthropic, noreply@anthropic.com, GPT, OpenAI, Codex,
+#     Copilot, Gemini or Cursor.
+# The trailer that records agent work, Agent-Assisted: yes, names none of them
+# and passes. Names, emails and trailers match case-insensitively. A trailer is
+# what git reads as the message's trailer block (%(trailers)); a Co-Authored-By:
+# line elsewhere in the message also counts. A name mentioned in the body
+# outside a trailer does not.
 #
 # Prints each failing commit's short sha and the reason. Exits 1 when any commit
 # fails, 0 when none does, 2 on a usage error or a range git cannot resolve.
@@ -17,7 +20,7 @@
 # What it does not catch:
 #   - an AI identity under a human-looking name and email;
 #   - trailer spellings outside the list above, and attribution in other forms
-#     (a "Generated with" line, a Signed-off-by: line, an AI tool not listed).
+#     (a "Generated with" line in the body, an AI tool not listed).
 set -uo pipefail
 
 if [ $# -ne 2 ]; then
@@ -32,7 +35,7 @@ if ! commits=$(git rev-list --reverse "$base..$head" 2>&1); then
   exit 2
 fi
 
-TRAILER_RE='^[[:space:]]*co-authored-by:.*(claude|anthropic|gpt|openai|codex|copilot|gemini|cursor)'
+AI_RE='claude|anthropic|gpt|openai|codex|copilot|gemini|cursor'
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
 failed=0
@@ -51,8 +54,10 @@ for c in $commits; do
     esac
   done
   while IFS= read -r line; do
-    reasons+=("AI co-author trailer: $line")
-  done < <(git show -s --format=%B "$c" | grep -iE "$TRAILER_RE")
+    reasons+=("trailer names an AI model or vendor: $line")
+  done < <({ git show -s --format='%(trailers:only,unfold)' "$c"
+             git show -s --format=%B "$c" | grep -iE '^[[:space:]]*co-authored-by:'
+           } | sed 's/^[[:space:]]*//' | awk '!seen[tolower($0)]++' | grep -iE "$AI_RE")
   if [ ${#reasons[@]} -gt 0 ]; then
     failed=$((failed + 1))
     for r in "${reasons[@]}"; do echo "FAIL  $short  $r"; done

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Fixture test for scripts/check-commit-identity.sh: over base..head it exits 1
 # when a commit carries an AI identity (the fleet author or committer, the
-# Anthropic noreply email) or an AI Co-Authored-By trailer, and prints the short
-# sha and the reason. A clean commit, and a body that names Claude outside a
-# trailer, exit 0. Every case runs on a throwaway repo.
+# Anthropic noreply email) or a trailer under any key that names an AI model or
+# vendor, and prints the short sha and the reason. A clean commit, the
+# Agent-Assisted: yes trailer, and a body that names Claude outside a trailer,
+# exit 0. Every case runs on a throwaway repo. It also checks that the repo's
+# .claude/settings.json makes Claude Code write Agent-Assisted: yes.
 set -uo pipefail
 cd "$(dirname "$0")"
 . ../../plugins/fleet/tests/lib.sh
@@ -76,6 +78,22 @@ Co-Authored-By: Sam Person <sam@example.com>"
 run_in "$T"
 assert_eq "0" "$RC" "a human Co-Authored-By trailer exits 0"
 
+T=$(repo agent-assisted)
+human "$T" "feat: agent work
+
+Agent-Assisted: yes"
+run_in "$T"
+assert_eq "0" "$RC" "an Agent-Assisted: yes trailer exits 0"
+
+T=$(repo body-colon)
+human "$T" "docs: a body line that looks like a key
+
+Reviewer: Claude read an earlier draft.
+
+The paragraph above is body, not the trailer block."
+run_in "$T"
+assert_eq "0" "$RC" "a key-like body line outside the trailer block exits 0"
+
 T=$(repo empty-range)
 run_in "$T"
 assert_eq "0" "$RC" "an empty range exits 0"
@@ -146,6 +164,37 @@ co-authored-by: CLAUDE <x@example.com>"
 run_in "$T"
 assert_eq "1" "$RC" "trailer key and value match case-insensitively"
 assert_contains "$OUT" "trailer" "the reason names the trailer"
+
+T=$(repo agent-assisted-claude)
+human "$T" "feat: agent work
+
+Agent-Assisted: claude"
+run_in "$T"
+assert_eq "1" "$RC" "an Agent-Assisted: claude trailer exits 1"
+assert_contains "$OUT" "$(short_head "$T")" "the Agent-Assisted: claude commit's short sha is printed"
+assert_contains "$OUT" "Agent-Assisted: claude" "the reason quotes the trailer"
+
+for tr in \
+  "Generated-By: GitHub Copilot" \
+  "Assisted-By: Gemini" \
+  "Agent-Assisted: cursor" \
+  "Tool: OpenAI Codex"; do
+  T=$(repo "key-$RANDOM$RANDOM")
+  human "$T" "feat: assisted
+
+Signed-off-by: $HUMAN_NAME <$HUMAN_EMAIL>
+$tr"
+  run_in "$T"
+  assert_eq "1" "$RC" "a trailer [$tr] exits 1"
+done
+
+# --- the setting: Claude Code writes Agent-Assisted: yes, hooks and permissions kept ---
+
+SETTINGS="$(cd ../.. && pwd -P)/.claude/settings.json"
+COMMIT_TEXT=$(node -e 'const s=require(process.argv[1]); process.stdout.write(String(s.attribution && s.attribution.commit))' "$SETTINGS" 2>&1)
+assert_eq "Agent-Assisted: yes" "$COMMIT_TEXT" ".claude/settings.json sets attribution.commit to Agent-Assisted: yes"
+KEPT=$(node -e 'const s=require(process.argv[1]); process.stdout.write([s.permissions.allow.length > 0, !!(s.hooks.SessionStart && s.hooks.PreToolUse && s.hooks.Stop)].join(","))' "$SETTINGS" 2>&1)
+assert_eq "true,true" "$KEPT" ".claude/settings.json keeps its permissions and hooks"
 
 # --- mixed range: only the bad commit is named, every bad commit is named ---
 
