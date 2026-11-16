@@ -146,7 +146,7 @@ assert_contains "$TEXT" "· awaiting-reviewer 7 · reviewing 0" "report: counts 
 cycle
 assert_eq "7" "$(st 'v.inFlight.length')" "launch: seven reviews recorded in flight in state.review"
 assert_eq "{\"pr\":200,\"reviewer\":\"stub-a\",\"headSha\":\"$H200\",\"issue\":10}" "$(st 'v.inFlight.filter(x=>x.pr===200).map(x=>({pr:x.pr,reviewer:x.reviewer,headSha:x.headSha,issue:x.issue}))[0]')" "launch: the record is { pr, reviewer, headSha, issue, ... }"
-assert_eq "true|true" "$(st 'Number.isInteger(v.inFlight[0].pid)+"|"+Boolean(v.inFlight[0].startedAt)')" "launch: the record has pid and startedAt"
+assert_eq "[true,true]" "$(st '[Number.isInteger(v.inFlight[0].pid),Boolean(v.inFlight[0].startedAt)]')" "launch: the record has pid and startedAt"
 assert_eq "0" "$(jq_out 'r.streak')" "streak: reviews in flight are live work (noMovementLimit 1, nothing else live)"
 assert_eq "null" "$(st 's.latched')" "streak: no latch while reviews run"
 wait_for_count "$RLOG" "*.1.env" 7
@@ -179,9 +179,9 @@ C201=$(comments_on 201)
 assert_not_contains "$C201" "REVIEWED:" "fail: no stamp"
 assert_contains "$C201" "the guard is inverted" "fail: the findings are commented"
 assert_contains "$C201" "src/y.txt:9" "fail: each finding with file and line"
-assert_eq "$H201" "$(st 'v.failed["201"]["stub-a"].headSha')" "fail: the head is recorded in state.review.failed"
-assert_eq "review-failed: the guard is inverted|default|2" "$(jq_out "r.launched.filter(l=>l.issue===11).map(l=>l.reason+'|'+l.tier+'|'+l.attempt).join()")" "fail: the worker is re-dispatched at the same tier, reason review-failed: <first claim>"
-assert_eq "2" "$(node -e "console.log(require('$TMP/state/state.json').dispatches['T1.2'].length)")" "fail: the re-dispatch is a dispatch, counted toward maxEscalations"
+assert_eq "\"$H201\"" "$(st 'v.failed["201"]["stub-a"].headSha')" "fail: the head is recorded in state.review.failed"
+assert_eq "default|2" "$(jq_out "r.launched.filter(l=>l.issue===11).map(l=>l.tier+'|'+l.attempt).join()")" "fail: the worker is re-dispatched at the same tier"
+assert_eq "2|review-failed: the guard is inverted|default" "$(node -e "const d=require('$TMP/state/state.json').dispatches['T1.2']; console.log(d.length+'|'+d[1].reason+'|'+d[1].tier)")" "fail: the re-dispatch is a dispatch, counted toward maxEscalations, reason review-failed: <first claim>"
 for n in 202 203 204; do assert_not_contains "$(comments_on $n)" "REVIEWED:" "no stamp on #$n"; done
 assert_contains "$(alarm_detail review-invalid)" "#202" "invalid JSON: alarm review-invalid"
 assert_contains "$(alarm_detail review-wrote)" "#203" "a reviewer that changed the worktree: review-wrote"
