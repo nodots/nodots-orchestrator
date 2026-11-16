@@ -1,0 +1,30 @@
+{
+  "feature": "h0-1-secret-scanner",
+  "project": "nodots-orchestrator",
+  "branch": "feat/h0-1-secret-scanner",
+  "allowedPaths": [
+    "scripts/check-secrets.sh",
+    "scripts/tests/check-secrets.test.sh",
+    ".gitleaks.toml",
+    ".github/workflows/ci.yml",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/working-agreements.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/**",
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/**",
+    "scripts/test.sh",
+    "scripts/check-credentials.sh",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "fix/h0-4-fixture-race"
+  ],
+  "estimatedScope": "one script, one config, one CI step, one test file, one doc paragraph",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
