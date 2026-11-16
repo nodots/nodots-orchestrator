@@ -192,6 +192,41 @@ it, and tells the worker to open its PR against that branch. A target without
   `git push origin <defaultBranch>:<integrationBranch>`.
 - `fleet doctor` prints each target's base ref and whether it exists.
 
+### The merge stage
+
+With `autoMerge: true`, each cycle runs the merge stage (`src/merge.js`) after
+verify and review and before launch. It looks at every open PR of the epic's
+packages on the target, read fresh with `gh pr view`:
+
+1. **Protected first.** A PR whose base is protected (the list above: `main`,
+   `master`, `develop`, `development`, the target's `defaultBranch`,
+   `protectedBranches`) is never merged. The stage raises
+   `merge-protected-refused` and reads nothing else for it. This check comes
+   before any other.
+2. A PR whose base is any other branch than `integrationBranch` is skipped.
+3. **The merge condition**, checked in order. The first one unmet is named in
+   the report, and the PR stays open:
+   - a current `VERIFIED` stamp at the head (`stamp.js` `currentStamp`);
+   - the target's review policy met, `reviewMet(policy, currentReviews(pr))`,
+     when `stamp.js` exports `reviewMet`. Without it, the check is skipped and
+     each note says `review not checked`;
+   - `gh pr checks` all green: every check `pass` or `skipping`. A PR with no
+     checks reported is not green;
+   - `mergeable` is `MERGEABLE`.
+4. **Merge** with `gh pr merge <n> --merge --match-head-commit <head>`, where
+   `<head>` is the sha the condition was checked at. A push after the checks
+   makes GitHub refuse the merge, so an unchecked head is never merged. A
+   merge is movement `merged`, with the merge commit sha. A failed merge
+   raises `merge-failed` with gh's message and is not retried this cycle.
+
+The dry run makes every read and no merge. Its report lists the PRs that
+would merge under **Merged** (`would-merge`), and every other PR under
+**Not merged** with the reason.
+
+The residual: fleet cannot see the GitHub branch-protection rules on the
+integration branch. A rule that blocks the merge, such as a required review
+from a code owner, shows only as `merge-failed`.
+
 ## Standards
 
 A target's `.claude/standards.json` is its standards manifest: the check
@@ -409,6 +444,7 @@ src/launch.js       worktree + scope commit + plain push + detached claude -p
 src/reap.js         liveness, timeout, pure classify()
 src/verify.js       the verify stage: one verifier run in flight per target
 src/review.js       the review stage: reviewers in fresh worktrees, REVIEWED stamps
+src/merge.js        the merge stage: autoMerge PRs into the integration branch, never a protected one
 src/store.js        atomic state file, cycle lock
 src/report.js       report JSON, rendering, idempotent post
 src/standards.js    drafts a target's .claude/standards.json from its clone

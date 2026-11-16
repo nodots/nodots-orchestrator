@@ -75,6 +75,20 @@ function render(r) {
     for (const v of r.review) lines.push(`- ${v.target}#${v.pr}: ${v.action}${v.detail ? ` — ${v.detail}` : ''}`);
     lines.push('');
   }
+  // The merge stage's notes (merge.js): what merged, or would in a dry run,
+  // then every PR it held, skipped, refused or failed, with the reason.
+  const merged = (r.merge || []).filter(m => m.action === 'merged' || m.action === 'would-merge');
+  const notMerged = (r.merge || []).filter(m => m.action !== 'merged' && m.action !== 'would-merge');
+  if (merged.length) {
+    lines.push('**Merged**');
+    for (const m of merged) lines.push(`- ${m.target}#${m.pr}: ${m.action}${m.detail ? ` — ${m.detail}` : ''}`);
+    lines.push('');
+  }
+  if (notMerged.length) {
+    lines.push('**Not merged**');
+    for (const m of notMerged) lines.push(`- ${m.target}#${m.pr}: ${m.action}${m.detail ? ` — ${m.detail}` : ''}`);
+    lines.push('');
+  }
   if (r.parked && r.parked.length) {
     lines.push('**Parked (coordinator decision needed)**');
     for (const p of r.parked) lines.push(`- ${p.id} (#${p.issue}): ${p.detail}`);

@@ -51,6 +51,17 @@ one. `integrationBranch` may not be protected: `main`, `master`, `develop`,
 `protectedBranches` array. `targets[].autoMerge` (default `false`) requires
 `integrationBranch`. Either violation is a config error naming the key.
 
+With `autoMerge: true`, the cycle merges each open package PR whose base is
+the integration branch and that meets the merge condition, checked in order:
+a current `VERIFIED` stamp at the head; the review policy met
+(`reviewMet`, skipped with a `review not checked` note when `stamp.js` does
+not export it); `gh pr checks` all green (none reported is not green); and
+`mergeable` `MERGEABLE`. It merges with
+`gh pr merge --merge --match-head-commit <head>`, so a push after the checks
+is not merged. A PR whose base is protected (the list above) is never merged,
+whatever else holds. Fleet cannot see GitHub branch-protection rules on the
+integration branch; one that blocks a merge shows as `merge-failed`.
+
 A coordinator session runs cycles on an interval, for example with `/loop`,
 and reads each report. The runtime does the mechanical part; the coordinator
 decides what the report asks it to decide.
@@ -61,7 +72,8 @@ Every cycle ends in exactly one outcome (the cycle contract):
 
 - **Movement**: named packages with the artifact that proves it (a `dispatch`
   with its branch, a `pr`, a `merged` label, a `verified` stamp from the
-  verify stage, a `reviewed` stamp from the review stage). Nothing to do.
+  verify stage, a `reviewed` stamp from the review stage, a `merged` merge
+  commit sha from the merge stage). Nothing to do.
 - **Exhaustion**: nothing was dispatchable; the counts say why (queued, active,
   in review, blocked, live sessions, free WIP slots). Nothing to do unless the
   counts look wrong.
@@ -204,6 +216,20 @@ Every cycle ends in exactly one outcome (the cycle contract):
     and the worker is re-dispatched at the same tier with reason
     `review-failed: <first claim>`, counted toward `maxEscalations`. A pass
     posts `REVIEWED: <name> @ <sha>` (movement `reviewed`).
+  - `merge-protected-refused`: an `autoMerge` target has a package PR whose
+    base is a protected branch. It was not merged, and no condition was
+    checked. This is an alarm even beside movement. Retarget the PR to the
+    integration branch, or merge it by hand if a person means to.
+  - `merge-failed`: `gh pr merge` refused a PR that met the condition; the
+    detail carries gh's message. `Head branch was modified` means a push
+    landed after the checks: the next cycle judges the new head. Anything
+    else is often a branch-protection rule fleet cannot see. It is not
+    retried this cycle.
+  - `merge-view-failed`, `merge-sha-unread`: the PR could not be read before
+    the merge (nothing merged), or it merged and its merge commit could not
+    be read afterwards. The detail names which.
+  - A PR held by the merge condition is not an alarm: the **Not merged**
+    section names the first unmet condition, and the next cycle checks again.
   - `latched`: three consecutive cycles without movement (configurable). The
     runtime stops starting cycles. Read the last reports, then
     `fleet resume --reason "<what you concluded>"`.
