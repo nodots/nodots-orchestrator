@@ -87,6 +87,8 @@ export CLAUDE_STUB_MODE_T1_1=silent CLAUDE_STUB_MODE_T1_2=silent CLAUDE_STUB_MOD
 WT1="$TMP/worktrees/api-t1-1"
 LANE1=".agentic/cells/feat/t1-1-first/SCOPE.json"
 printf '.agentic/\n' >> "$TMP/clone/.git/info/exclude"
+# The "started no worker" counts in A and C read at once: the launch failed
+# before the spawn, so no detached stub exists to write an argv file later.
 OUT=$(FLEET_ONLY_ISSUE=10 fleet cycle --apply --json 2>/dev/null)
 assert_contains "$OUT" '"code": "launch-commit"' "A: with .agentic/ ignored, the first launch fails at its commit"
 assert_file "$WT1/$LANE1" "A: the failed launch left the lane file in the worktree"
@@ -104,6 +106,7 @@ sed -i.bak '/^\.agentic\/$/d' "$TMP/clone/.git/info/exclude"
 mkdir -p "$WT1/.claude" && printf '# contract\n' > "$WT1/.claude/worker-contract.md"
 OUT=$(FLEET_ONLY_ISSUE=10 fleet cycle --apply --json 2>/dev/null)
 assert_contains "$OUT" '"adopted": true' "A: the next applied cycle adopts the worktree"
+wait_for_count "$TMP/claude-log" 'T1.1.*.argv' 1
 assert_eq "1" "$(argv_count T1.1)" "A: and starts one worker"
 assert_nonempty "$(git -C "$WT1" ls-files -- "$LANE1")" "A: the adopted lane file is committed"
 git -C "$WT1" diff --quiet HEAD -- "$LANE1"; assert_eq 0 $? "A: the committed lane matches the working copy"
@@ -119,6 +122,7 @@ assert_not_contains "$ARGV" "$PLUGIN_CONTRACT" "A: and not the plugin's copy"
 OUT=$(FLEET_ONLY_ISSUE=11 fleet cycle --apply --json 2>/dev/null)
 SHA2=$(remote_sha feat/t1-2-second)
 assert_ne "none" "$SHA2" "B: setup: the new worktree's claim was pushed"
+wait_for_file "$TMP/claude-log/T1.2.1.argv"
 ARGV=$(cat "$TMP/claude-log/T1.2.1.argv")
 assert_contains "$ARGV" "Follow the worker contract at $PLUGIN_CONTRACT, in order." "B: with no .claude/worker-contract.md in the worktree, the prompt names the plugin's copy"
 assert_not_contains "$ARGV" ".claude/worker-contract.md" "B: and not the in-repo path"
@@ -126,6 +130,7 @@ wait_exit 11-1 && _pass "B: the silent worker exited" || _fail "B: the silent wo
 : > "$TMP/git.log"
 OUT=$(FLEET_ONLY_ISSUE=11 fleet cycle --apply --json 2>/dev/null)
 assert_contains "$OUT" '"adopted": true' "B: the relaunch adopts the worktree"
+wait_for_count "$TMP/claude-log" 'T1.2.*.argv' 2
 assert_eq "2" "$(argv_count T1.2)" "B: and starts a worker"
 GITLOG=$(grep -- "$TMP/worktrees/api-t1-2" "$TMP/git.log")
 assert_nonempty "$GITLOG" "B: the git stub saw the adoption's git calls"

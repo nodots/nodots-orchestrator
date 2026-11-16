@@ -74,6 +74,34 @@ Three rules travel with it:
 superseded sha never promotes a package to `cell:awaiting-review` — the same
 check a reviewer would do, done every cycle.
 
+### The review stamp
+
+A repo whose `.claude/standards.json` carries a `review` policy
+(`references/standards.md`) needs independent reviews as well as evidence. Each
+review ends in one PR comment with a machine-readable line:
+
+```
+REVIEWED: <reviewer> @ <full head sha>
+```
+
+`<reviewer>` names the reviewing session or person. Both stamps are defined in
+one place, `assets/scripts/stamp.js`, and the same rules travel with this one:
+
+- **A push after the stamp voids it.** A review of a tree that is no longer the
+  head is not a review of this PR.
+- **One reviewer is one review.** Stamps are counted once per distinct
+  `<reviewer>`, and the policy's `passes` is met when that count reaches it.
+- **The worker's own session never posts it.** A review by the session that
+  wrote the change is not independent. The stamp is posted by a reviewer: a
+  separate session, or the person or coordinator who ran the review.
+
+A PR with a current `VERIFIED` stamp but too few current `REVIEWED` stamps for
+its repo's policy is `cell:awaiting-reviewer`. `sync-cells.sh` names the stamps
+it found and what is missing. Once the policy is met at the head the PR is
+`cell:awaiting-review`, as for a repo with no policy. A `REVIEWED` stamp never
+stands in for the `VERIFIED` stamp: without current evidence, no number of
+reviews promotes the package.
+
 ## Classify a red before retrying it
 
 "It failed twice, try again" is not a rule; it is the absence of one. Every red
