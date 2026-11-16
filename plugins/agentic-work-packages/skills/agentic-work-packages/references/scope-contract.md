@@ -184,6 +184,27 @@ workers, not only to this one.
   indistinguishable from a clean pass, and the run keeps going as if the check
   had held.
 
+### Scope allow rules to the package's commands
+
+The hook judges `Edit` and `Write`; the repo's `permissions.allow` rules decide
+which shell commands a worker runs without a prompt. A wildcard over an
+interpreter or a container runtime, such as `Bash(node *)`, `Bash(python:*)` or
+`Bash(docker *)`, lets the worker run any program through it, including one
+that writes outside `allowedPaths`. It widens the residue to everything.
+
+- Allow the commands the package and the repo's standards checks actually run,
+  by path: `Bash(bash scripts/*)`, `Bash(node scripts/*)`,
+  `Bash(node plugins/*)`.
+- Never allow `Bash(<name> *)` or `Bash(<name>:*)` for `node`, `python`,
+  `python3`, `bash`, `sh`, `zsh`, `pwsh`, `docker`, `podman`, `npx`, `deno`,
+  `bun`, `ruby`, `perl`, `sqlcmd`, `psql` or `mysql`.
+- A command the narrow rules miss is a prompt, and an unattended prompt is a
+  stall, so check the list against `.claude/standards.json` before dispatch.
+
+`fleet doctor` prints one `WARN` line per broad rule it finds in a target's
+`.claude/settings.json` on its default branch. A `WARN` does not fail doctor or
+refuse a launch.
+
 ### Resolution order for `SCOPE.json`
 
 1. `.agentic/cells/<branch>/SCOPE.json` — branch-scoped, preferred

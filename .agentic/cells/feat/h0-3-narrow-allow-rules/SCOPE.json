@@ -1,0 +1,32 @@
+{
+  "feature": "h0-3-narrow-allow-rules",
+  "project": "nodots-orchestrator",
+  "branch": "feat/h0-3-narrow-allow-rules",
+  "allowedPaths": [
+    ".claude/settings.json",
+    "plugins/fleet/bin/fleet.js",
+    "plugins/fleet/README.md",
+    "plugins/fleet/tests/doctor-allow-rules.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/scope-contract.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/**",
+    "plugins/fleet/tests/lib.sh",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "fix/h0-4-fixture-race"
+  ],
+  "estimatedScope": "settings narrowed, one doctor check, docs, one suite",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
