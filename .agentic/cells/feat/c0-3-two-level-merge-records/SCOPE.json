@@ -1,0 +1,29 @@
+{
+  "feature": "c0-3-two-level-merge-records",
+  "project": "nodots-orchestrator",
+  "branch": "feat/c0-3-two-level-merge-records",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/sync-cells.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/sync-cells.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/merge-procedure.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/coordination.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/**",
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "feat/c0-1-integration-branch"
+  ],
+  "estimatedScope": "one sync case and a reason suffix, two reference sections, tests",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
