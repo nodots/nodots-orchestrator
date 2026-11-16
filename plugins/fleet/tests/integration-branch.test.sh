@@ -142,6 +142,8 @@ assert_contains "$(detail "$OUT" launch-integration-branch-missing)" "git push o
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "10" "$(alarms "$OUT" launch-integration-branch-missing)" "C: the applied cycle refuses too"
 [ -d "$TMP/worktrees" ] && _fail "C: no worktree is created for a refused launch" "worktrees dir exists" || _pass "C: no worktree is created for a refused launch"
+# Read at once: the launch was refused before the spawn, so no detached stub
+# exists to write here later.
 assert_empty "$(ls "$TMP/claude-log")" "C: no worker was started"
 
 # --- D. integ has the manifest but no settings: the settings read is integ's ---
@@ -166,6 +168,7 @@ assert_eq "10" "$(launched "$OUT")" "E: the applied cycle launches"
 WT=$(ls -d "$TMP"/worktrees/*/ 2>/dev/null | head -1)
 assert_nonempty "$WT" "E: a worktree exists"
 assert_eq "$INTEG_SHA" "$(git -C "$WT" rev-parse HEAD~1 2>/dev/null)" "E: the worktree starts from origin/integ"
+wait_for_file "$TMP/claude-log/T1.1.*.argv"
 ARGV=$(cat "$TMP"/claude-log/T1.1.*.argv 2>/dev/null)
 assert_contains "$ARGV" "Open the PR against integ with a title" "E: the prompt names integ as the PR base"
 assert_not_contains "$ARGV" "Open the PR against main" "E: and not main"
