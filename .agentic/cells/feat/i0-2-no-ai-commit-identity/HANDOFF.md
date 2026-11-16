@@ -12,6 +12,7 @@ Attempt 2. Stopped on `BLOCKER.md` in this directory: two open items need the co
 ## Not done (see BLOCKER.md)
 - The harness denied the write to `.claude/settings.json`: it is a settings file, and this session has no approval surface. The four-line change is quoted in BLOCKER.md.
 - `d0ee464 I0.2: scope` is a `fleet` commit, so this PR's range fails its own check.
+- `bash scripts/test.sh` ends `FAILED`, with two reds from that one cause. `check-commit-identity.test.sh` fails 1 of 55 checks, the settings assertion. `v0-gate.test.sh` fails 2 of 11 ("clean copy: test.sh exits 0" and "prints ALL PASS") because it re-runs `test.sh` on a copy of the tree and hits the same assertion. Every other file passes.
 - No PR has been opened. `[READY]` would be false while `bash scripts/test.sh` is red on the settings assertion.
 
 ## Next
