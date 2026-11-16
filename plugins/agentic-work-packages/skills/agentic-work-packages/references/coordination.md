@@ -310,6 +310,31 @@ unvalidated input" is a fact no agent can derive from reading its own lane.
 
 Append only. Never rewrite either log; the value is the trail.
 
+## Closing package issues
+
+A package PR carries `Closes #N`. GitHub closes the issue from that keyword only
+when the PR merges into the repo's **default branch**. A PR merged into an
+integration branch (`merge-procedure.md` §The two-level merge) leaves its
+issue open.
+
+So under a two-level merge:
+
+- **The label carries the state, not the issue.** The package reads
+  `cell:merged` at the merge into the integration branch, and its dependents
+  promote. An open issue with `cell:merged` is a package that landed at level 1
+  and is waiting on the person's merge. It is not a stalled package.
+- **The epic's package checkboxes are ticked when the merge is reported.** The
+  coordinator ticks a package's box in the cycle that reports its merge, the
+  same cycle that records it in the progress log. It does not wait for the
+  issue to close.
+- **Package issues close when the integration branch reaches the default
+  branch.** The package PRs' own `Closes #N` lines do not carry forward: the
+  level-1 merge commit holds the PR title, not its body. So the integration PR
+  from `collection/<epic>` lists a `Closes #N` for every package it carries, and
+  GitHub closes them all when a person merges it. Do not close them by hand at
+  level 1. An issue closed early cannot be told apart from one whose work
+  reached the default branch.
+
 ## When a package uncovers unplanned work
 
 It will. A package reaches its boundary and finds the thing it depends on is a
