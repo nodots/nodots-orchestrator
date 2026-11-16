@@ -9,7 +9,10 @@
 //   ci.json       {workflows:[{name,state}], runs:[{created_at}], fail:bool} for the
 //                 Actions endpoints; absent means one active workflow and a run just now
 //   writes.log    one line per write: "edit <n> +label -label" / "comment <repo> <n>" /
-//                 "title <repo> <n> <new title>" (`pr edit --title`, which rewrites prs.json)
+//                 "title <repo> <n> <new title>" (`pr edit --title`, which rewrites prs.json) /
+//                 "merge-attempt <repo> <n> <args>" and "merge <repo> <n> <args>" (`pr merge`)
+//   checks.json   {"<repo>#<number>": [{name, state, bucket}]} for `pr checks`
+//   reads.log     one line per `pr view` / `pr checks`
 // Branches, BLOCKER.md and .claude/standards.json come from the bare remote at
 // GH_STUB_REMOTE.
 const fs = require('fs');
@@ -77,6 +80,50 @@ if (a === 'pr' && b === 'edit') {
   if (!p) { process.stderr.write(`gh stub: no PR #${n} in ${repo}\n`); process.exit(1); }
   p.title = title; wr('prs.json', prs); log(`title ${repo} ${n} ${title}`);
   out(`https://example.invalid/pr/${n}\n`); process.exit(0);
+}
+// pr view, pr checks and pr merge serve the merge stage. Each read is logged to
+// reads.log ("view <repo> <n>" / "checks <repo> <n>"). A PR's mergeable
+// defaults to UNKNOWN and its baseRefName to main.
+if (a === 'pr' && b === 'view') {
+  const n = Number(argv[2]);
+  const repo = flag('--repo');
+  const p = rd('prs.json', []).find(x => x.number === n && (!x.repo || x.repo === repo));
+  if (!p) { process.stderr.write(`GraphQL: Could not resolve to a PullRequest with the number of ${n}. (repository.pullRequest)\n`); process.exit(1); }
+  fs.appendFileSync(path.join(DIR, 'reads.log'), `view ${repo} ${n}\n`);
+  out({ number: p.number, state: p.state, baseRefName: p.baseRefName || 'main', headRefOid: p.headRefOid, mergeable: p.mergeable || 'UNKNOWN', mergeCommit: p.mergeCommit || null });
+  process.exit(0);
+}
+// checks.json {"<repo>#<n>": [{name, state, bucket}]}; absent is gh's "no checks
+// reported". Like gh, a failed check exits 1 and a pending one 8, after the JSON.
+// A PR with pushAfterChecks has its head moved to that sha once its checks are read.
+if (a === 'pr' && b === 'checks') {
+  const n = Number(argv[2]);
+  const repo = flag('--repo');
+  fs.appendFileSync(path.join(DIR, 'reads.log'), `checks ${repo} ${n}\n`);
+  const list = rd('checks.json', {})[`${repo}#${n}`];
+  const prs = rd('prs.json', []);
+  const p = prs.find(x => x.number === n && (!x.repo || x.repo === repo));
+  if (p && p.pushAfterChecks) { p.headRefOid = p.pushAfterChecks; delete p.pushAfterChecks; wr('prs.json', prs); }
+  if (!list) { process.stderr.write(`no checks reported on the '${p ? p.headRefName : n}' branch\n`); process.exit(1); }
+  out(list);
+  process.exit(list.some(c => c.bucket === 'fail' || c.bucket === 'cancel') ? 1 : list.some(c => c.bucket === 'pending') ? 8 : 0);
+}
+// Every attempt is logged "merge-attempt <repo> <n> <args>"; a merge that lands,
+// "merge <repo> <n> <args>". --match-head-commit other than the head fails as gh does.
+if (a === 'pr' && b === 'merge') {
+  const n = Number(argv[2]);
+  const repo = flag('--repo');
+  const rest = argv.slice(3).filter((x, i, all) => x !== '--repo' && all[i - 1] !== '--repo').join(' ');
+  log(`merge-attempt ${repo} ${n} ${rest}`);
+  const prs = rd('prs.json', []);
+  const p = prs.find(x => x.number === n && (!x.repo || x.repo === repo));
+  if (!p) { process.stderr.write(`GraphQL: Could not resolve to a PullRequest with the number of ${n}. (repository.pullRequest)\n`); process.exit(1); }
+  if (String(p.state).toUpperCase() !== 'OPEN') { process.stderr.write(`X Pull request ${repo}#${n} can't be merged: it is ${String(p.state).toLowerCase()}\n`); process.exit(1); }
+  const match = flag('--match-head-commit');
+  if (match !== null && match !== p.headRefOid) { process.stderr.write('GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)\n'); process.exit(1); }
+  p.state = 'MERGED'; p.mergeCommit = { oid: 'c'.repeat(37) + String(n).padStart(3, '0').slice(-3) };
+  wr('prs.json', prs); log(`merge ${repo} ${n} ${rest}`);
+  process.exit(0);
 }
 if (a === 'pr' && b === 'list') {
   const repo = flag('--repo');
