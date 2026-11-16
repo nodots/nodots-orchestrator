@@ -24,7 +24,8 @@ a defect.
     { "doc": "CONTRIBUTING.md", "check": null }
   ],
   "preamble": ".claude/standards-preamble.md",
-  "plugins": [ { "name": "<plugin>", "marketplace": "<marketplace>" } ]
+  "plugins": [ { "name": "<plugin>", "marketplace": "<marketplace>" } ],
+  "review": { "passes": 2 }
 }
 ```
 
@@ -36,6 +37,7 @@ orchestrator names no toolchain.
 - **Checks are commands; rules are pointers.** A `check` is run and quoted in the stamp. A `rule` names the document to read, the paths it applies to, and the check that enforces it; a rule with `check: null` is allowed and reported as a warning.
 - **Rules are lane-scoped.** A worker is briefed only on rules whose `paths` overlap its `allowedPaths`, plus rules with no `paths`.
 - **The preamble is the repo's.** The hook prints the file the manifest names; the orchestrator ships no preamble text.
+- **The review policy is the repo's.** `review` says how many independent reviews a PR needs at its head (`passes`), counted from `REVIEWED` stamps, one per distinct reviewer (`references/working-agreements.md` §Evidence is stamped to a sha). A verified PR short of the policy is `cell:awaiting-reviewer`, not `cell:awaiting-review`. A repo without the key needs no reviews, and its PRs move as before.
 
 ## Readers
 
@@ -47,6 +49,7 @@ Every reader validates through `check-standards.js`; none parses the manifest on
 | Launcher (`fleet cycle`) | Refuses a target with no valid manifest; briefs the worker on every check and on the rules whose `paths` overlap its lane |
 | Preamble hook (SessionStart) | Prints the file `preamble` names |
 | Eval runner | The checks a `lint` case runs in the work directory |
+| Label sync (`sync-cells.sh`) | The `review` policy, read from the default branch, which holds a verified PR at `cell:awaiting-reviewer` until it is met. It judges the key with `validateReview`, since it has no tracked file list |
 
 ## Validation rules
 
@@ -62,8 +65,8 @@ tracked.
 - The root must be a git work tree, so the tracked file list can be read.
   Otherwise: `cannot list tracked files: git ls-files failed in <root>`.
 
-**Top level.** Allowed keys: `version`, `checks`, `rules`, `preamble`, `plugins`.
-Any other key is a defect: `<key>: unknown key`.
+**Top level.** Allowed keys: `version`, `checks`, `rules`, `preamble`, `plugins`,
+`review`. Any other key is a defect: `<key>: unknown key`.
 
 - `version` is the integer `1`.
 - `checks` is a non-empty array of objects.
@@ -71,6 +74,9 @@ Any other key is a defect: `<key>: unknown key`.
 - `preamble`, when present and not `null`, is a string naming a tracked file.
   `null` is the same as absent.
 - `plugins`, when present, is an array of objects. It may be empty.
+- `review`, when present and not `null`, is an object. `null` is the same as
+  absent. Otherwise: `review: must be null or an object with one integer key,
+  passes`.
 
 **Each `checks[]` item.** Allowed keys: `name`, `command`. Any other key is a
 defect: `checks[<i>].<key>: unknown key`.
@@ -94,6 +100,12 @@ a defect: `rules[<i>].<key>: unknown key`.
 a defect: `plugins[<i>].<key>: unknown key`.
 
 - `name` and `marketplace` are both required strings matching `^[A-Za-z0-9_.-]+$`.
+
+**The `review` object.** Allowed key: `passes`. Any other key is a defect:
+`review.<key>: unknown key`.
+
+- `passes` is a required integer, at least `1`. Otherwise:
+  `review.passes: must be an integer >= 1`, or `review.passes: <n> must be >= 1`.
 
 **Globs.** A glob is split on `/`. A segment that is exactly `**` matches any
 number of path segments, including none. Within any other segment, `*` matches
@@ -120,10 +132,11 @@ node check-standards.js [--root <dir>] [--json] [<manifest>]
   exit code.
 
 **Normalized manifest.** Keys in the order shown in §The manifest
-(`version, checks, rules, preamble, plugins`; `name, command`;
-`doc, paths, check`; `name, marketplace`). An absent `preamble` is `null`, an
-absent `plugins` is `[]`, and an absent rule `paths` is `null`. Array order is
-kept. A normalized manifest is itself valid.
+(`version, checks, rules, preamble, plugins, review`; `name, command`;
+`doc, paths, check`; `name, marketplace`; `passes`). An absent
+`preamble` is `null`, an absent `plugins` is `[]`, an absent rule `paths` is
+`null`, and an absent `review` is `null`. Array order is kept. A normalized
+manifest is itself valid.
 
 **Module.** Readers in the same process use the exports instead of the CLI:
 
@@ -136,3 +149,5 @@ kept. A normalized manifest is itself valid.
 - `validateFile(repoRoot, manifestPath = '.claude/standards.json')` reads the
   file and takes `files` from `git -C <repoRoot> ls-files`. Same result, plus
   `path`.
+- `validateReview(review)` → the `review` defects above, for the value of the
+  `review` key alone. `null` has none. For a reader with no tracked file list.

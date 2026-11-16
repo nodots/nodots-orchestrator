@@ -103,6 +103,8 @@ assert_contains "$(detail "$OUT" launch-standards-missing)" "origin/main" "A: th
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "10" "$(alarms "$OUT" launch-standards-missing)" "A: the applied cycle refuses too"
 [ -d "$TMP/worktrees" ] && _fail "A: no worktree is created for a refused launch" "worktrees dir exists" || _pass "A: no worktree is created for a refused launch"
+# Read at once: the launch was refused before the spawn, so no detached stub
+# exists to write here later.
 assert_empty "$(ls "$TMP/claude-log")" "A: no worker was started"
 assert_empty "$(git --git-dir "$TMP/remote.git" for-each-ref --format='%(refname:short)' refs/heads | grep '^feat/')" "A: no branch was pushed"
 
@@ -163,6 +165,7 @@ write_config ""
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "10" "$(launched "$OUT")" "G: the applied cycle launches"
 assert_eq '{"checks":["test","lint"],"rules":3,"applicable":2}' "$(standards "$OUT")" "G: the applied row carries the standards record"
+wait_for_file "$TMP/claude-log/T1.1.*.argv"
 ARGV=$(cat "$TMP"/claude-log/T1.1.*.argv 2>/dev/null)
 assert_contains "$ARGV" "Standards for acme/api are in .claude/standards.json in this worktree. Before you claim [READY]: T1.1, run every check in order and quote each command with its summary in the VERIFIED stamp:" "G: the prompt points at the manifest"
 assert_contains "$ARGV" "test: npm test" "G: the prompt names the test command"

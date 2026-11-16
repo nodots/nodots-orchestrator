@@ -11,12 +11,15 @@
 #   fail     exit 3
 #   blocker  write BLOCKER.md with a known Kind, exit 0
 #   sleep    stay alive for CLAUDE_STUB_SLEEP seconds (default 20)
+# CLAUDE_STUB_DELAY (seconds, default 0) sleeps before the argv file is written,
+# so a suite that reads it without waiting fails on any host, not only a slow one.
 set -u
 PKG="${FLEET_PACKAGE:-unknown}"
 KEY="CLAUDE_STUB_MODE_${PKG//./_}"
 MODE="${!KEY:-silent}"
 LOG="${CLAUDE_STUB_LOG:?}"
 mkdir -p "$LOG"
+sleep "${CLAUDE_STUB_DELAY:-0}"
 n=1; while [ -e "$LOG/$PKG.$n.argv" ]; do n=$((n + 1)); done
 printf '%s\n' "$@" > "$LOG/$PKG.$n.argv"
 { echo "cwd=$PWD"; echo "CLAUDECODE=${CLAUDECODE-<unset>}"; echo "FLEET_WORKER_ID=${FLEET_WORKER_ID-}"; echo "FLEET_ISSUE=${FLEET_ISSUE-}"; echo "FLEET_PACKAGE=$PKG"; echo "mode=$MODE"; } > "$LOG/$PKG.$n.env"
