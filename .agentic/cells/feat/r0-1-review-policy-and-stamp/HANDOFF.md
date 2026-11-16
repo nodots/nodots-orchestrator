@@ -36,7 +36,14 @@
   presumably R0.2 or R0.3.
 
 ## Next
-- Review and merge. R0.2, R0.3 and RV depend on this.
+- **Blocked**: see `BLOCKER.md` beside this file. `bash scripts/test.sh` at
+  b68ca39 ends `FAILED`. The fleet gh stub answers the new manifest read with
+  `[]`, and 32 fleet verify checks and 2 v0-gate checks fail. The stub fix is in
+  `plugins/fleet/**`, which this lane forbids.
+- Once the stub answers `contents/.claude/standards.json`, re-run
+  `bash scripts/test.sh`, then open the `[READY]: R0.1` PR against `development`
+  with "Closes #174" in the body, and stamp it. No PR is open yet.
+- After merge: R0.2, R0.3 and RV depend on this.
 
 ## Plan check
 
