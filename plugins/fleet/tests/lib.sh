@@ -56,6 +56,29 @@ assert_file() {
   if [ -f "$1" ]; then _pass "$2"; else _fail "$2" "no such file: $1"; fi
 }
 
+# wait_for_file <path-or-glob> [timeout_s=15] — poll every 0.1 s until a file
+# matches. A launched worker is spawned detached, so the claude stub's files can
+# land after `fleet cycle` returns. Returns 1 on timeout; the assertion that
+# reads the file then fails on its own terms.
+wait_for_file() {
+  local i=0 limit=$(( ${2:-15} * 10 ))
+  until compgen -G "$1" > /dev/null; do
+    [ "$i" -ge "$limit" ] && return 1
+    sleep 0.1; i=$((i + 1))
+  done
+}
+
+# wait_for_count <dir> <pattern> <n> [timeout_s=15] — poll every 0.1 s until at
+# least <n> files in <dir> match the glob <pattern>. It waits for "at least", so
+# a surplus is left for the count assertion to report. Returns 1 on timeout.
+wait_for_count() {
+  local i=0 limit=$(( ${4:-15} * 10 ))
+  until [ "$(compgen -G "$1/$2" | wc -l)" -ge "$3" ]; do
+    [ "$i" -ge "$limit" ] && return 1
+    sleep 0.1; i=$((i + 1))
+  done
+}
+
 # fixture_standards <clone dir> — commit a valid .claude/standards.json in a
 # fixture clone, so a launch that requires the manifest takes the real path.
 # Before it, commit a .claude/settings.json that enables agentic-work-packages
