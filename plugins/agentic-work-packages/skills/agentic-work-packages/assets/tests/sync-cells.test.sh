@@ -662,37 +662,37 @@ partof=$(node -e 'process.stdout.write(String(require(process.argv[1]).issues[0]
 assert_eq "60" "$partof" "the collector records each package's epic as partOf"
 
 # --- the REVIEWED stamp and the review policy (R0.1) ------------------------
-# A repo's manifest may require N independent reviews from M model families. A
-# verified PR is held at cell:awaiting-reviewer until the REVIEWED stamps at its
-# head meet that policy. A repo without the key behaves exactly as before.
+# A repo's manifest may require N independent reviews. A verified PR is held at
+# cell:awaiting-reviewer until the REVIEWED stamps at its head meet that policy.
+# A repo without the key behaves exactly as before.
 STAMP_JS="$(cd ../scripts && pwd -P)/stamp.js"
 out=$(node -e '
   const { REVIEW_STAMP, currentReviews, reviewMet } = require(process.argv[1]);
   const H = "1".repeat(40), O = "2".repeat(40);
   const bad = [];
   const eq = (label, want, got) => { if (JSON.stringify(want) !== JSON.stringify(got)) bad.push(`${label}: want ${JSON.stringify(want)} got ${JSON.stringify(got)}`); };
-  eq("pattern", true, REVIEW_STAMP.test(`REVIEWED: reviewer one (anthropic) @ ${H}`));
-  eq("pattern needs a family", false, REVIEW_STAMP.test(`REVIEWED: reviewer @ ${H}`));
+  eq("pattern", true, REVIEW_STAMP.test(`REVIEWED: reviewer one @ ${H}`));
+  eq("pattern needs a reviewer", false, REVIEW_STAMP.test(`REVIEWED: @ ${H}`));
+  eq("pattern needs a full sha", false, REVIEW_STAMP.test(`REVIEWED: alice @ ${H.slice(0, 7)}`));
+  eq("pattern takes the whole name", "reviewer one", (`REVIEWED: reviewer one @ ${H}`).match(REVIEW_STAMP)[1]);
   const pr = { headSha: H, comments: [
     `VERIFIED: unit @ ${H}`,
-    `findings first\n\nREVIEWED: alice (anthropic) @ ${H}`,
-    `REVIEWED: bob (openai) @ ${O}`,
-    `REVIEWED: alice (openai) @ ${H}`,
-    `REVIEWED: carol (anthropic) @ ${H}`,
+    `findings first\n\nREVIEWED: alice @ ${H}`,
+    `REVIEWED: bob @ ${O}`,
+    `REVIEWED: alice @ ${H}`,
+    `REVIEWED: carol @ ${H}`,
   ] };
   eq("currentReviews: head only, one per reviewer name", [
-    { reviewer: "alice", family: "anthropic", sha: H },
-    { reviewer: "carol", family: "anthropic", sha: H },
+    { reviewer: "alice", sha: H },
+    { reviewer: "carol", sha: H },
   ], currentReviews(pr));
   eq("currentReviews: no head sha", [], currentReviews({ comments: pr.comments }));
   eq("currentReviews: no pr", [], currentReviews(null));
   const r = currentReviews(pr);
   eq("reviewMet: null policy", true, reviewMet(null, []));
-  eq("reviewMet: passes met, families short", false, reviewMet({ passes: 2, families: 2 }, r));
-  eq("reviewMet: passes and families met", true, reviewMet({ passes: 2, families: 1 }, r));
-  eq("reviewMet: passes short", false, reviewMet({ passes: 3, families: 1 }, r));
-  eq("reviewMet: distinct families counted", true,
-     reviewMet({ passes: 2, families: 2 }, [{ reviewer: "a", family: "x" }, { reviewer: "b", family: "y" }]));
+  eq("reviewMet: passes met", true, reviewMet({ passes: 2 }, r));
+  eq("reviewMet: passes short", false, reviewMet({ passes: 3 }, r));
+  eq("reviewMet: none at all", false, reviewMet({ passes: 1 }, []));
   process.stdout.write(bad.length ? bad.join("; ") : "ok");
 ' "$STAMP_JS" 2>&1)
 assert_eq "ok" "$out" "stamp.js: REVIEW_STAMP, currentReviews and reviewMet behave as specified"
@@ -702,7 +702,7 @@ cat > "$TMP/state-review.json" <<JSON
 {
   "repo": "example/host",
   "targets": ["example/code", "example/other"],
-  "reviewPolicies": { "example/code": { "passes": 2, "families": 2 }, "example/other": null },
+  "reviewPolicies": { "example/code": { "passes": 2 }, "example/other": null },
   "issues": [
     { "number": 401, "title": "R1.1 none yet", "label": "cell:active", "repo": "example/code",
       "branch": "feat/r1-1", "branchExists": true, "blockerOnBranch": false,
@@ -711,19 +711,19 @@ cat > "$TMP/state-review.json" <<JSON
     { "number": 402, "title": "R1.2 met", "label": "cell:active", "repo": "example/code",
       "branch": "feat/r1-2", "branchExists": true, "blockerOnBranch": false,
       "pr": { "number": 502, "title": "[READY]: R1.2", "state": "OPEN", "headSha": "$SHA_R",
-              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: bob (openai) @ $SHA_R"] } },
-    { "number": 403, "title": "R1.3 one family", "label": "cell:active", "repo": "example/code",
+              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice @ $SHA_R", "REVIEWED: bob @ $SHA_R"] } },
+    { "number": 403, "title": "R1.3 one short", "label": "cell:active", "repo": "example/code",
       "branch": "feat/r1-3", "branchExists": true, "blockerOnBranch": false,
       "pr": { "number": 503, "title": "[READY]: R1.3", "state": "OPEN", "headSha": "$SHA_R",
-              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: carol (anthropic) @ $SHA_R"] } },
+              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice @ $SHA_R"] } },
     { "number": 404, "title": "R1.4 pushed after review", "label": "cell:awaiting-review", "repo": "example/code",
       "branch": "feat/r1-4", "branchExists": true, "blockerOnBranch": false,
       "pr": { "number": 504, "title": "[READY]: R1.4", "state": "OPEN", "headSha": "$SHA_R",
-              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: bob (openai) @ $SHA_OLD"] } },
+              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice @ $SHA_R", "REVIEWED: bob @ $SHA_OLD"] } },
     { "number": 405, "title": "R1.5 same reviewer twice", "label": "cell:active", "repo": "example/code",
       "branch": "feat/r1-5", "branchExists": true, "blockerOnBranch": false,
       "pr": { "number": 505, "title": "[READY]: R1.5", "state": "OPEN", "headSha": "$SHA_R",
-              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: alice (openai) @ $SHA_R"] } },
+              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice @ $SHA_R", "REVIEWED: alice @ $SHA_R"] } },
     { "number": 406, "title": "R1.6 no policy", "label": "cell:active", "repo": "example/other",
       "branch": "feat/r1-6", "branchExists": true, "blockerOnBranch": false,
       "pr": { "number": 506, "title": "[READY]: R1.6", "state": "OPEN", "headSha": "$SHA_R",
@@ -731,7 +731,7 @@ cat > "$TMP/state-review.json" <<JSON
     { "number": 407, "title": "R1.7 reviewed, not verified", "label": "cell:active", "repo": "example/code",
       "branch": "feat/r1-7", "branchExists": true, "blockerOnBranch": false,
       "pr": { "number": 507, "title": "[READY]: R1.7", "state": "OPEN", "headSha": "$SHA_R",
-              "comments": ["REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: bob (openai) @ $SHA_R"] } }
+              "comments": ["REVIEWED: alice @ $SHA_R", "REVIEWED: bob @ $SHA_R"] } }
   ]
 }
 JSON
@@ -739,15 +739,15 @@ OUT_R=$(bash "$SCRIPT" --state "$TMP/state-review.json" 2>"$TMP/err-review"); EX
 assert_eq 0 "$EXIT_R" "a review-policy fixture run exits 0"
 assert_empty "$(cat "$TMP/err-review")" "a review-policy fixture run writes nothing to stderr"
 rrow() { printf '%s' "$OUT_R" | grep -E "^#$1 " || true; }
-assert_contains "$(rrow 401)" "cell:awaiting-reviewer" "verified, policy 2/2, no reviews: awaiting-reviewer"
-assert_contains "$(rrow 401)" "missing 2 reviews and 2 families" "the reason names what is missing"
-assert_contains "$(rrow 402)" "cell:awaiting-review " "verified, two reviews from two families: awaiting-review"
-assert_contains "$(rrow 402)" "alice (anthropic), bob (openai)" "the reason names the reviews found"
-assert_contains "$(rrow 403)" "cell:awaiting-reviewer" "two reviews from one family do not meet families 2"
-assert_contains "$(rrow 403)" "missing 1 family" "the reason names the missing family"
+assert_contains "$(rrow 401)" "cell:awaiting-reviewer" "verified, policy 2, no reviews: awaiting-reviewer"
+assert_contains "$(rrow 401)" "REVIEWED none; needs 2 reviews, missing 2 reviews" "the reason names what is missing"
+assert_contains "$(rrow 402)" "cell:awaiting-review " "verified, two distinct reviewers: awaiting-review"
+assert_contains "$(rrow 402)" "REVIEWED alice, bob" "the reason names the reviews found"
+assert_contains "$(rrow 403)" "cell:awaiting-reviewer" "one review does not meet passes 2"
+assert_contains "$(rrow 403)" "missing 1 review" "the reason names the missing review"
 assert_contains "$(rrow 404)" "cell:awaiting-reviewer" "a push after a REVIEWED stamp makes it not current"
 assert_not_contains "$(rrow 404)" "bob" "the stale review is not listed as found"
-assert_contains "$(rrow 405)" "cell:awaiting-reviewer" "one reviewer counts once, whatever families it claims"
+assert_contains "$(rrow 405)" "cell:awaiting-reviewer" "one reviewer that stamps twice counts once"
 assert_contains "$(rrow 406)" "cell:awaiting-review " "a repo with no policy is awaiting-review as before"
 assert_not_contains "$(rrow 407)" "awaiting-review" "REVIEWED stamps without a VERIFIED stamp promote nothing"
 
@@ -775,7 +775,7 @@ JSON
     case "\$*" in
       *"/branches"*) printf '%s\n' development feat/r9-1 ;;
       *"BLOCKER.md"*) exit 1 ;;
-      *"/comments"*) printf '%s\n' '"VERIFIED: unit @ $SHA_R\n\nok"' '"REVIEWED: alice (anthropic) @ $SHA_R"' ;;
+      *"/comments"*) printf '%s\n' '"VERIFIED: unit @ $SHA_R\n\nok"' '"REVIEWED: alice @ $SHA_R"' ;;
       *"contents/.claude/standards.json"*)
         case "\$STUB_MANIFEST" in
           404) echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
@@ -793,17 +793,17 @@ chmod +x "$STUB/gh"
 run_policy() { : > "$STUB_CALLS"; GH_BIN="$STUB/gh" STUB_CALLS="$STUB_CALLS" STUB_MANIFEST="$1" \
   bash "$SCRIPT" --repo example/host --emit-state "$TMP/emitted-review.json" 2>&1; }
 
-OUT=$(run_policy '{"version":1,"checks":[{"name":"t","command":"x"}],"rules":[],"review":{"passes":2,"families":1}}'); EXIT=$?
+OUT=$(run_policy '{"version":1,"checks":[{"name":"t","command":"x"}],"rules":[],"review":{"passes":2}}'); EXIT=$?
 assert_eq 0 "$EXIT" "the collector reads a review policy and exits 0"
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#95 ' || true)" "cell:awaiting-reviewer" "the collector holds a verified PR short of its policy"
 calls=$(cat "$STUB_CALLS")
 assert_contains "$calls" "repos/example/host/contents/.claude/standards.json" "the policy is read from the target repo"
 assert_not_contains "$(printf '%s' "$calls" | grep standards.json || true)" "ref=" "the policy is read from the default branch, not the PR branch"
-assert_eq '{"passes":2,"families":1}' \
+assert_eq '{"passes":2}' \
   "$(node -e 'process.stdout.write(JSON.stringify(require(process.argv[1]).reviewPolicies["example/host"]))' "$TMP/emitted-review.json")" \
   "--emit-state records the policy per target repo"
 
-OUT=$(run_policy '{"version":1,"checks":[{"name":"t","command":"x"}],"rules":[],"review":{"passes":1,"families":1}}'); EXIT=$?
+OUT=$(run_policy '{"version":1,"checks":[{"name":"t","command":"x"}],"rules":[],"review":{"passes":1}}'); EXIT=$?
 assert_contains "$(printf '%s' "$OUT" | grep -E '^#95 ' || true)" "cell:awaiting-review " "the collector releases a PR whose policy is met"
 
 OUT=$(run_policy '{"version":1,"checks":[{"name":"t","command":"x"}],"rules":[]}'); EXIT=$?
@@ -816,7 +816,7 @@ assert_contains "$(printf '%s' "$OUT" | grep -E '^#95 ' || true)" "cell:awaiting
 OUT=$(run_policy '{"version":1,"checks":[],"rules":[],"review":{"passes":1,"families":2}}'); EXIT=$?
 assert_ne 0 "$EXIT" "a review policy with a defect fails the run"
 assert_contains "$OUT" "example/host" "the failure names the repo"
-assert_contains "$OUT" "review.families: 2 must be <= passes (1)" "the failure names the defect"
+assert_contains "$OUT" "review.families: unknown key" "the failure names the defect"
 assert_not_contains "$OUT" "label(s) would change" "a bad policy never reports a result"
 
 OUT=$(run_policy '{"version": 1,'); EXIT=$?

@@ -97,19 +97,19 @@ assert_eq "null" "$(field "$TMP/minimal.json" 'JSON.stringify(d.review)')" "mini
 # --- the review policy --------------------------------------------------------
 mkdir -p "$TMP/review/.claude"
 git_q init -q "$TMP/review"
-printf '{"version":1,"checks":[{"name":"test","command":"make test"}],"rules":[],"review":{"families":2,"passes":3}}\n' \
+printf '{"version":1,"checks":[{"name":"test","command":"make test"}],"rules":[],"review":{"passes":3}}\n' \
   > "$TMP/review/$MANIFEST"
 node "$SCRIPT" --root "$TMP/review" --json > "$TMP/review.json" 2> "$TMP/review.err"
 assert_eq 0 "$?" "review: a policy within bounds is valid"
 assert_empty "$(cat "$TMP/review.err")" "review: nothing on stderr"
-assert_eq '{"passes":3,"families":2}' "$(field "$TMP/review.json" 'JSON.stringify(d.review)')" \
-  "review: normalized with keys in canonical order"
+assert_eq '{"passes":3}' "$(field "$TMP/review.json" 'JSON.stringify(d.review)')" \
+  "review: normalized to its one key"
 
-printf '{"version":1,"checks":[{"name":"test","command":"make test"}],"rules":[],"review":{"passes":1,"families":2}}\n' \
+printf '{"version":1,"checks":[{"name":"test","command":"make test"}],"rules":[],"review":{"passes":0}}\n' \
   > "$TMP/review/$MANIFEST"
 node "$SCRIPT" --root "$TMP/review" --json > "$TMP/review.out" 2> "$TMP/review.err"
-assert_eq 2 "$?" "review: families above passes exits 2"
-assert_eq "standards: $MANIFEST: review.families: 2 must be <= passes (1)" "$(cat "$TMP/review.err")" \
+assert_eq 2 "$?" "review: passes below 1 exits 2"
+assert_eq "standards: $MANIFEST: review.passes: 0 must be >= 1" "$(cat "$TMP/review.err")" \
   "review: the CLI names the defect, one line"
 assert_empty "$(cat "$TMP/review.out")" "review: --json prints nothing on failure"
 
@@ -117,19 +117,18 @@ assert_empty "$(cat "$TMP/review.out")" "review: --json prints nothing on failur
 out=$(node -e '
   const { validateStandards } = require(process.argv[1]);
   const cases = [
-    [{ passes: 1, families: 1 }],
+    [{ passes: 1 }],
+    [{ passes: 5 }],
     [null],
-    [2, "review: must be null or an object with integer keys passes and families"],
-    [[], "review: must be null or an object with integer keys passes and families"],
-    [{ passes: 2, families: 1, extra: 1 }, "review.extra: unknown key"],
-    [{ families: 1 }, "review.passes: must be an integer >= 1"],
-    [{ passes: 1 }, "review.families: must be an integer >= 1"],
-    [{ passes: "2", families: 1 }, "review.passes: must be an integer >= 1"],
-    [{ passes: 1.5, families: 1 }, "review.passes: must be an integer >= 1"],
-    [{ passes: 0, families: 1 }, "review.passes: 0 must be >= 1"],
-    [{ passes: 2, families: 0 }, "review.families: 0 must be >= 1"],
-    [{ passes: 2, families: 3 }, "review.families: 3 must be <= passes (2)"],
-    [{}, "review.passes: must be an integer >= 1", "review.families: must be an integer >= 1"],
+    [2, "review: must be null or an object with one integer key, passes"],
+    [[], "review: must be null or an object with one integer key, passes"],
+    [{ passes: 2, extra: 1 }, "review.extra: unknown key"],
+    [{ passes: 2, families: 1 }, "review.families: unknown key"],
+    [{}, "review.passes: must be an integer >= 1"],
+    [{ passes: "2" }, "review.passes: must be an integer >= 1"],
+    [{ passes: 1.5 }, "review.passes: must be an integer >= 1"],
+    [{ passes: 0 }, "review.passes: 0 must be >= 1"],
+    [{ passes: -1 }, "review.passes: -1 must be >= 1"],
   ];
   const bad = [];
   for (const [review, ...want] of cases) {
