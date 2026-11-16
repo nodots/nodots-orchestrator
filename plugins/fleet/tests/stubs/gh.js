@@ -10,7 +10,8 @@
 //                 Actions endpoints; absent means one active workflow and a run just now
 //   writes.log    one line per write: "edit <n> +label -label" / "comment <repo> <n>" /
 //                 "title <repo> <n> <new title>" (`pr edit --title`, which rewrites prs.json)
-// Branches and BLOCKER.md come from the bare remote at GH_STUB_REMOTE.
+// Branches, BLOCKER.md and .claude/standards.json come from the bare remote at
+// GH_STUB_REMOTE.
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -102,6 +103,12 @@ if (a === 'api') {
   let m;
   if ((m = /contents\/(.*?BLOCKER\.md)\?ref=(.+)$/.exec(ep))) {
     try { execFileSync('git', ['--git-dir', REMOTE, 'cat-file', '-e', `${m[2]}:${m[1]}`], { stdio: 'ignore' }); process.exit(0); } catch { process.exit(1); }
+  }
+  // The manifest on the remote's default branch (its HEAD), raw, as the
+  // Accept: application/vnd.github.raw+json read prints; absent is a 404.
+  if (/^repos\/[^/]+\/[^/]+\/contents\/\.claude\/standards\.json$/.test(ep)) {
+    try { out(execFileSync('git', ['--git-dir', REMOTE, 'show', 'HEAD:.claude/standards.json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); process.exit(0); }
+    catch { process.stderr.write('gh: Not Found (HTTP 404)\n'); process.exit(1); }
   }
   if ((m = /repos\/(.+?)\/issues\/(\d+)\/comments/.exec(ep))) {
     const all = rd('comments.json', {});

@@ -124,11 +124,38 @@ function validateStandardsField(s, i) {
   return { manifest: m };
 }
 
+// integrationBranch: the branch a target's workers are cut from and open PRs
+// against (launch.js baseRef). It must not be a branch people merge to by hand:
+// the built-in names, the target's defaultBranch, and protectedBranches are
+// refused. autoMerge (default false) means nothing without one.
+const BUILTIN_PROTECTED = ['main', 'master', 'develop', 'development'];
+const BRANCH_NAME = /^[A-Za-z0-9._][A-Za-z0-9._\/-]*$/;
+function validBranchName(b) {
+  return typeof b === 'string' && BRANCH_NAME.test(b) && !b.includes('..') && !b.includes('//') && !b.endsWith('/') && !b.endsWith('.lock');
+}
+function isProtected(cfg, target, branch) {
+  return BUILTIN_PROTECTED.includes(branch) || branch === target.defaultBranch || (cfg.protectedBranches || []).includes(branch);
+}
+function validateIntegration(c, t, target, i) {
+  if (t.integrationBranch !== undefined) {
+    const b = t.integrationBranch;
+    if (!validBranchName(b)) fail(`targets[${i}].integrationBranch [${b}] must be a branch name (letters, digits, ., _, - and /, not starting with - or /)`);
+    if (isProtected(c, target, b)) fail(`targets[${i}].integrationBranch [${b}] is a protected branch (${[...BUILTIN_PROTECTED, target.defaultBranch, ...c.protectedBranches].filter((x, j, a) => a.indexOf(x) === j).join(', ')}); name a branch workers may merge to`);
+    target.integrationBranch = b;
+  }
+  if (t.autoMerge !== undefined && typeof t.autoMerge !== 'boolean') fail(`targets[${i}].autoMerge [${t.autoMerge}] must be true or false`);
+  if (t.autoMerge === true && t.integrationBranch === undefined) fail(`targets[${i}].autoMerge requires targets[${i}].integrationBranch: auto-merge applies only to an integration branch`);
+  target.autoMerge = t.autoMerge === true;
+}
+
 function validate(raw, baseDir) {
   const c = { ...DEFAULTS, ...raw, models: { ...DEFAULTS.models, ...(raw.models || {}) } };
 
   if (typeof c.repo !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(c.repo)) fail('repo must be "owner/name"');
   if (!Number.isInteger(c.epic) || c.epic <= 0) fail('epic must be a positive issue number');
+
+  if (c.protectedBranches === undefined) c.protectedBranches = [];
+  if (!Array.isArray(c.protectedBranches) || !c.protectedBranches.every(validBranchName)) fail(`protectedBranches [${c.protectedBranches}] must be an array of branch names`);
 
   if (!Array.isArray(c.targets) || c.targets.length === 0) fail('targets must list at least one {repo, localPath, defaultBranch}');
   c.targets = c.targets.map((t, i) => {
@@ -152,6 +179,7 @@ function validate(raw, baseDir) {
     };
     if (t.verify !== undefined) target.verify = validateVerify(t.verify, ci, i);
     target.standards = validateStandardsField(t.standards, i);
+    validateIntegration(c, t, target, i);
     return target;
   });
 
@@ -221,4 +249,4 @@ function approvalGate(c, pr) {
   return { blocked: true, mechanism: c.approvalEnforcement, reason: `PR #${pr.number} has no human approval` };
 }
 
-module.exports = { loadConfig, validate, defaultPluginRoot, approvalGate, approvalPayload, DEFAULTS, MODES };
+module.exports = { loadConfig, validate, defaultPluginRoot, approvalGate, approvalPayload, isProtected, DEFAULTS, MODES };

@@ -1,0 +1,33 @@
+{
+  "feature": "r0-1-review-policy-and-stamp",
+  "project": "nodots-orchestrator",
+  "branch": "feat/r0-1-review-policy-and-stamp",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/check-standards.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/stamp.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/sync-cells.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/bootstrap-github-labels.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/check-standards.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/sync-cells.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/standards.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/working-agreements.md",
+    "plugins/fleet/tests/stubs/gh.js"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "plugins/fleet/src/**",
+    "plugins/fleet/bin/**",
+    "scripts/**",
+    "**/plugin.json",
+    ".github/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one manifest key, one stamp, one label state, docs and tests",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

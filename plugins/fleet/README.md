@@ -20,6 +20,12 @@ fleet cycle --apply
   worktree on the package branch, the issue's `SCOPE.json` committed as
   `<ID>: scope`, a plain push as the claim, then a detached
   `claude -p … --permission-prompts none --max-budget-usd …` in the worktree.
+  The scope commit, and the `<ID>: scope re-cut` of an adopted worktree, are
+  made under the human identity configured in the target clone
+  (`git -C <localPath> config user.name` and `user.email`), as author and
+  committer. Fleet never makes one up: a clone with either value empty is
+  refused `launch-identity-missing`, in the dry run as in the applied cycle,
+  and the alarm names the clone and the two `git config` commands that fix it.
   Before any of that, launch refuses a target with no enabled CI workflow
   (`launch-ci-disabled`), no workflow run on its default branch inside
   `ciMaxAgeDays` (default 14; `launch-ci-stale`), or CI state it cannot read
@@ -151,6 +157,35 @@ node "$PLUGIN/bin/fleet.js" resume --reason "reviewed the last three reports; qu
 `skills/fleet/SKILL.md` tells a coordinator Claude session how to drive it and
 what each alarm asks for.
 
+## Integration branch
+
+A target may name an integration branch:
+
+```json
+{ "repo": "acme/api", "localPath": "../api", "defaultBranch": "main",
+  "integrationBranch": "integration/program-c", "autoMerge": false }
+```
+
+The base-ref rule: a target's base ref is `origin/<integrationBranch>` when it
+sets one, else `origin/<defaultBranch>`. Launch reads the standards manifest
+and `.claude/settings.json` from the base ref, cuts each worker branch from
+it, and tells the worker to open its PR against that branch. A target without
+`integrationBranch` behaves exactly as before. CI freshness is still read on
+`defaultBranch`.
+
+- `integrationBranch` (string, optional) must not be protected. The protected
+  names are `main`, `master`, `develop`, `development`, the target's own
+  `defaultBranch`, and every name in the top-level `protectedBranches` (a
+  string array, default `[]`). A protected name is a config error naming
+  `targets[<i>].integrationBranch`.
+- `autoMerge` (boolean, default `false`) is a config error naming
+  `targets[<i>].autoMerge` when set to `true` without `integrationBranch`.
+- When the local clone has no `origin/<integrationBranch>`, launch is refused
+  `integration-branch-missing`, before any worktree exists. The alarm names
+  the branch and the command that creates it, run in the clone:
+  `git push origin <defaultBranch>:<integrationBranch>`.
+- `fleet doctor` prints each target's base ref and whether it exists.
+
 ## Standards
 
 A target's `.claude/standards.json` is its standards manifest: the check
@@ -160,7 +195,8 @@ contract and every validation rule are in
 [`references/standards.md`](../agentic-work-packages/skills/agentic-work-packages/references/standards.md),
 and the plugin's `check-standards.js` is the one validator.
 
-Launch requires a valid manifest on the target's default branch (S1.2), as it
+Launch requires a valid manifest on the target's base ref (its default branch,
+or its integration branch when it names one; S1.2), as it
 requires enabled CI. `"standards": "off"` on a target in `fleet.config.json`
 disables that requirement for that target; it is the one exception, and it is
 reported.
@@ -170,7 +206,7 @@ in `fleet.config.json` (default `true`) launches each worker with
 `--setting-sources project,local`, which excludes the operator's user
 settings, the plugins enabled only there, and the user instruction file. A
 worker's hooks then have to come from the target's own `.claude/settings.json`,
-so with isolation on, launch reads that file from `origin/<defaultBranch>` and
+so with isolation on, launch reads that file from the base ref and
 refuses the launch in two cases (S2.1):
 
 - `hooks-missing`: `enforce-scope` or `require-handoff` is not provided. Each
