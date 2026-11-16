@@ -74,6 +74,21 @@ Three rules travel with it:
 superseded sha never promotes a package to `cell:awaiting-review` — the same
 check a reviewer would do, done every cycle.
 
+## Commits carry a human identity
+
+A recorded change carries the human maintainer's identity as its author and
+committer, and lists no AI as author, committer or co-author. Workers commit
+under the git identity of the clone they run in. The repo's
+`.claude/settings.json` sets `"attribution": {"commit": "", "pr": ""}`, so Claude
+Code adds no `Co-Authored-By:` trailer to commits and no attribution line to
+pull requests. The rule is checked, not trusted: on every pull request, CI runs
+`scripts/check-commit-identity.sh <base sha> <head sha>` over the commits the PR
+adds. It fails any commit authored or committed as `fleet` or
+`noreply@anthropic.com`, or carrying a `Co-Authored-By:` line that names a known
+AI tool, and prints each commit's short sha and the reason. It cannot see an AI
+identity under a human-looking name, or a trailer spelling outside its list.
+History is not rewritten; the check covers only what a PR adds.
+
 ## Classify a red before retrying it
 
 "It failed twice, try again" is not a rule; it is the absence of one. Every red
