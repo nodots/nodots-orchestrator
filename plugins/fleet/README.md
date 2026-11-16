@@ -20,6 +20,12 @@ fleet cycle --apply
   worktree on the package branch, the issue's `SCOPE.json` committed as
   `<ID>: scope`, a plain push as the claim, then a detached
   `claude -p … --permission-prompts none --max-budget-usd …` in the worktree.
+  The scope commit, and the `<ID>: scope re-cut` of an adopted worktree, are
+  made under the human identity configured in the target clone
+  (`git -C <localPath> config user.name` and `user.email`), as author and
+  committer. Fleet never makes one up: a clone with either value empty is
+  refused `launch-identity-missing`, in the dry run as in the applied cycle,
+  and the alarm names the clone and the two `git config` commands that fix it.
   Before any of that, launch refuses a target with no enabled CI workflow
   (`launch-ci-disabled`), no workflow run on its default branch inside
   `ciMaxAgeDays` (default 14; `launch-ci-stale`), or CI state it cannot read

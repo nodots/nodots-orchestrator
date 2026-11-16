@@ -1,0 +1,28 @@
+{
+  "feature": "i0-1-fleet-human-identity",
+  "project": "nodots-orchestrator",
+  "branch": "feat/i0-1-fleet-human-identity",
+  "allowedPaths": [
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/bin/fleet.js",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/fleet/SKILL.md",
+    "plugins/fleet/tests/commit-identity.test.sh",
+    "plugins/fleet/tests/lib.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/**",
+    "plugins/fleet/tests/stubs/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "two commit calls, one launch precondition, one doctor line, docs, one suite",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

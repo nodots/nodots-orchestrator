@@ -30,6 +30,7 @@ create "agent-ready"          "0e8a16" "No human judgement needed - safe to disp
 create "cell:queued"          "fbca04" "Dependencies merged, waiting for capacity"
 create "cell:active"          "1d76db" "An agent is working it"
 create "cell:awaiting-lab"    "c2e0c6" "PR open for the verifier, no current VERIFIED stamp"
+create "cell:awaiting-reviewer" "f9d0c4" "PR verified, short of the repo's review policy"
 create "cell:awaiting-review" "d93f0b" "PR open, needs human review"
 create "cell:blocked"         "b60205" "Agent stopped, needs coordinator action"
 create "cell:merged"          "0e8a16" "Complete"
