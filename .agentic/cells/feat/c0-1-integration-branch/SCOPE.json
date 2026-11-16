@@ -1,0 +1,31 @@
+{
+  "feature": "c0-1-integration-branch",
+  "project": "nodots-orchestrator",
+  "branch": "feat/c0-1-integration-branch",
+  "allowedPaths": [
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/bin/fleet.js",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/fleet/SKILL.md",
+    "plugins/fleet/tests/integration-branch.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/report.js",
+    "plugins/fleet/tests/lib.sh",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/agentic-work-packages/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "two config keys and a helper, one base-ref helper in launch, one doctor line, docs, one suite",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

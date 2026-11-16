@@ -75,11 +75,43 @@ function checkStandardsModule(cfg) {
   return require(path.join(cfg.scriptsDir, 'check-standards.js'));
 }
 
+// The branch a target's workers start from and open their PRs against: its
+// integrationBranch when it names one (config.js), else its defaultBranch.
+// baseRef is that branch on origin, as the local clone knows it. The manifest
+// and settings reads, the worktree start point and the prompt all use it.
+function baseBranch(target) { return target.integrationBranch || target.defaultBranch; }
+function baseRef(target) { return `origin/${baseBranch(target)}`; }
+
+// baseRefExists -> { ok, exists } | { ok:false, error }
+function baseRefExists(cfg, target) {
+  const r = run(cfg.bins.git, ['-C', target.localPath, 'rev-parse', '--verify', '--quiet', `refs/remotes/${baseRef(target)}^{commit}`], { timeoutMs: 60000 });
+  if (r.status === 0) return { ok: true, exists: true };
+  if (r.status === 1) return { ok: true, exists: false };
+  return { ok: false, error: r.error || r.stderr.trim() || `exit ${r.status}` };
+}
+
+// The command that creates a target's missing integration branch from its
+// default branch. Run it in the local clone: the push updates its origin/ ref.
+function createIntegrationCommand(target) {
+  return `git push origin ${target.defaultBranch}:${target.integrationBranch}`;
+}
+
+// checkIntegrationBranch -> { ok } | { ok:false, stage, error }
+// A target without integrationBranch passes untouched.
+function checkIntegrationBranch(cfg, target) {
+  if (!target.integrationBranch) return { ok: true };
+  const e = baseRefExists(cfg, target);
+  const fix = `create it from ${target.defaultBranch} by running ${createIntegrationCommand(target)} in ${target.localPath}`;
+  if (!e.ok) return { ok: false, stage: 'integration-branch-missing', error: `${target.repo}: cannot read ${baseRef(target)} in ${target.localPath}, so no worker is launched: ${e.error}; if the branch does not exist, ${fix}` };
+  if (!e.exists) return { ok: false, stage: 'integration-branch-missing', error: `${target.repo}: integrationBranch ${target.integrationBranch} does not exist as ${baseRef(target)} in ${target.localPath}, so no worker is launched; ${fix}` };
+  return { ok: true };
+}
+
 // readBranchStandards -> { ok, manifest } | { ok:false, stage, error }
-// The manifest as published on origin/<defaultBranch> of the local clone, with
-// the tracked file list of that same tree, validated by check-standards.js.
+// The manifest as published on the base ref of the local clone, with the
+// tracked file list of that same tree, validated by check-standards.js.
 function readBranchStandards(cfg, target) {
-  const ref = `origin/${target.defaultBranch}`;
+  const ref = baseRef(target);
   const rel = path.posix.normalize(target.standards.manifest);
   const g = args => run(cfg.bins.git, ['-C', target.localPath, ...args], { timeoutMs: 60000 });
   const why = r => r.error || r.stderr.trim() || `exit ${r.status}`;
@@ -95,24 +127,24 @@ function readBranchStandards(cfg, target) {
 }
 
 // The worktree's copy, read after prepareWorktree and validated again. A copy
-// that differs from the one read on the default branch (it changed between the
-// two reads, or an adopted branch carries another) is refused standards-invalid:
+// that differs from the one read on the base ref (it changed between the two
+// reads, or an adopted branch carries another) is refused standards-invalid:
 // the prompt must describe the manifest the dry run reported.
 function readWorktreeStandards(cfg, target, worktree, expected) {
   const rel = path.posix.normalize(target.standards.manifest);
   const refuse = msg => ({ ok: false, stage: 'standards-invalid', error: `${target.repo}: ${rel} in ${worktree} ${msg}` });
   let text;
-  try { text = fs.readFileSync(path.join(worktree, rel), 'utf8'); } catch (e) { return refuse(`cannot be read (${e.code || e.message}), so it differs from origin/${target.defaultBranch}`); }
+  try { text = fs.readFileSync(path.join(worktree, rel), 'utf8'); } catch (e) { return refuse(`cannot be read (${e.code || e.message}), so it differs from ${baseRef(target)}`); }
   const ls = run(cfg.bins.git, ['-C', worktree, 'ls-files', '-z'], { timeoutMs: 60000 });
   if (ls.status !== 0) return refuse(`cannot be validated: git ls-files failed: ${ls.error || ls.stderr.trim()}`);
   const v = checkStandardsModule(cfg).validateStandards({ text, files: ls.stdout.split('\0').filter(Boolean) });
   if (!v.ok) return refuse(`is not a valid standards manifest: ${v.defects.join('; ')}`);
-  if (JSON.stringify(v.manifest) !== JSON.stringify(expected)) return refuse(`differs from the one on origin/${target.defaultBranch} read before the worktree was prepared`);
+  if (JSON.stringify(v.manifest) !== JSON.stringify(expected)) return refuse(`differs from the one on ${baseRef(target)} read before the worktree was prepared`);
   return { ok: true, manifest: v.manifest };
 }
 
 // An isolated worker (isolateWorkers, config.js) reads settings from the repo
-// only, so the target's own .claude/settings.json on origin/<defaultBranch> has
+// only, so the target's own .claude/settings.json on the base ref has
 // to provide the worker hooks and the plugins the manifest declares. A hook
 // counts when a hook command there names its file by path, or when
 // agentic-work-packages is enabled there from any marketplace.
@@ -123,7 +155,7 @@ const HOOKS_PLUGIN = 'agentic-work-packages';
 // readBranchSettings -> { ok, settings } | { ok:false, stage, error }
 // settings is null when the file is absent from the branch.
 function readBranchSettings(cfg, target) {
-  const ref = `origin/${target.defaultBranch}`;
+  const ref = baseRef(target);
   const g = args => run(cfg.bins.git, ['-C', target.localPath, ...args], { timeoutMs: 60000 });
   const why = r => r.error || r.stderr.trim() || `exit ${r.status}`;
   const refuse = msg => ({ ok: false, stage: 'hooks-missing', error: `${target.repo}: ${PROJECT_SETTINGS} on ${ref} ${msg}, so the worker hooks cannot be confirmed and no isolated worker is launched` });
@@ -155,7 +187,7 @@ function hookWiredByPath(settings, name) {
 function checkIsolation(cfg, target, manifest) {
   const s = readBranchSettings(cfg, target);
   if (!s.ok) return s;
-  const ref = `origin/${target.defaultBranch}`;
+  const ref = baseRef(target);
   const settings = s.settings;
   const viaPlugin = settings && settings.enabledPlugins && typeof settings.enabledPlugins === 'object'
     && Object.keys(settings.enabledPlugins).some(k => k.startsWith(`${HOOKS_PLUGIN}@`) && pluginEnabled(settings, k));
@@ -256,7 +288,7 @@ function buildPrompt(cfg, { issue, id, sc, workerId, target, attempt, reason, ha
     `Your lane is .agentic/cells/${sc.branch}/SCOPE.json in this worktree. Execution pattern: ${(sc.execution && sc.execution.pattern) || 'solo'}.`,
     ...(standards ? standardsLines(target, title, sc, standards.manifest) : []),
     `Read the package with: gh issue view ${issue.number} --repo ${cfg.repo}`,
-    `Branch ${sc.branch} is checked out and already pushed. Commit on it. Open the PR against ${target.defaultBranch} with a title starting "${title}" and a body containing "Closes #${issue.number}".`,
+    `Branch ${sc.branch} is checked out and already pushed. Commit on it. Open the PR against ${baseBranch(target)} with a title starting "${title}" and a body containing "Closes #${issue.number}".`,
     'Do not change any cell:* or worker:* label. Do not edit SCOPE.json. If you need a file outside allowedPaths, stop and write BLOCKER.md.',
   ];
   if (queued) {
@@ -355,7 +387,7 @@ function prepareWorktree(cfg, tracker, { target, id, sc, identity }) {
   if (exists.exists) return { ok: false, stage: 'claim', error: `branch ${sc.branch} already exists on origin and no local worktree holds it; another worker may own it` };
 
   fs.mkdirSync(cfg.worktreesDir, { recursive: true });
-  const w = g(['worktree', 'add', '-b', sc.branch, worktree, `origin/${target.defaultBranch}`]);
+  const w = g(['worktree', 'add', '-b', sc.branch, worktree, baseRef(target)]);
   if (w.status !== 0) return { ok: false, stage: 'worktree', error: w.error || w.stderr.trim() };
 
   const rel = path.join('.agentic', 'cells', ...sc.branch.split('/'), 'SCOPE.json');
@@ -407,6 +439,11 @@ function launch(cfg, tracker, store, req, persist) {
     if (!(ageDays <= cfg.ciMaxAgeDays)) return { ok: false, stage: 'ci-stale', error: `${target.repo}: ${ci.lastRunAt ? `the last workflow run on ${target.defaultBranch} was ${ci.lastRunAt}` : `no workflow run on ${target.defaultBranch}`}, outside the ${cfg.ciMaxAgeDays}-day window (ciMaxAgeDays)` };
   }
   const ciRecord = ciGate === 'external' ? { gate: 'external', verifiedBy: target.ci.verifiedBy } : { gate: 'github-actions' };
+
+  // A target whose integration branch is not on origin has no base ref to
+  // read from or cut from; refused before any worktree, branch or worker.
+  const ib = checkIntegrationBranch(cfg, target);
+  if (!ib.ok) return ib;
 
   // A target without a valid standards manifest is refused like one without
   // CI: before any worktree, branch or worker exists.
@@ -480,4 +517,4 @@ function localWorktreeOnBranch(cfg, target, id, branch) {
   return r.status === 0 && r.stdout.trim() === branch ? wt : null;
 }
 
-module.exports = { localWorktreeOnBranch, launch, prepareWorktree, readIdentity,buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS, pathsOverlap, applicableRules, instructionFilesFrom };
+module.exports = { localWorktreeOnBranch, launch, baseRef, baseBranch, baseRefExists, createIntegrationCommand, prepareWorktree, readIdentity, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS, pathsOverlap, applicableRules, instructionFilesFrom };
