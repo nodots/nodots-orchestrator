@@ -1,9 +1,10 @@
 'use strict';
 
 /*
- * One pass: lock → sync → promote → assign → reap → verify → review → launch → report → unlock.
+ * One pass: lock → sync → promote → assign → reap → verify → review → merge → launch → report → unlock.
  * verify runs only for targets with `verify` (src/verify.js); review only
- * with `reviewers` configured, or a review still in flight (src/review.js).
+ * with `reviewers` configured, or a review still in flight (src/review.js);
+ * merge only for targets with `autoMerge` (src/merge.js).
  *
  * Every step reads the tracker fresh; the only local memory is the session
  * table, the dispatch history and the no-movement streak. A failure in sync
@@ -28,6 +29,7 @@ const reapMod = require('./reap');
 const report = require('./report');
 const verifyMod = require('./verify');
 const reviewMod = require('./review');
+const mergeMod = require('./merge');
 const { requireReviewers } = require('./config');
 
 const EXIT = { ok: 0, labelWriteFailed: 1, usage: 64, missingBinary: 69, internal: 70, truncated: 75, latched: 78, locked: 79 };
@@ -54,7 +56,7 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
   const tracker = new Tracker(cfg.bins);
   const id = cycleId();
   const at = new Date().toISOString();
-  const r = { cycleId: id, at, dryRun: !apply, outcome: null, movement: [], counts: {}, alarms: [], launched: [], reaped: [], escalations: [], parked: [], promoted: [], assigned: [], held: [], verify: [], review: [], sync: null, streak: 0, latched: null };
+  const r = { cycleId: id, at, dryRun: !apply, outcome: null, movement: [], counts: {}, alarms: [], launched: [], reaped: [], escalations: [], parked: [], promoted: [], assigned: [], held: [], verify: [], review: [], merge: [], sync: null, streak: 0, latched: null };
   const alarm = (code, detail, issue) => r.alarms.push({ code, detail, issue });
 
   const lock = store.lock(cfg.maxCycleMinutes * 60000);
@@ -165,6 +167,11 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       ? reviewMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync, issues, at, alarm, r })
       : { requests: [], reviewing: reviewMod.inFlightCount(cfg, state) };
     reaped.requests.push(...rv.requests);
+
+    // 4d. merge: each autoMerge target's PRs that meet the merge condition go
+    // into its integration branch; a protected base is refused. Not when the
+    // verify stage latched the fleet.
+    if (only === null && !vr.latched) mergeMod.stage({ cfg, apply, tracker, pulls, pullsFailed, sync, alarm, r });
 
     // 5. launch: owned, queued, labeled packages without a session; plus relaunch/escalation requests.
     const persist = rec => { state.sessions[rec.issue] = rec; if (apply) store.save(state); };
@@ -284,7 +291,8 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // needs a look (a lab not reverted, a verifier that cannot be reached, a
     // refused PR, a record that cannot be stamped, a reviewer that wrote,
     // timed out or gave no verdict). A stale result is not one: the PR waits again.
-    const VERIFY_FAULT = /^(verify|review)-(?!stale$)/;
+    // A refused protected merge is one too: a PR aimed at a protected branch.
+    const VERIFY_FAULT = /^((verify|review)-(?!stale$)|merge-protected-refused$)/;
     if (r.alarms.some(a => VERIFY_FAULT.test(a.code))) r.outcome = 'alarm';
     else if (r.alarms.some(a => FAULT.test(a.code)) && r.movement.length === 0) r.outcome = 'alarm';
     else if (r.movement.length) r.outcome = 'movement';

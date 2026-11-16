@@ -3,9 +3,11 @@
 /*
  * The tracker is the bus. This is the only module that talks to gh, so what
  * the runtime reads and writes there is listable in one place:
- *   reads:  issue list (with bodies), issue view, PR list, issue comments
+ *   reads:  issue list (with bodies), issue view, PR list, PR view, PR checks,
+ *           issue comments
  *   writes: add/remove one label, post one comment, post one PR comment on a
- *           target repo, edit one PR title (the verify stage's retitle)
+ *           target repo, edit one PR title (the verify stage's retitle), merge
+ *           one PR at a given head (the merge stage)
  * It never edits an issue body, a PR body or a SCOPE.json, and never touches a session.
  */
 
@@ -71,6 +73,31 @@ class Tracker {
   editPrTitle(repo, number, title) {
     const r = run(this.gh, ['pr', 'edit', String(number), '--repo', repo, '--title', title]);
     return r.status === 0 ? { ok: true } : { ok: false, error: r.error || r.stderr.trim() };
+  }
+
+  // One PR, fresh: the merge stage judges it at this head, not the list's.
+  viewPull(repo, number) {
+    const r = runJson(this.gh, ['pr', 'view', String(number), '--repo', repo, '--json', 'number,state,baseRefName,headRefOid,mergeable,mergeCommit']);
+    if (r.json === null) return { ok: false, error: r.error || r.stderr.trim() || `gh exited ${r.status}` };
+    return { ok: true, pull: r.json };
+  }
+
+  // The checks on a PR's head. gh exits 1 on a failed check and 8 on a pending
+  // one with the JSON still printed, so the JSON is read whatever the status;
+  // no JSON (no checks reported, or an error) is { ok:false }.
+  prChecks(repo, number) {
+    const r = run(this.gh, ['pr', 'checks', String(number), '--repo', repo, '--json', 'name,state,bucket']);
+    let json = null;
+    if (!r.error && [0, 1, 8].includes(r.status)) { try { json = JSON.parse(r.stdout); } catch { /* not JSON */ } }
+    if (!Array.isArray(json)) return { ok: false, error: r.stderr.trim() || r.error || `gh exited ${r.status}` };
+    return { ok: true, checks: json };
+  }
+
+  // A merge commit of <n>, only if its head is still <headSha>: a push after
+  // the merge condition was checked fails the merge instead of landing unchecked.
+  mergePr(repo, number, headSha) {
+    const r = run(this.gh, ['pr', 'merge', String(number), '--repo', repo, '--merge', '--match-head-commit', headSha]);
+    return r.status === 0 ? { ok: true } : { ok: false, error: r.stderr.trim() || r.error || `gh exited ${r.status}` };
   }
 
   // The CI state a worker would run under: enabled workflows, and the newest
