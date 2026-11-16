@@ -661,4 +661,170 @@ assert_contains "$calls" "ref=feat/l1-1-x" "the epic's own branch is still check
 partof=$(node -e 'process.stdout.write(String(require(process.argv[1]).issues[0].partOf))' "$TMP/emitted-collector.json")
 assert_eq "60" "$partof" "the collector records each package's epic as partOf"
 
+# --- the REVIEWED stamp and the review policy (R0.1) ------------------------
+# A repo's manifest may require N independent reviews from M model families. A
+# verified PR is held at cell:awaiting-reviewer until the REVIEWED stamps at its
+# head meet that policy. A repo without the key behaves exactly as before.
+STAMP_JS="$(cd ../scripts && pwd -P)/stamp.js"
+out=$(node -e '
+  const { REVIEW_STAMP, currentReviews, reviewMet } = require(process.argv[1]);
+  const H = "1".repeat(40), O = "2".repeat(40);
+  const bad = [];
+  const eq = (label, want, got) => { if (JSON.stringify(want) !== JSON.stringify(got)) bad.push(`${label}: want ${JSON.stringify(want)} got ${JSON.stringify(got)}`); };
+  eq("pattern", true, REVIEW_STAMP.test(`REVIEWED: reviewer one (anthropic) @ ${H}`));
+  eq("pattern needs a family", false, REVIEW_STAMP.test(`REVIEWED: reviewer @ ${H}`));
+  const pr = { headSha: H, comments: [
+    `VERIFIED: unit @ ${H}`,
+    `findings first\n\nREVIEWED: alice (anthropic) @ ${H}`,
+    `REVIEWED: bob (openai) @ ${O}`,
+    `REVIEWED: alice (openai) @ ${H}`,
+    `REVIEWED: carol (anthropic) @ ${H}`,
+  ] };
+  eq("currentReviews: head only, one per reviewer name", [
+    { reviewer: "alice", family: "anthropic", sha: H },
+    { reviewer: "carol", family: "anthropic", sha: H },
+  ], currentReviews(pr));
+  eq("currentReviews: no head sha", [], currentReviews({ comments: pr.comments }));
+  eq("currentReviews: no pr", [], currentReviews(null));
+  const r = currentReviews(pr);
+  eq("reviewMet: null policy", true, reviewMet(null, []));
+  eq("reviewMet: passes met, families short", false, reviewMet({ passes: 2, families: 2 }, r));
+  eq("reviewMet: passes and families met", true, reviewMet({ passes: 2, families: 1 }, r));
+  eq("reviewMet: passes short", false, reviewMet({ passes: 3, families: 1 }, r));
+  eq("reviewMet: distinct families counted", true,
+     reviewMet({ passes: 2, families: 2 }, [{ reviewer: "a", family: "x" }, { reviewer: "b", family: "y" }]));
+  process.stdout.write(bad.length ? bad.join("; ") : "ok");
+' "$STAMP_JS" 2>&1)
+assert_eq "ok" "$out" "stamp.js: REVIEW_STAMP, currentReviews and reviewMet behave as specified"
+
+SHA_R=4444444444444444444444444444444444444444
+cat > "$TMP/state-review.json" <<JSON
+{
+  "repo": "example/host",
+  "targets": ["example/code", "example/other"],
+  "reviewPolicies": { "example/code": { "passes": 2, "families": 2 }, "example/other": null },
+  "issues": [
+    { "number": 401, "title": "R1.1 none yet", "label": "cell:active", "repo": "example/code",
+      "branch": "feat/r1-1", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 501, "title": "[READY]: R1.1", "state": "OPEN", "headSha": "$SHA_R",
+              "comments": ["VERIFIED: unit @ $SHA_R"] } },
+    { "number": 402, "title": "R1.2 met", "label": "cell:active", "repo": "example/code",
+      "branch": "feat/r1-2", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 502, "title": "[READY]: R1.2", "state": "OPEN", "headSha": "$SHA_R",
+              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: bob (openai) @ $SHA_R"] } },
+    { "number": 403, "title": "R1.3 one family", "label": "cell:active", "repo": "example/code",
+      "branch": "feat/r1-3", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 503, "title": "[READY]: R1.3", "state": "OPEN", "headSha": "$SHA_R",
+              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: carol (anthropic) @ $SHA_R"] } },
+    { "number": 404, "title": "R1.4 pushed after review", "label": "cell:awaiting-review", "repo": "example/code",
+      "branch": "feat/r1-4", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 504, "title": "[READY]: R1.4", "state": "OPEN", "headSha": "$SHA_R",
+              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: bob (openai) @ $SHA_OLD"] } },
+    { "number": 405, "title": "R1.5 same reviewer twice", "label": "cell:active", "repo": "example/code",
+      "branch": "feat/r1-5", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 505, "title": "[READY]: R1.5", "state": "OPEN", "headSha": "$SHA_R",
+              "comments": ["VERIFIED: unit @ $SHA_R", "REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: alice (openai) @ $SHA_R"] } },
+    { "number": 406, "title": "R1.6 no policy", "label": "cell:active", "repo": "example/other",
+      "branch": "feat/r1-6", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 506, "title": "[READY]: R1.6", "state": "OPEN", "headSha": "$SHA_R",
+              "comments": ["VERIFIED: unit @ $SHA_R"] } },
+    { "number": 407, "title": "R1.7 reviewed, not verified", "label": "cell:active", "repo": "example/code",
+      "branch": "feat/r1-7", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 507, "title": "[READY]: R1.7", "state": "OPEN", "headSha": "$SHA_R",
+              "comments": ["REVIEWED: alice (anthropic) @ $SHA_R", "REVIEWED: bob (openai) @ $SHA_R"] } }
+  ]
+}
+JSON
+OUT_R=$(bash "$SCRIPT" --state "$TMP/state-review.json" 2>"$TMP/err-review"); EXIT_R=$?
+assert_eq 0 "$EXIT_R" "a review-policy fixture run exits 0"
+assert_empty "$(cat "$TMP/err-review")" "a review-policy fixture run writes nothing to stderr"
+rrow() { printf '%s' "$OUT_R" | grep -E "^#$1 " || true; }
+assert_contains "$(rrow 401)" "cell:awaiting-reviewer" "verified, policy 2/2, no reviews: awaiting-reviewer"
+assert_contains "$(rrow 401)" "missing 2 reviews and 2 families" "the reason names what is missing"
+assert_contains "$(rrow 402)" "cell:awaiting-review " "verified, two reviews from two families: awaiting-review"
+assert_contains "$(rrow 402)" "alice (anthropic), bob (openai)" "the reason names the reviews found"
+assert_contains "$(rrow 403)" "cell:awaiting-reviewer" "two reviews from one family do not meet families 2"
+assert_contains "$(rrow 403)" "missing 1 family" "the reason names the missing family"
+assert_contains "$(rrow 404)" "cell:awaiting-reviewer" "a push after a REVIEWED stamp makes it not current"
+assert_not_contains "$(rrow 404)" "bob" "the stale review is not listed as found"
+assert_contains "$(rrow 405)" "cell:awaiting-reviewer" "one reviewer counts once, whatever families it claims"
+assert_contains "$(rrow 406)" "cell:awaiting-review " "a repo with no policy is awaiting-review as before"
+assert_not_contains "$(rrow 407)" "awaiting-review" "REVIEWED stamps without a VERIFIED stamp promote nothing"
+
+# Through the collector: the policy is read from the target's default branch,
+# only when a verified PR needs it, and a defect in it fails the run.
+cat > "$STUB/gh" <<GH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "\$STUB_CALLS"
+case "\$1 \$2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 95, "title": "R9.1 policy via collector", "state": "OPEN",
+   "body": "**Part of** #94 · **Repo:** \`example/host\`", "labels": [{"name": "cell:active"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[{"number": 96, "title": "[READY]: R9.1", "body": "Closes #95", "state": "OPEN",
+  "headRefName": "feat/r9-1", "headRefOid": "$SHA_R"}]
+JSON
+    ;;
+  "api "*)
+    case "\$*" in
+      *"/branches"*) printf '%s\n' development feat/r9-1 ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *"/comments"*) printf '%s\n' '"VERIFIED: unit @ $SHA_R\n\nok"' '"REVIEWED: alice (anthropic) @ $SHA_R"' ;;
+      *"contents/.claude/standards.json"*)
+        case "\$STUB_MANIFEST" in
+          404) echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
+          500) echo 'gh: Server Error (HTTP 500)' >&2; exit 1 ;;
+          *) printf '%s\n' "\$STUB_MANIFEST" ;;
+        esac
+        ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+run_policy() { : > "$STUB_CALLS"; GH_BIN="$STUB/gh" STUB_CALLS="$STUB_CALLS" STUB_MANIFEST="$1" \
+  bash "$SCRIPT" --repo example/host --emit-state "$TMP/emitted-review.json" 2>&1; }
+
+OUT=$(run_policy '{"version":1,"checks":[{"name":"t","command":"x"}],"rules":[],"review":{"passes":2,"families":1}}'); EXIT=$?
+assert_eq 0 "$EXIT" "the collector reads a review policy and exits 0"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#95 ' || true)" "cell:awaiting-reviewer" "the collector holds a verified PR short of its policy"
+calls=$(cat "$STUB_CALLS")
+assert_contains "$calls" "repos/example/host/contents/.claude/standards.json" "the policy is read from the target repo"
+assert_not_contains "$(printf '%s' "$calls" | grep standards.json || true)" "ref=" "the policy is read from the default branch, not the PR branch"
+assert_eq '{"passes":2,"families":1}' \
+  "$(node -e 'process.stdout.write(JSON.stringify(require(process.argv[1]).reviewPolicies["example/host"]))' "$TMP/emitted-review.json")" \
+  "--emit-state records the policy per target repo"
+
+OUT=$(run_policy '{"version":1,"checks":[{"name":"t","command":"x"}],"rules":[],"review":{"passes":1,"families":1}}'); EXIT=$?
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#95 ' || true)" "cell:awaiting-review " "the collector releases a PR whose policy is met"
+
+OUT=$(run_policy '{"version":1,"checks":[{"name":"t","command":"x"}],"rules":[]}'); EXIT=$?
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#95 ' || true)" "cell:awaiting-review " "a manifest without the key is awaiting-review as before"
+
+OUT=$(run_policy 404); EXIT=$?
+assert_eq 0 "$EXIT" "a target with no manifest exits 0"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#95 ' || true)" "cell:awaiting-review " "a target with no manifest is awaiting-review as before"
+
+OUT=$(run_policy '{"version":1,"checks":[],"rules":[],"review":{"passes":1,"families":2}}'); EXIT=$?
+assert_ne 0 "$EXIT" "a review policy with a defect fails the run"
+assert_contains "$OUT" "example/host" "the failure names the repo"
+assert_contains "$OUT" "review.families: 2 must be <= passes (1)" "the failure names the defect"
+assert_not_contains "$OUT" "label(s) would change" "a bad policy never reports a result"
+
+OUT=$(run_policy '{"version": 1,'); EXIT=$?
+assert_ne 0 "$EXIT" "an unparsable manifest fails the run"
+assert_contains "$OUT" "not valid JSON" "the failure says the manifest did not parse"
+
+OUT=$(run_policy 500); EXIT=$?
+assert_ne 0 "$EXIT" "a manifest read that fails other than 404 fails the run"
+assert_contains "$OUT" "HTTP 500" "the failure carries what gh said"
+
 finish
