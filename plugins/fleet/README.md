@@ -235,6 +235,22 @@ and refuses the launch in a third case (S2.2):
 `"isolateWorkers": false` drops the flag and all three checks, and workers
 inherit the operator's user settings again.
 
+### Allow rules
+
+A target's `permissions.allow` rules should name the commands its packages and
+standards checks run, by path, such as `Bash(bash scripts/*)` or
+`Bash(node scripts/*)`. A wildcard over an interpreter or a container runtime
+lets a worker run anything through it, outside its lane included.
+`fleet doctor` reads each target's `.claude/settings.json` on
+`origin/<defaultBranch>` and prints one `WARN` line per allow rule of the form
+`Bash(<name> *)` or `Bash(<name>:*)`, where `<name>` is one of `node`,
+`python`, `python3`, `bash`, `sh`, `zsh`, `pwsh`, `docker`, `podman`, `npx`,
+`deno`, `bun`, `ruby`, `perl`, `sqlcmd`, `psql` or `mysql`. The line names the
+rule and why it is broad. A settings file that cannot be read or is not JSON
+gets a `WARN` saying its rules were not checked. A `WARN` does not fail doctor
+or refuse a launch. See
+[`references/scope-contract.md`](../agentic-work-packages/skills/agentic-work-packages/references/scope-contract.md).
+
 `fleet standards init` drafts a manifest from what the clone already has:
 
 ```bash

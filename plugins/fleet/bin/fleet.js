@@ -9,7 +9,7 @@
  *   fleet reap   [--apply] [--json]                     classify finished sessions only
  *   fleet status [--json]                               local state and live sessions, read-only
  *   fleet resume --reason <text>                        clear the stop latch
- *   fleet doctor                                        binaries, plugin, labels, contract, hooks, worktreesDir, identity, base ref
+ *   fleet doctor                                        binaries, plugin, labels, contract, hooks, worktreesDir, identity, base ref, broad allow rules
  *   fleet daemon --config <a.json> [--config <b.json> ...] [--interval <minutes>]
  *                                                       cycle --apply per config on an interval and on worker exit
  *   fleet standards init --target <owner/repo> [--write] draft the target's .claude/standards.json and validate it
@@ -50,6 +50,31 @@ function parse(argv) {
 function usage(code = EXIT.usage) {
   process.stderr.write(fs.readFileSync(__filename, 'utf8').split('\n').slice(4, 20).map(l => l.replace(/^ \*\s?/, '')).join('\n') + '\n');
   process.exit(code);
+}
+
+// An allow rule that lets a worker run any command through one of these is as
+// broad as no lane at all: Bash(node *) runs any script, including one that
+// writes outside allowedPaths. Doctor warns on Bash(<name> *) and Bash(<name>:*).
+const BROAD_BINS = ['node', 'python', 'python3', 'bash', 'sh', 'zsh', 'pwsh', 'docker', 'podman', 'npx', 'deno', 'bun', 'ruby', 'perl', 'sqlcmd', 'psql', 'mysql'];
+const BROAD_RULE = new RegExp(`^Bash\\((${BROAD_BINS.join('|')})(?: \\*|:\\*)\\)$`);
+
+// broadAllowRules -> { ok, ref, rules } | { ok:false, ref, error }
+// The broad permissions.allow rules in the target's .claude/settings.json on
+// origin/<defaultBranch>, the branch workers are cut from. No file is no rules.
+function broadAllowRules(cfg, t) {
+  const ref = `origin/${t.defaultBranch}`;
+  const file = '.claude/settings.json';
+  const g = args => run(cfg.bins.git, ['-C', t.localPath, ...args], { timeoutMs: 60000 });
+  const why = r => r.error || r.stderr.trim() || `exit ${r.status}`;
+  const ls = g(['ls-tree', '--name-only', ref, '--', file]);
+  if (ls.status !== 0) return { ok: false, ref, error: `git ls-tree failed: ${why(ls)}` };
+  if (!ls.stdout.trim()) return { ok: true, ref, rules: [] };
+  const show = g(['show', `${ref}:${file}`]);
+  if (show.status !== 0) return { ok: false, ref, error: `git show failed: ${why(show)}` };
+  let s;
+  try { s = JSON.parse(show.stdout); } catch (e) { return { ok: false, ref, error: `not valid JSON (${e.message})` }; }
+  const allow = s && s.permissions && Array.isArray(s.permissions.allow) ? s.permissions.allow : [];
+  return { ok: true, ref, rules: allow.filter(r => typeof r === 'string' && BROAD_RULE.test(r)) };
 }
 
 function config(flags) {
@@ -189,6 +214,7 @@ function main() {
     const cfg = config(flags);
     let bad = 0;
     const check = (ok, label, detail) => { process.stdout.write(`${ok ? 'ok   ' : 'FAIL '} ${label}${detail ? `: ${detail}` : ''}\n`); if (!ok) bad++; };
+    const warn = (label, detail) => process.stdout.write(`WARN  ${label}: ${detail}\n`);
     for (const [name, bin] of Object.entries(cfg.bins)) { const r = run(bin, ['--version'], { timeoutMs: 15000 }); check(r.status === 0, `${name} (${bin})`, r.status === 0 ? r.stdout.trim().split('\n')[0] : (r.error || r.stderr.trim())); }
     check(fs.existsSync(path.join(cfg.scriptsDir, 'sync-cells.sh')), 'sync-cells.sh', cfg.scriptsDir);
     check(fs.existsSync(path.join(cfg.scriptsDir, 'assign-cells.sh')), 'assign-cells.sh', cfg.scriptsDir);
@@ -214,6 +240,10 @@ function main() {
       let hooks = false;
       try { const s = JSON.parse(fs.readFileSync(settings, 'utf8')); hooks = JSON.stringify(s).includes('enforce-scope') && JSON.stringify(s).includes('require-handoff'); } catch { /* absent */ }
       check(hooks, `scope + handoff hooks committed in ${t.repo}`, hooks ? settings : `${settings} lacks enforce-scope/require-handoff; a cloud worker sees only committed hooks`);
+      // A WARN names a broad allow rule; it does not fail doctor or refuse a launch.
+      const broad = broadAllowRules(cfg, t);
+      if (!broad.ok) warn(`allow rules in ${t.repo}`, `.claude/settings.json on ${broad.ref} cannot be read, so its allow rules are not checked: ${broad.error}`);
+      else for (const r of broad.rules) warn(`broad allow rule in ${t.repo}: ${r}`, `.claude/settings.json on ${broad.ref} lets a worker run any command through ${r.slice(5, r.search(/[ :]\*\)$/))} without a prompt, so the lane's allowedPaths do not bound it; allow the package's own commands instead, e.g. Bash(node scripts/*)`);
       const tr = trust.isTrusted(cfg.bins.git, t.localPath);
       check(tr.trusted, `workspace trusted for -p permission rules: ${t.repo}`, tr.trusted ? tr.key : `not trusted; ${trust.howToTrust(tr)}`);
       // The launch precondition identity-missing: whose name the scope commit carries.
