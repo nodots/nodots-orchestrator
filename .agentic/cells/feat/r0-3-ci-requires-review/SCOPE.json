@@ -1,0 +1,25 @@
+{
+  "feature": "r0-3-ci-requires-review",
+  "project": "nodots-orchestrator",
+  "branch": "feat/r0-3-ci-requires-review",
+  "allowedPaths": [
+    "scripts/check-stamp.js",
+    "scripts/tests/check-stamp.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/**",
+    ".github/**",
+    "scripts/test.sh",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "feat/r0-1-review-policy-and-stamp"
+  ],
+  "estimatedScope": "one check, one test file",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
