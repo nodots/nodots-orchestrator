@@ -8,7 +8,9 @@
 #
 # Precedence, first match wins:
 #   1. PR merged                              -> cell:merged
-#   2. PR open with a current VERIFIED stamp   -> cell:awaiting-review
+#   2. PR open with a current VERIFIED stamp, and the review policy met
+#                                              -> cell:awaiting-review
+#      ... and the review policy not met       -> cell:awaiting-reviewer
 #   3. PR open, title [VERIFY]:, no current stamp -> cell:awaiting-lab
 #   4. BLOCKER.md present on the branch        -> cell:blocked
 #   5. branch exists, no PR                    -> cell:active
@@ -16,7 +18,14 @@
 #
 # "Current" means the stamp's sha is the PR's head sha. A push after the stamp
 # voids it: the evidence was produced by a tree that is no longer the one under
-# review. See references/working-agreements.md §Evidence stamps.
+# review. The same holds for a REVIEWED stamp. See
+# references/working-agreements.md §Evidence is stamped to a sha.
+#
+# The review policy is the `review` key of the target repo's
+# .claude/standards.json on its default branch (references/standards.md). It
+# is read only for a repo with a verified open PR. A repo without the key, or
+# without the file, has no policy and rule 2 is awaiting-review as before. A
+# policy with a defect, or a manifest that cannot be read, fails the run.
 #
 # Usage:
 #   sync-cells.sh --repo <owner/repo> [--target <owner/repo>]... [--epic <n>] [--apply]
@@ -42,7 +51,11 @@
 #             after collecting (or reading --state), write the state JSON the
 #             derivation ran over to <file>. A runtime that drives this script
 #             reads its decisions from that file rather than parsing the rows,
-#             so there is one derivation and one shape.
+#             so there is one derivation and one shape. The collector records
+#             each policy it read under reviewPolicies, keyed by repo.
+#
+# Exit 78 when a target's review policy has a defect, naming the repo and the
+# defect.
 #
 # Dependencies: bash, node (builtins only), and gh — gh only when --state is
 # absent.
@@ -63,7 +76,7 @@ while [ $# -gt 0 ]; do
     --target) TARGETS+=("${2:-}"); shift 2 ;;
     --emit-state) EMIT="${2:-}"; shift 2 ;;
     --epic) EPIC="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,44p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,61p' "$0"; exit 0 ;;
     *) printf 'sync-cells: unknown argument: %s\n' "$1" >&2; exit 64 ;;
   esac
 done
@@ -81,16 +94,34 @@ fi
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# The stamp rules and the review-policy rules live beside this script; the node
+# steps run from the temp directory, so the paths are passed in.
+HERE="$(cd "$(dirname "$0")" && pwd -P)"
+export SYNC_CELLS_STAMP_MODULE="$HERE/stamp.js"
+export SYNC_CELLS_STANDARDS_MODULE="$HERE/check-standards.js"
+
 # --- the derivation: one code path for fixtures and for live state ----------
 cat > "$TMP/derive.js" <<'JS'
 'use strict';
 const fs = require('fs');
 
-// The stamp pattern and the current-stamp rule live in stamp.js, beside this
-// script. This file runs from a temp directory, so the path is passed in.
-const { currentStamp } = require(process.env.SYNC_CELLS_STAMP_MODULE);
+const { currentStamp, currentReviews, reviewMet } = require(process.env.SYNC_CELLS_STAMP_MODULE);
 
-function derive(issue) {
+const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// The reviews found at the head and, when the policy is not met, what is short.
+function reviewReason(policy, reviews) {
+  const found = reviews.length ? reviews.map(r => `${r.reviewer} (${r.family})`).join(', ') : 'none';
+  const families = new Set(reviews.map(r => r.family)).size;
+  const missing = [];
+  if (policy.passes > reviews.length) missing.push(count(policy.passes - reviews.length, 'review', 'reviews'));
+  if (policy.families > families) missing.push(count(policy.families - families, 'family', 'families'));
+  return `REVIEWED ${found}; needs ${count(policy.passes, 'review', 'reviews')} from ` +
+         `${count(policy.families, 'family', 'families')}` +
+         (missing.length ? `, missing ${missing.join(' and ')}` : '');
+}
+
+function derive(issue, policies) {
   const pr = issue.pr || null;
   if (pr && String(pr.state).toUpperCase() === 'MERGED') {
     return ['cell:merged', `PR #${pr.number} merged`];
@@ -98,8 +129,15 @@ function derive(issue) {
   if (pr && String(pr.state).toUpperCase() === 'OPEN') {
     const stamp = currentStamp(pr);
     if (stamp) {
-      return ['cell:awaiting-review',
-              `PR #${pr.number} open, VERIFIED ${stamp.suite} @ ${stamp.sha.slice(0, 7)}`];
+      const verified = `PR #${pr.number} open, VERIFIED ${stamp.suite} @ ${stamp.sha.slice(0, 7)}`;
+      const policy = policies[issue.repo] || null;
+      if (!policy) return ['cell:awaiting-review', verified];
+      // A verified PR short of its repo's review policy waits on reviewers,
+      // not on the person who merges. Reviewer names are free text, so the
+      // reason is kept to one line for the tab-separated row.
+      const reviews = currentReviews(pr);
+      const why = `${verified}, ${reviewReason(policy, reviews)}`.replace(/\s+/g, ' ');
+      return [reviewMet(policy, reviews) ? 'cell:awaiting-review' : 'cell:awaiting-reviewer', why];
     }
     // A [VERIFY]: PR is the verifier's queue. Without a current stamp it is
     // waiting on the lab, not on a worker, so it must not read as active.
@@ -117,10 +155,11 @@ function derive(issue) {
 }
 
 const state = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const policies = state.reviewPolicies || {};
 const rows = [];
 for (const issue of state.issues || []) {
   const from = issue.label || '';
-  const [to, why] = derive(issue);
+  const [to, why] = derive(issue, policies);
   const target = to || from;
   rows.push([issue.number, from, target, target === from ? 'keep' : 'change', why].join('\t'));
 }
@@ -346,6 +385,70 @@ for (const line of fs.readFileSync(process.argv[3], 'utf8').split('\n')) {
 process.stdout.write(JSON.stringify(state, null, 2));
 JS
   mv "$TMP/state.final.json" "$TMP/state.json"
+
+  # The review policy decides rule 2 only, so read it only for a repo with an
+  # open PR carrying a current VERIFIED stamp. No ref: the default branch is
+  # the repo's policy; a PR branch could rewrite its own.
+  node - "$TMP/state.json" <<'JS' > "$TMP/policy-repos.txt" || exit 70
+'use strict';
+const fs = require('fs');
+const { currentStamp } = require(process.env.SYNC_CELLS_STAMP_MODULE);
+const s = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const repos = new Set(s.issues
+  .filter(i => i.pr && String(i.pr.state).toUpperCase() === 'OPEN' && currentStamp(i.pr))
+  .map(i => i.repo));
+process.stdout.write([...repos].map(r => `${r}\n`).join(''));
+JS
+  : > "$TMP/policies.tsv"
+  local k=0 prepo
+  while IFS= read -r prepo; do
+    [ -n "$prepo" ] || continue
+    k=$((k + 1))
+    if "$GH" api "repos/$prepo/contents/.claude/standards.json" -H 'Accept: application/vnd.github.raw+json' \
+         > "$TMP/manifest.$k" 2> "$TMP/manifest.$k.err"; then
+      printf '%s\t%s\n' "$prepo" "$TMP/manifest.$k" >> "$TMP/policies.tsv"
+    elif grep -q 'HTTP 404' "$TMP/manifest.$k.err"; then
+      printf '%s\t\n' "$prepo" >> "$TMP/policies.tsv"   # no manifest, no policy
+    else
+      printf 'sync-cells: could not read .claude/standards.json from %s: %s\n' \
+        "$prepo" "$(tr '\n' ' ' < "$TMP/manifest.$k.err")" >&2
+      exit 70
+    fi
+  done < "$TMP/policy-repos.txt"
+
+  node - "$TMP/state.json" "$TMP/policies.tsv" <<'JS' > "$TMP/state.policy.json"
+'use strict';
+const fs = require('fs');
+const { validateReview } = require(process.env.SYNC_CELLS_STANDARDS_MODULE);
+const state = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const policies = {};
+const defects = [];
+for (const line of fs.readFileSync(process.argv[3], 'utf8').split('\n')) {
+  if (!line) continue;
+  const [repo, file] = line.split('\t');
+  if (!file) { policies[repo] = null; continue; }
+  const at = `${repo}: .claude/standards.json`;
+  let m;
+  try { m = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch (e) { defects.push(`${at}: not valid JSON: ${e.message}`); continue; }
+  if (m === null || typeof m !== 'object' || Array.isArray(m)) { defects.push(`${at}: manifest: must be a JSON object`); continue; }
+  const review = Object.prototype.hasOwnProperty.call(m, 'review') ? m.review : null;
+  const found = validateReview(review);
+  if (found.length) { defects.push(...found.map(d => `${at}: ${d}`)); continue; }
+  policies[repo] = review === null ? null : { passes: review.passes, families: review.families };
+}
+if (defects.length) {
+  process.stderr.write(defects.map(d => `sync-cells: ${d}\n`).join('') +
+    '  The review policy decides which verified PRs wait on reviewers, so\n' +
+    '  nothing was derived. Fix the manifest on the default branch.\n');
+  process.exit(78);
+}
+state.reviewPolicies = policies;
+process.stdout.write(JSON.stringify(state, null, 2));
+JS
+  local rc=$?
+  [ "$rc" -eq 0 ] || exit "$rc"
+  mv "$TMP/state.policy.json" "$TMP/state.json"
   STATE="$TMP/state.json"
 }
 
@@ -370,8 +473,7 @@ if [ -n "$EMIT" ]; then
     || { printf 'sync-cells: could not write --emit-state %s\n' "$EMIT" >&2; exit 70; }
 fi
 
-SYNC_CELLS_STAMP_MODULE="$(cd "$(dirname "$0")" && pwd -P)/stamp.js" \
-  node "$TMP/derive.js" "$STATE" > "$TMP/rows.tsv" || exit 70
+node "$TMP/derive.js" "$STATE" > "$TMP/rows.tsv" || exit 70
 
 changes=0
 while IFS=$'\t' read -r number from to action why; do
