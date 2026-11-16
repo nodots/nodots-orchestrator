@@ -25,7 +25,7 @@ a defect.
   ],
   "preamble": ".claude/standards-preamble.md",
   "plugins": [ { "name": "<plugin>", "marketplace": "<marketplace>" } ],
-  "review": { "passes": 2, "families": 2 }
+  "review": { "passes": 2 }
 }
 ```
 
@@ -37,7 +37,7 @@ orchestrator names no toolchain.
 - **Checks are commands; rules are pointers.** A `check` is run and quoted in the stamp. A `rule` names the document to read, the paths it applies to, and the check that enforces it; a rule with `check: null` is allowed and reported as a warning.
 - **Rules are lane-scoped.** A worker is briefed only on rules whose `paths` overlap its `allowedPaths`, plus rules with no `paths`.
 - **The preamble is the repo's.** The hook prints the file the manifest names; the orchestrator ships no preamble text.
-- **The review policy is the repo's.** `review` says how many independent reviews a PR needs at its head (`passes`) and from how many model families (`families`), each counted from `REVIEWED` stamps (`references/working-agreements.md` §Evidence is stamped to a sha). A verified PR short of the policy is `cell:awaiting-reviewer`, not `cell:awaiting-review`. A repo without the key needs no reviews, and its PRs move as before.
+- **The review policy is the repo's.** `review` says how many independent reviews a PR needs at its head (`passes`), counted from `REVIEWED` stamps, one per distinct reviewer (`references/working-agreements.md` §Evidence is stamped to a sha). A verified PR short of the policy is `cell:awaiting-reviewer`, not `cell:awaiting-review`. A repo without the key needs no reviews, and its PRs move as before.
 
 ## Readers
 
@@ -75,8 +75,8 @@ tracked.
   `null` is the same as absent.
 - `plugins`, when present, is an array of objects. It may be empty.
 - `review`, when present and not `null`, is an object. `null` is the same as
-  absent. Otherwise: `review: must be null or an object with integer keys
-  passes and families`.
+  absent. Otherwise: `review: must be null or an object with one integer key,
+  passes`.
 
 **Each `checks[]` item.** Allowed keys: `name`, `command`. Any other key is a
 defect: `checks[<i>].<key>: unknown key`.
@@ -101,16 +101,11 @@ a defect: `plugins[<i>].<key>: unknown key`.
 
 - `name` and `marketplace` are both required strings matching `^[A-Za-z0-9_.-]+$`.
 
-**The `review` object.** Allowed keys: `passes`, `families`. Any other key is a
-defect: `review.<key>: unknown key`.
+**The `review` object.** Allowed key: `passes`. Any other key is a defect:
+`review.<key>: unknown key`.
 
 - `passes` is a required integer, at least `1`. Otherwise:
   `review.passes: must be an integer >= 1`, or `review.passes: <n> must be >= 1`.
-- `families` is a required integer, at least `1` and at most `passes`.
-  Otherwise: `review.families: must be an integer >= 1`,
-  `review.families: <n> must be >= 1`, or
-  `review.families: <n> must be <= passes (<passes>)`. The upper bound is
-  checked only when `passes` is itself valid.
 
 **Globs.** A glob is split on `/`. A segment that is exactly `**` matches any
 number of path segments, including none. Within any other segment, `*` matches
@@ -138,7 +133,7 @@ node check-standards.js [--root <dir>] [--json] [<manifest>]
 
 **Normalized manifest.** Keys in the order shown in §The manifest
 (`version, checks, rules, preamble, plugins, review`; `name, command`;
-`doc, paths, check`; `name, marketplace`; `passes, families`). An absent
+`doc, paths, check`; `name, marketplace`; `passes`). An absent
 `preamble` is `null`, an absent `plugins` is `[]`, an absent rule `paths` is
 `null`, and an absent `review` is `null`. Array order is kept. A normalized
 manifest is itself valid.

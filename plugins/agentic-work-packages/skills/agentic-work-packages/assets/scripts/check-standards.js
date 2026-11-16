@@ -43,7 +43,7 @@ const TOP_KEYS = ['version', 'checks', 'rules', 'preamble', 'plugins', 'review']
 const CHECK_KEYS = ['name', 'command'];
 const RULE_KEYS = ['doc', 'paths', 'check'];
 const PLUGIN_KEYS = ['name', 'marketplace'];
-const REVIEW_KEYS = ['passes', 'families'];
+const REVIEW_KEYS = ['passes'];
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -84,25 +84,19 @@ function unknownKeys(obj, allowed, where, defects) {
   }
 }
 
-// The review policy: how many independent reviews a PR needs, and from how many
-// model families. null is the same as absent. Exported so sync-cells.sh judges
-// a policy by the same rules without the tracked file list a full manifest needs.
+// The review policy: how many independent reviews a PR needs. null is the same
+// as absent. Exported so sync-cells.sh judges a policy by the same rules without
+// the tracked file list a full manifest needs.
 function validateReview(review) {
   const defects = [];
   if (review === null) return defects;
   if (!isObject(review)) {
-    defects.push('review: must be null or an object with integer keys passes and families');
+    defects.push('review: must be null or an object with one integer key, passes');
     return defects;
   }
   unknownKeys(review, REVIEW_KEYS, 'review', defects);
-  const passesOk = Number.isInteger(review.passes) && review.passes >= 1;
   if (!Number.isInteger(review.passes)) defects.push('review.passes: must be an integer >= 1');
-  else if (!passesOk) defects.push(`review.passes: ${show(review.passes)} must be >= 1`);
-  if (!Number.isInteger(review.families)) defects.push('review.families: must be an integer >= 1');
-  else if (review.families < 1) defects.push(`review.families: ${show(review.families)} must be >= 1`);
-  else if (passesOk && review.families > review.passes) {
-    defects.push(`review.families: ${show(review.families)} must be <= passes (${review.passes})`);
-  }
+  else if (review.passes < 1) defects.push(`review.passes: ${show(review.passes)} must be >= 1`);
   return defects;
 }
 
@@ -235,7 +229,7 @@ function normalize(m) {
     })),
     preamble: has(m, 'preamble') ? m.preamble : null,
     plugins: has(m, 'plugins') ? m.plugins.map((p) => ({ name: p.name, marketplace: p.marketplace })) : [],
-    review: has(m, 'review') && m.review !== null ? { passes: m.review.passes, families: m.review.families } : null,
+    review: has(m, 'review') && m.review !== null ? { passes: m.review.passes } : null,
   };
 }
 

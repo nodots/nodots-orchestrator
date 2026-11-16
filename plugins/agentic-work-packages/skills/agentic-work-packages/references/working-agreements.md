@@ -81,19 +81,16 @@ A repo whose `.claude/standards.json` carries a `review` policy
 review ends in one PR comment with a machine-readable line:
 
 ```
-REVIEWED: <reviewer> (<family>) @ <full head sha>
+REVIEWED: <reviewer> @ <full head sha>
 ```
 
-`<reviewer>` names the reviewing session or person; `<family>` is the model
-family the review ran on, letters, digits, `_`, `.` and `-` only. Both stamps
-are defined in one place, `assets/scripts/stamp.js`, and the same rules travel
-with this one:
+`<reviewer>` names the reviewing session or person. Both stamps are defined in
+one place, `assets/scripts/stamp.js`, and the same rules travel with this one:
 
 - **A push after the stamp voids it.** A review of a tree that is no longer the
   head is not a review of this PR.
 - **One reviewer is one review.** Stamps are counted once per distinct
-  `<reviewer>`, whatever family each names. The policy's `families` counts the
-  distinct families among them.
+  `<reviewer>`, and the policy's `passes` is met when that count reaches it.
 - **The worker's own session never posts it.** A review by the session that
   wrote the change is not independent. The stamp is posted by a reviewer: a
   separate session, or the person or coordinator who ran the review.

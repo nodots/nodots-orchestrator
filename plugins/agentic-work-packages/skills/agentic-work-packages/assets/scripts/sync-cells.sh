@@ -111,14 +111,10 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // The reviews found at the head and, when the policy is not met, what is short.
 function reviewReason(policy, reviews) {
-  const found = reviews.length ? reviews.map(r => `${r.reviewer} (${r.family})`).join(', ') : 'none';
-  const families = new Set(reviews.map(r => r.family)).size;
-  const missing = [];
-  if (policy.passes > reviews.length) missing.push(count(policy.passes - reviews.length, 'review', 'reviews'));
-  if (policy.families > families) missing.push(count(policy.families - families, 'family', 'families'));
-  return `REVIEWED ${found}; needs ${count(policy.passes, 'review', 'reviews')} from ` +
-         `${count(policy.families, 'family', 'families')}` +
-         (missing.length ? `, missing ${missing.join(' and ')}` : '');
+  const found = reviews.length ? reviews.map(r => r.reviewer).join(', ') : 'none';
+  const short = policy.passes - reviews.length;
+  return `REVIEWED ${found}; needs ${count(policy.passes, 'review', 'reviews')}` +
+         (short > 0 ? `, missing ${count(short, 'review', 'reviews')}` : '');
 }
 
 function derive(issue, policies) {
@@ -435,7 +431,7 @@ for (const line of fs.readFileSync(process.argv[3], 'utf8').split('\n')) {
   const review = Object.prototype.hasOwnProperty.call(m, 'review') ? m.review : null;
   const found = validateReview(review);
   if (found.length) { defects.push(...found.map(d => `${at}: ${d}`)); continue; }
-  policies[repo] = review === null ? null : { passes: review.passes, families: review.families };
+  policies[repo] = review === null ? null : { passes: review.passes };
 }
 if (defects.length) {
   process.stderr.write(defects.map(d => `sync-cells: ${d}\n`).join('') +
