@@ -41,8 +41,15 @@ git -C "$TMP/api" config user.email f@example.invalid; git -C "$TMP/api" config 
 printf '# api\n' > "$TMP/api/README.md"
 git -C "$TMP/api" add -A && git -C "$TMP/api" commit -qm init
 fixture_standards "$TMP/api" && git -C "$TMP/api" push -q -u origin development
-git -C "$TMP/api" push -q origin development:collection/t
+# collection/t is one commit ahead of development, so a worktree cut from the
+# wrong branch is told apart.
+git -C "$TMP/api" checkout -q -b collection/t
+printf 'collection t\n' > "$TMP/api/COLLECTION.md"
+git -C "$TMP/api" add COLLECTION.md && git -C "$TMP/api" commit -qm "collection/t: start"
+git -C "$TMP/api" push -q -u origin collection/t
+git -C "$TMP/api" checkout -q development
 COLL0=$(git --git-dir "$TMP/api.git" rev-parse collection/t)
+assert_ne "$(git --git-dir "$TMP/api.git" rev-parse development)" "$COLL0" "fixture: collection/t differs from development"
 
 # --- stubs ---------------------------------------------------------------------
 STUB="$TMP/stub"; mkdir -p "$STUB" "$TMP/gh" "$TMP/claude-log"
