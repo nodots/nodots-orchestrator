@@ -1,0 +1,35 @@
+{
+  "feature": "c0-2-merge-stage",
+  "project": "nodots-orchestrator",
+  "branch": "feat/c0-2-merge-stage",
+  "allowedPaths": [
+    "plugins/fleet/src/merge.js",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/report.js",
+    "plugins/fleet/src/tracker.js",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/fleet/SKILL.md",
+    "plugins/fleet/tests/merge-stage.test.sh",
+    "plugins/fleet/tests/stubs/gh.js"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/src/verify.js",
+    "plugins/fleet/tests/lib.sh",
+    "plugins/agentic-work-packages/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "feat/c0-1-integration-branch"
+  ],
+  "estimatedScope": "one stage module, two tracker calls, report and cycle wiring, docs, one suite",
+  "execution": {
+    "model": "strongest",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
