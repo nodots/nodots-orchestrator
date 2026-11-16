@@ -29,6 +29,13 @@ jobs:
       - name: Hook copies are byte-identical and fixture tests pass
         run: bash scripts/test.sh
 
+      - name: No secret in any commit the PR adds (gitleaks, pinned)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/check-secrets.sh "$BASE_SHA" "$HEAD_SHA"
+
       - name: Installed worker hooks and contract match the plugin copies
         run: |
           plugin=plugins/agentic-work-packages
