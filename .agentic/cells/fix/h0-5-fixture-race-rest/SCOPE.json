@@ -1,0 +1,34 @@
+{
+  "feature": "h0-5-fixture-race-rest",
+  "project": "nodots-orchestrator",
+  "branch": "fix/h0-5-fixture-race-rest",
+  "allowedPaths": [
+    "plugins/fleet/tests/ci-preconditions.test.sh",
+    "plugins/fleet/tests/instructions-leak.test.sh",
+    "plugins/fleet/tests/verify-config.test.sh",
+    "plugins/fleet/tests/verify-stage.test.sh",
+    "plugins/fleet/tests/v4-gate.test.sh",
+    "plugins/fleet/tests/cycle.test.sh",
+    "plugins/fleet/tests/integration-branch.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/**",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/tests/lib.sh",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/agentic-work-packages/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "fix/h0-4-fixture-race"
+  ],
+  "estimatedScope": "waits in seven suites",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

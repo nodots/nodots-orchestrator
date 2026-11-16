@@ -148,6 +148,40 @@ function validateIntegration(c, t, target, i) {
   target.autoMerge = t.autoMerge === true;
 }
 
+// reviewers: the commands the review stage (review.js) runs, in this order, on
+// a PR that its repo's review policy holds at cell:awaiting-reviewer. A
+// reviewer is any command; fleet names no vendor and parses no flag of it.
+// In argv, {prompt}, {worktree} and {out} are replaced by the prompt file, the
+// reviewer's worktree and the verdict file.
+const REVIEWER_NAME = /^[A-Za-z0-9_.-]+$/;
+const DEFAULT_REVIEW_TIMEOUT_MINUTES = 20;
+function validateReviewers(list) {
+  if (list === undefined) return [];
+  if (!Array.isArray(list)) fail('reviewers must be an array of {name, argv, timeoutMinutes}');
+  const names = new Set();
+  return list.map((r, i) => {
+    const at = `reviewers[${i}]`;
+    if (!r || typeof r !== 'object' || Array.isArray(r)) fail(`${at} must be an object {name, argv, timeoutMinutes}`);
+    if (typeof r.name !== 'string' || !REVIEWER_NAME.test(r.name)) fail(`${at}.name [${r.name}] must match ${REVIEWER_NAME}`);
+    if (names.has(r.name)) fail(`${at}.name [${r.name}] is used by an earlier reviewer; each reviewer stamps under its own name`);
+    names.add(r.name);
+    if (!Array.isArray(r.argv) || r.argv.length === 0 || !r.argv.every(a => typeof a === 'string') || !r.argv[0]) fail(`${at}.argv must be a non-empty array of strings, the command first`);
+    const timeoutMinutes = r.timeoutMinutes === undefined ? DEFAULT_REVIEW_TIMEOUT_MINUTES : r.timeoutMinutes;
+    if (!Number.isInteger(timeoutMinutes) || timeoutMinutes <= 0) fail(`${at}.timeoutMinutes [${r.timeoutMinutes}] must be a positive integer`);
+    return { name: r.name, argv: [...r.argv], timeoutMinutes };
+  });
+}
+
+// The review policy is the target repo's (its .claude/standards.json on the
+// default branch), so it is known only once the sync has read it. The cycle
+// calls this with the sync's reviewPolicies: a target with a policy and no
+// reviewer to meet it is a config that fails validation, naming the target.
+function requireReviewers(c, policies) {
+  if (c.reviewers.length) return;
+  const held = c.targets.filter(t => policies && policies[t.repo]).map(t => t.repo);
+  if (held.length) fail(`${held.join(', ')} ${held.length === 1 ? 'has' : 'have'} a review policy (review in .claude/standards.json) and reviewers is empty; configure at least one reviewer, or no PR there leaves cell:awaiting-reviewer`);
+}
+
 function validate(raw, baseDir) {
   const c = { ...DEFAULTS, ...raw, models: { ...DEFAULTS.models, ...(raw.models || {}) } };
 
@@ -198,6 +232,7 @@ function validate(raw, baseDir) {
   if (!PERMISSION_MODES.has(c.permissionMode)) fail(`permissionMode [${c.permissionMode}] is not a Claude Code permission mode`);
   if (c.permissionPrompts !== 'none' && c.permissionPrompts !== 'host') fail('permissionPrompts must be "none" or "host"');
   if (typeof c.isolateWorkers !== 'boolean') fail(`isolateWorkers [${c.isolateWorkers}] must be true or false`);
+  c.reviewers = validateReviewers(raw.reviewers);
 
   const first = c.targets[0];
   const repoName = first.repo.split('/')[1];
@@ -249,4 +284,4 @@ function approvalGate(c, pr) {
   return { blocked: true, mechanism: c.approvalEnforcement, reason: `PR #${pr.number} has no human approval` };
 }
 
-module.exports = { loadConfig, validate, defaultPluginRoot, approvalGate, approvalPayload, isProtected, DEFAULTS, MODES };
+module.exports = { loadConfig, validate, requireReviewers, defaultPluginRoot, approvalGate, approvalPayload, isProtected, DEFAULTS, MODES };

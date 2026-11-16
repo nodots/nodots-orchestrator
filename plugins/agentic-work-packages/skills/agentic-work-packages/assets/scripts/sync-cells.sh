@@ -7,7 +7,9 @@
 # label is a hint that the next sync overwrites.
 #
 # Precedence, first match wins:
-#   1. PR merged                              -> cell:merged
+#   1. PR merged, into any base               -> cell:merged
+#      the reason ends " (into <base>)" when the base is not the repo's
+#      default branch, such as an epic's integration branch
 #   2. PR open with a current VERIFIED stamp, and the review policy met
 #                                              -> cell:awaiting-review
 #      ... and the review policy not met       -> cell:awaiting-reviewer
@@ -52,7 +54,8 @@
 #             derivation ran over to <file>. A runtime that drives this script
 #             reads its decisions from that file rather than parsing the rows,
 #             so there is one derivation and one shape. The collector records
-#             each policy it read under reviewPolicies, keyed by repo.
+#             each policy it read under reviewPolicies, keyed by repo, and
+#             each default branch it read under defaultBranches.
 #
 # Exit 78 when a target's review policy has a defect, naming the repo and the
 # defect.
@@ -76,7 +79,7 @@ while [ $# -gt 0 ]; do
     --target) TARGETS+=("${2:-}"); shift 2 ;;
     --emit-state) EMIT="${2:-}"; shift 2 ;;
     --epic) EPIC="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,61p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,64p' "$0"; exit 0 ;;
     *) printf 'sync-cells: unknown argument: %s\n' "$1" >&2; exit 64 ;;
   esac
 done
@@ -117,10 +120,26 @@ function reviewReason(policy, reviews) {
          (short > 0 ? `, missing ${count(short, 'review', 'reviews')}` : '');
 }
 
-function derive(issue, policies) {
+// A merge into an integration branch is a merge: the package is done at the
+// first level, and a person merges the branch into the default branch later.
+// The reason names the base when it is not the default branch, so the report
+// shows where the package landed. The comparison needs the repo's default
+// branch, and a state without it fails rather than guessing.
+function mergedReason(issue, pr, defaults) {
+  const plain = `PR #${pr.number} merged`;
+  if (!pr.base) return plain;
+  const dflt = defaults[issue.repo];
+  if (!dflt) {
+    throw new Error(`#${issue.number}: PR #${pr.number} merged into ${pr.base}, but the default branch ` +
+                    `of ${issue.repo || '(no repo)'} is not recorded under defaultBranches`);
+  }
+  return pr.base === dflt ? plain : `${plain} (into ${pr.base})`;
+}
+
+function derive(issue, policies, defaults) {
   const pr = issue.pr || null;
   if (pr && String(pr.state).toUpperCase() === 'MERGED') {
-    return ['cell:merged', `PR #${pr.number} merged`];
+    return ['cell:merged', mergedReason(issue, pr, defaults)];
   }
   if (pr && String(pr.state).toUpperCase() === 'OPEN') {
     const stamp = currentStamp(pr);
@@ -152,10 +171,13 @@ function derive(issue, policies) {
 
 const state = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const policies = state.reviewPolicies || {};
+const defaults = state.defaultBranches || {};
 const rows = [];
 for (const issue of state.issues || []) {
   const from = issue.label || '';
-  const [to, why] = derive(issue, policies);
+  let to, why;
+  try { [to, why] = derive(issue, policies, defaults); }
+  catch (e) { process.stderr.write(`sync-cells: ${e.message}\n`); process.exit(70); }
   const target = to || from;
   rows.push([issue.number, from, target, target === from ? 'keep' : 'change', why].join('\t'));
 }
@@ -188,7 +210,7 @@ collect_state() {
   printf '[]' > "$TMP/branches.json"
   for t in "${TARGETS[@]}"; do
     "$GH" pr list --repo "$t" --state all --limit "$PAGE_LIMIT" \
-       --json number,title,body,state,headRefName,headRefOid > "$TMP/prs.one.json" || exit 70
+       --json number,title,body,state,baseRefName,headRefName,headRefOid > "$TMP/prs.one.json" || exit 70
     n=$(node -e 'const a=require(process.argv[1]);process.stdout.write(String(a.length))' "$TMP/prs.one.json")
     if [ "$n" -ge "$PAGE_LIMIT" ]; then
       printf 'sync-cells: the pr query for %s returned %s rows, filling the page limit of %s.\n' \
@@ -319,7 +341,8 @@ for (const issue of issues) {
     branch,
     branchExists: Boolean(branch && (brMatch || pr)),
     blockerOnBranch: false,                   // filled in by the shell below
-    pr: pr ? { number: pr.number, title: pr.title, state: pr.state, headSha: pr.headRefOid, comments: [] } : null,
+    pr: pr ? { number: pr.number, title: pr.title, state: pr.state, base: pr.baseRefName,
+               headSha: pr.headRefOid, comments: [] } : null,
   });
 }
 if (uncovered.length) {
@@ -445,6 +468,44 @@ JS
   local rc=$?
   [ "$rc" -eq 0 ] || exit "$rc"
   mv "$TMP/state.policy.json" "$TMP/state.json"
+
+  # The default branch decides only the merged reason's (into <base>) suffix,
+  # so read it only for a repo with a merged PR that names its base.
+  node -e '
+    const s = require(process.argv[1]);
+    const repos = new Set(s.issues
+      .filter(i => i.pr && String(i.pr.state).toUpperCase() === "MERGED" && i.pr.base)
+      .map(i => i.repo));
+    process.stdout.write([...repos].map(r => `${r}\n`).join(""));
+  ' "$TMP/state.json" > "$TMP/default-repos.txt" || exit 70
+  : > "$TMP/defaults.tsv"
+  local drepo dflt
+  while IFS= read -r drepo; do
+    [ -n "$drepo" ] || continue
+    if ! dflt=$("$GH" api "repos/$drepo" --jq .default_branch 2> "$TMP/default.err"); then
+      printf 'sync-cells: could not read the default branch of %s: %s\n' \
+        "$drepo" "$(tr '\n' ' ' < "$TMP/default.err")" >&2
+      exit 70
+    fi
+    if ! [[ "$dflt" =~ ^[^[:space:]]+$ ]]; then
+      printf 'sync-cells: the default branch of %s read as [%s], not a branch name.\n' "$drepo" "$dflt" >&2
+      exit 70
+    fi
+    printf '%s\t%s\n' "$drepo" "$dflt" >> "$TMP/defaults.tsv"
+  done < "$TMP/default-repos.txt"
+
+  node -e '
+    const fs = require("fs");
+    const s = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    s.defaultBranches = {};
+    for (const line of fs.readFileSync(process.argv[2], "utf8").split("\n")) {
+      if (!line) continue;
+      const [repo, branch] = line.split("\t");
+      s.defaultBranches[repo] = branch;
+    }
+    process.stdout.write(JSON.stringify(s, null, 2));
+  ' "$TMP/state.json" "$TMP/defaults.tsv" > "$TMP/state.defaults.json" || exit 70
+  mv "$TMP/state.defaults.json" "$TMP/state.json"
   STATE="$TMP/state.json"
 }
 

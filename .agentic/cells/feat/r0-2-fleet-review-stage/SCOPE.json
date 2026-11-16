@@ -1,0 +1,35 @@
+{
+  "feature": "r0-2-fleet-review-stage",
+  "project": "nodots-orchestrator",
+  "branch": "feat/r0-2-fleet-review-stage",
+  "allowedPaths": [
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/review.js",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/report.js",
+    "plugins/fleet/src/store.js",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/fleet/SKILL.md",
+    "plugins/fleet/tests/review-stage.test.sh",
+    "plugins/fleet/tests/stubs/reviewer.sh",
+    "plugins/fleet/tests/lib.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/**",
+    "plugins/fleet/src/verify.js",
+    "plugins/fleet/src/launch.js",
+    "scripts/**",
+    "**/plugin.json",
+    ".github/**"
+  ],
+  "dependsOn": [
+    "feat/r0-1-review-policy-and-stamp"
+  ],
+  "estimatedScope": "one new stage module, config, report and cycle wiring, docs, one suite and a stub",
+  "execution": {
+    "model": "strongest",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

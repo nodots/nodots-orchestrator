@@ -84,9 +84,34 @@ A change to any of these gets its own package, dispatched alone.
 
 ## Enforcement
 
-`assets/hooks/enforce-scope.js` is a PreToolUse hook that blocks `Edit` and
-`Write` outside `allowedPaths` or matching `forbiddenPaths`. Node builtins only,
-no dependencies.
+Three checks share one lane matcher, so a path is judged the same way
+wherever it is caught. Each hook stays self-contained (Node builtins only, no
+dependencies), so the matcher is copied, not imported, and a test keeps the
+copies identical.
+
+| Check | When | What it judges |
+|---|---|---|
+| `enforce-scope.js`, PreToolUse `Edit\|Write` | before the write | the one `file_path` the tool names |
+| `enforce-scope.js`, PostToolUse `Bash` | right after each Bash call | every path the branch changes |
+| `require-handoff.js`, Stop | before the worker can stop | every path the branch changes |
+
+"Every path the branch changes" is read from the worktree's actual state, never
+from the command: `git status --porcelain -z` for staged, unstaged and
+untracked files, plus `git diff --name-only <merge-base> HEAD` for commits. The
+merge base is taken against the nearest integration branch — of
+`origin/HEAD`, `development`, `develop`, `main` and `master`, local or on
+`origin`, the one the branch is fewest commits ahead of — so a stale default
+does not count other packages' merged work against this one, and merging the
+integration branch in does not either. Because the check does not parse shell
+commands, it does not depend on command grammar: `sed -i`, `tee`, a redirect,
+`python -c` and `git commit` all land in the same list.
+
+An out-of-lane path after a Bash call returns a block decision naming each
+path and telling the worker to revert it, or to revert it and stop and write
+`BLOCKER.md`. The write has already happened; the block makes the worker see it
+right after the call that made it. At the stop, an out-of-lane path blocks the
+turn from ending, on a clean tree too, and a `BLOCKER.md` does not excuse it.
+Lane artifacts — `SCOPE.json`, `HANDOFF.md`, `BLOCKER.md` — are always in lane.
 
 Install per repo:
 
@@ -96,8 +121,12 @@ cp <skill>/assets/hooks/enforce-scope.js .claude/hooks/
 # merge assets/settings-snippet.json into .claude/settings.json
 ```
 
-Installing the plugin wires the same hook through its own `hooks/hooks.json`
-and needs no per-repo copy. The two copies of the hook are byte-identical, and
+`assets/settings-snippet.json` wires the PreToolUse and Stop hooks; add the
+PostToolUse `Bash` entry from `enforce-scope.js`'s header by hand, since the
+snippet does not carry it yet.
+
+Installing the plugin wires the same hook, in both modes, through its own
+`hooks/hooks.json` and needs no per-repo copy. The two copies of the hook are byte-identical, and
 CI asserts it.
 
 ### The control's three fields
@@ -110,12 +139,19 @@ file header:
 |---|---|
 | **Default** | deny |
 | **Fail posture** | open, and loud — one stderr line naming the hook, then exit 0 |
-| **Residue** | Bash-mediated writes (`sed -i`, `tee`, shell redirects, `python -c`), MCP filesystem tools, `NotebookEdit`, `MultiEdit` |
+| **Residue** | writes outside the worktree; a change made and reverted within one Bash call; MCP filesystem tools, `NotebookEdit` and `MultiEdit` between Bash calls, until the next Bash call or the stop; a gitignored path; commits, when the repo has no integration branch to take a merge base from |
 
-The residue is the input classes the control does not judge, and it is part of
-the control rather than a footnote to it: the matcher is `Edit|Write`, an
-exact tool-name match, so nothing else reaches the hook at all. A change to any
-of the three fields is a change to this table, not only to the code.
+The residue is what the control still does not catch, and it is part of the
+control rather than a footnote to it. The PreToolUse matcher `Edit|Write` and
+the PostToolUse matcher `Bash` are exact tool-name matches, so no other tool
+reaches the hook; a write by one of them is seen only by the next check that
+reads the worktree. Every check reads the worktree as it is, so a change that
+is gone by then is not seen, and git does not list an ignored path. A change to
+any of the three fields is a change to this table, not only to the code.
+
+`require-handoff.js` states the same residue for the stop-time check, plus one
+of its own: the loop guard allows a second stop, so an out-of-lane change left
+in place after the first block is not blocked again.
 
 ### Deny, never ask
 
@@ -173,13 +209,15 @@ Behaviour worth knowing before you rely on it:
   root path.
 - It **fails open**: any hook error exits zero rather than blocking work, after
   the one-line stderr notice. It is a guardrail, not a security control.
-- It governs `Edit` and `Write` only. Shell commands are not intercepted, so an
-  agent determined to route around it can. That is a coordination signal, not a
-  threat model — see the residue row above.
+- Shell commands are not intercepted before they run. A write through Bash is
+  caught right after the call and at the stop, not prevented. An agent
+  determined to route around the lane still can, inside the residue above. That
+  is a coordination signal, not a threat model.
 
 Everything in this section is asserted by
 `assets/tests/enforce-scope.test.sh`, which runs the hook from both install
-locations and from outside the repo, the way a plugin-installed hook runs.
+locations and from outside the repo, the way a plugin-installed hook runs, and
+by `assets/tests/require-handoff.test.sh` for the stop-time check.
 
 ## Worker protocol
 

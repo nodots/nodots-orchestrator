@@ -97,6 +97,8 @@ assert_contains "$D" "isolateWorkers" "A: the alarm names the isolateWorkers fix
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "11" "$(alarms "$OUT" launch-instructions-leak)" "A: the applied cycle refuses too"
 [ -d "$TMP/leak-dot/a/worktrees" ] && _fail "A: no worktree is created for a refused launch" "worktrees dir exists" || _pass "A: no worktree is created for a refused launch"
+# Read at once: the launch was refused before the spawn, so no detached stub
+# exists to write here later.
 assert_empty "$(ls "$CLAUDE_STUB_LOG")" "A: no worker was started"
 L=$(doctor_line)
 assert_contains "$L" "FAIL" "A: doctor fails the check"
@@ -132,6 +134,7 @@ assert_empty "$(alarms "$OUT" launch-instructions-leak)" "E: no instructions-lea
 assert_eq "15" "$(launched "$OUT")" "E: a worktree with no such ancestor launches in the dry run"
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "15" "$(launched "$OUT")" "E: the applied cycle launches"
+wait_for_file "$CLAUDE_STUB_LOG/T1.5.*.argv"
 assert_nonempty "$(cat "$CLAUDE_STUB_LOG"/T1.5.*.argv 2>/dev/null)" "E: the worker was started"
 L=$(doctor_line)
 assert_contains "$L" "ok" "E: doctor passes the check"
@@ -144,6 +147,7 @@ assert_empty "$(alarms "$OUT" launch-instructions-leak)" "F: instructions-leak i
 assert_eq "16" "$(launched "$OUT")" "F: the dry run launches"
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "16" "$(launched "$OUT")" "F: the applied cycle launches"
+wait_for_file "$CLAUDE_STUB_LOG/T1.6.*.argv"
 assert_nonempty "$(cat "$CLAUDE_STUB_LOG"/T1.6.*.argv 2>/dev/null)" "F: the worker was started"
 L=$(doctor_line)
 assert_not_contains "$L" "FAIL" "F: doctor does not fail the check with isolateWorkers false"

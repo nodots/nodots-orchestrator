@@ -1,0 +1,32 @@
+{
+  "feature": "h0-2-bash-lane-enforcement",
+  "project": "nodots-orchestrator",
+  "branch": "feat/h0-2-bash-lane-enforcement",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/hooks/enforce-scope.js",
+    "plugins/agentic-work-packages/hooks/require-handoff.js",
+    "plugins/agentic-work-packages/hooks/hooks.json",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/enforce-scope.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/require-handoff.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/scope-contract.md",
+    ".claude/hooks/enforce-scope.js",
+    ".claude/hooks/require-handoff.js"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "fix/h0-4-fixture-race"
+  ],
+  "estimatedScope": "one PostToolUse mode, one Stop check, mirrored copies, docs, tests",
+  "execution": {
+    "model": "strongest",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
