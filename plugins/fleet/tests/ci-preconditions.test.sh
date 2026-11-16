@@ -130,6 +130,8 @@ ci '{"workflows":[]}'
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_eq "10 12" "$(alarms "$OUT" launch-ci-disabled)" "F: the applied cycle refuses too"
 [ -d "$TMP/worktrees" ] && _fail "F: no worktree is created for a refused launch" "worktrees dir exists" || _pass "F: no worktree is created for a refused launch"
+# Read at once: the launch was refused before the spawn, so no detached stub
+# exists to write here later.
 assert_empty "$(ls "$TMP/claude-log")" "F: no worker was started"
 assert_empty "$(git --git-dir "$TMP/remote.git" for-each-ref --format='%(refname:short)' refs/heads | grep '^feat/')" "F: no branch was pushed"
 
@@ -166,6 +168,7 @@ assert_empty "$(alarms "$OUT" launch-ci-check-failed)" "H: the GitHub Actions st
 ci '{"workflows":[]}'
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 assert_contains "$(launched "$OUT")" "10" "H: the applied cycle launches into the external target"
+wait_for_file "$TMP/claude-log/T1.1.*.argv"
 ARGV=$(cat "$TMP"/claude-log/T1.1.*.argv 2>/dev/null)
 assert_contains "$ARGV" "Verification for this target: npm run test:impacted on the lab, under the lab lock" "H: the worker is told what verifies its work"
 assert_contains "$ARGV" "not from a pipeline" "H: and that its VERIFIED stamp comes from that run"

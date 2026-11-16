@@ -192,6 +192,7 @@ cycle
 FAILC=$(comments_on 'acme/api#202')
 assert_contains "$FAILC" "logs in" "fail: the PR gets a comment carrying the failing test"
 assert_eq "" "$(printf '%s\n' "$FAILC" | grep '^VERIFIED' || true)" "fail: the comment has no VERIFIED line"
+wait_for_file "$TMP/claude-log/T1.2.2.argv"
 assert_file "$TMP/claude-log/T1.2.2.argv" "fail: the package's worker is re-dispatched (attempt 2)"
 ARGV2=$(cat "$TMP/claude-log/T1.2.2.argv" 2>/dev/null)
 assert_contains "$ARGV2" "The previous attempt ended with: verify-failed: logs in" "fail: the worker is told why"
@@ -213,6 +214,8 @@ assert_eq "pr=202 202" "$(last_post)" "fail: once the head changes, the PR is po
 # --- at maxEscalations it holds with escalation-cap -------------------------------
 cycle
 assert_contains "$(alarm_codes)" "escalation-cap" "cap: a second fail at maxEscalations 1 raises escalation-cap"
+# Read at once: escalation-cap holds the package before the spawn, so no
+# detached stub exists to write here later.
 [ -e "$TMP/claude-log/T1.2.3.argv" ] && _fail "cap: no third attempt is launched" "T1.2.3.argv exists" || _pass "cap: no third attempt is launched"
 assert_eq "2" "$(ncomments 'acme/api#202')" "cap: the second fail is still commented"
 

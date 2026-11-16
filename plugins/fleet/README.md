@@ -5,7 +5,7 @@ pass:
 
 ```
 fleet cycle --apply
-  lock → sync-cells.sh --apply → promote → assign-cells.sh --apply → reap → verify → launch → report → unlock
+  lock → sync-cells.sh --apply → promote → assign-cells.sh --apply → reap → verify → review → launch → report → unlock
 ```
 
 - **sync** derives every `cell:*` label from branches, PRs and `BLOCKER.md`
@@ -104,11 +104,17 @@ fleet cycle --apply
     `VERIFIED: <suite> @ <full head sha>` and retitles `[READY]:`; a stamp
     without the retitle is retitled by the stage, as for `lab-runner`. Either
     way the PR leaves the queue.
+- **review** runs after verify and before launch, for a config with
+  `reviewers` (`src/review.js`; see [Review](#review)). Each
+  `cell:awaiting-reviewer` PR gets one reviewer in flight, read-only in a fresh
+  worktree at its head. A pass posts `REVIEWED: <name> @ <sha>`; a fail
+  comments the findings and re-dispatches the worker.
 - **report** posts one Movement / Exhaustion / Alarm comment on the epic, with
   a marker so a re-post is a no-op, and keeps the no-movement streak that
   latches the fleet after `noMovementLimit` cycles. For a config with a verify
-  target the counts add `awaiting-lab` and `verifying`; every other report is
-  unchanged.
+  target the counts add `awaiting-lab` and `verifying`; for a config with
+  `reviewers`, `awaiting-reviewer` and `reviewing`, and the report has a
+  Review section. Every other report is unchanged.
 
 A cycle acts on one epic: the packages whose header line says
 `**Part of** #<epic>`, the same rule `sync-cells.sh --epic` applies. Other
@@ -276,6 +282,92 @@ node "$PLUGIN/bin/fleet.js" standards init --target acme/api --write   # write i
   1, when that file exists. The command never stages, commits or pushes; review
   the file and commit it yourself.
 
+## Review
+
+A target repo asks for independent review with the `review` key of its
+`.claude/standards.json`: `{"passes": <n>}`, the number of distinct reviewers
+whose `REVIEWED` stamp a PR needs at its head. The sync holds a verified PR
+short of that at `cell:awaiting-reviewer`. Fleet meets the policy with the
+reviewers in `fleet.config.json`:
+
+```json
+"reviewers": [
+  { "name": "claude-sonnet-plan",
+    "argv": ["sh", "-c", "claude -p --model sonnet --permission-mode plan --output-format text < \"$1\" > \"$2\"", "reviewer", "{prompt}", "{out}"],
+    "timeoutMinutes": 20 }
+]
+```
+
+- `name` matches `^[A-Za-z0-9_.-]+$` and is the name on the stamp. Names are
+  unique.
+- `argv` is a non-empty array of strings, the command first. In each element,
+  `{prompt}` is replaced by the path of the prompt file, `{worktree}` by the
+  reviewer's worktree, and `{out}` by the path the verdict is read from. There
+  is no shell unless the command is one, as in the example.
+- `timeoutMinutes` defaults to 20.
+- A reviewer is any command. The example is `claude -p` on a model other than
+  the workers', in plan mode, reading the prompt on stdin and writing its final
+  answer to `{out}`. A command from another vendor is configured the same way;
+  fleet names none and requires none.
+- A target whose manifest has a `review` policy, in a config with no
+  `reviewers`, fails validation naming the target: the cycle raises
+  `config-invalid` and exits 64 before it promotes, assigns, reaps or launches
+  anything. The policy lives in the target repo, so this is checked once the
+  sync has read it, not when the config is loaded.
+
+Each cycle, for each `cell:awaiting-reviewer` PR with no review in flight,
+the stage picks the first reviewer in config order with no current stamp at
+the head and no failure recorded there. It fetches the clone, adds a worktree
+under `<worktreesDir>/.review/` detached at the PR head, writes the prompt file
+under `<stateDir>/review/`, and spawns `argv` detached in the worktree, as
+launch spawns a worker. The run is recorded in `state.json` as
+`review.<repo>.inFlight[]`: `{ pr, reviewer, headSha, issue, pid, startedAt, ... }`.
+At most one reviewer per PR is in flight. A review in flight is live work, so
+waiting on it does not raise the no-movement streak.
+
+The prompt file holds a brief, the package issue (title and body), the checks
+of the target's standards manifest on its base ref, and
+`git diff <base>...HEAD`. The brief says the change is presumed wrong until
+shown otherwise; each defect is reported with file, line, claim and evidence;
+the reviewer writes only the JSON verdict to `{out}` and changes no file. The
+verdict:
+
+```json
+{"verdict": "pass", "findings": [{"file": "src/a.js", "line": 12, "claim": "...", "evidence": "..."}]}
+```
+
+`verdict` is `pass` or `fail`. Every finding has a non-empty `file`, `claim`
+and `evidence` and an integer `line` of 1 or more. A `fail` has at least one
+finding. A `pass` lists what it checked.
+
+When the reviewer has exited:
+
+- **Read-only check.** Before the spawn, fleet records the worktree's HEAD and
+  `git status --porcelain`. A moved HEAD or any difference after the exit
+  discards the verdict and raises `review-wrote`, naming the reviewer. This is
+  checked for any command; no reviewer flag is parsed. **It does not see
+  writes outside the worktree**: a reviewer that pushes, writes to the tracker
+  or edits another path is not caught by it. Run reviewers under a permission
+  mode or an account that cannot do those things.
+- **A moved head**, or a PR no longer open: `review-stale`; nothing is stamped.
+- **Missing or invalid JSON**: `review-invalid`; nothing is stamped.
+- **A timeout** (still running after `timeoutMinutes`): the process group is
+  killed and `review-timeout` raised; nothing is stamped.
+- **Pass** at the current head: a PR comment whose first line is
+  `REVIEWED: <name> @ <sha>`, then the findings it checked. Movement
+  `reviewed`. The next sync counts it toward the policy.
+- **Fail**: the findings are commented on the PR, the head is recorded in
+  `review.<repo>.failed`, and the worker is re-dispatched at the same tier with
+  reason `review-failed: <first claim>`, through the path a verify failure
+  takes. It counts toward `maxEscalations`.
+
+A reviewer that failed, wrote, timed out or gave no valid verdict at a head is
+not run again at that head; the next reviewer in config order may be. The
+worktree is removed after the run. Every `review-*` alarm except
+`review-stale` makes the cycle an alarm. A dry run makes no worktree, spawn,
+kill, comment or stamp; the report's Review section says what would run and
+what a finished run would post. `fleet launch <issue>` runs no review stage.
+
 ## Approval enforcement
 
 `approvalEnforcement` in `fleet.config.json` is `off` by default. While `off`,
@@ -331,6 +423,8 @@ src/scope.js        SCOPE.json from the issue body; validation; slugs and paths
 src/promote.js      pure promotion rule
 src/launch.js       worktree + scope commit + plain push + detached claude -p
 src/reap.js         liveness, timeout, pure classify()
+src/verify.js       the verify stage: one verifier run in flight per target
+src/review.js       the review stage: reviewers in fresh worktrees, REVIEWED stamps
 src/store.js        atomic state file, cycle lock
 src/report.js       report JSON, rendering, idempotent post
 src/standards.js    drafts a target's .claude/standards.json from its clone

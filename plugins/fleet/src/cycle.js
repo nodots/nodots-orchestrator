@@ -1,8 +1,9 @@
 'use strict';
 
 /*
- * One pass: lock → sync → promote → assign → reap → verify → launch → report → unlock.
- * verify runs only for targets with `verify` (src/verify.js).
+ * One pass: lock → sync → promote → assign → reap → verify → review → launch → report → unlock.
+ * verify runs only for targets with `verify` (src/verify.js); review only
+ * with `reviewers` configured, or a review still in flight (src/review.js).
  *
  * Every step reads the tracker fresh; the only local memory is the session
  * table, the dispatch history and the no-movement streak. A failure in sync
@@ -26,14 +27,17 @@ const launchMod = require('./launch');
 const reapMod = require('./reap');
 const report = require('./report');
 const verifyMod = require('./verify');
+const reviewMod = require('./review');
+const { requireReviewers } = require('./config');
 
 const EXIT = { ok: 0, labelWriteFailed: 1, usage: 64, missingBinary: 69, internal: 70, truncated: 75, latched: 78, locked: 79 };
 
 function cycleId() { return `${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')}-${crypto.randomBytes(2).toString('hex')}`; }
 
-// awaitingLab and verifying exist only for a config with a verify target, so
-// every other config's report renders as it did before the verify stage.
-function counts(issues, syncState, live, cfg, verifying = 0) {
+// awaitingLab and verifying exist only for a config with a verify target, and
+// awaitingReviewer and reviewing only for one with reviewers, so every other
+// config's report renders as it did before those stages.
+function counts(issues, syncState, live, cfg, verifying = 0, reviewing = 0) {
   const labelOf = i => (i.labels || []).find(l => l.startsWith('cell:')) || null;
   const open = issues.filter(i => String(i.state).toUpperCase() === 'OPEN');
   const n = l => open.filter(i => labelOf(i) === l).length;
@@ -41,6 +45,7 @@ function counts(issues, syncState, live, cfg, verifying = 0) {
   const inFlight = n('cell:active') + open.filter(i => labelOf(i) === 'cell:queued' && (i.labels || []).some(l => l.startsWith('worker:'))).length;
   const c = { open: open.length, queued: n('cell:queued'), active: n('cell:active'), awaitingReview: n('cell:awaiting-review'), blocked: n('cell:blocked'), merged, live: live.length, wipCap: cfg.wipCap, wipFree: Math.max(0, cfg.wipCap - inFlight) };
   if ((cfg.targets || []).some(t => t.verify)) { c.awaitingLab = n('cell:awaiting-lab'); c.verifying = verifying; }
+  if ((cfg.reviewers || []).length) { c.awaitingReviewer = n('cell:awaiting-reviewer'); c.reviewing = reviewing; }
   return c;
 }
 
@@ -49,7 +54,7 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
   const tracker = new Tracker(cfg.bins);
   const id = cycleId();
   const at = new Date().toISOString();
-  const r = { cycleId: id, at, dryRun: !apply, outcome: null, movement: [], counts: {}, alarms: [], launched: [], reaped: [], escalations: [], parked: [], promoted: [], assigned: [], held: [], verify: [], sync: null, streak: 0, latched: null };
+  const r = { cycleId: id, at, dryRun: !apply, outcome: null, movement: [], counts: {}, alarms: [], launched: [], reaped: [], escalations: [], parked: [], promoted: [], assigned: [], held: [], verify: [], review: [], sync: null, streak: 0, latched: null };
   const alarm = (code, detail, issue) => r.alarms.push({ code, detail, issue });
 
   const lock = store.lock(cfg.maxCycleMinutes * 60000);
@@ -75,6 +80,15 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       return { report: r, exit: sync.status === 75 ? EXIT.truncated : sync.status === 69 ? EXIT.missingBinary : EXIT.internal };
     }
     if (sync.failedWrites) { alarm('sync-label-write-failed', `${sync.failedWrites} label write(s) failed`); exit = EXIT.labelWriteFailed; }
+    // A target whose review policy (read by the sync from its manifest) has no
+    // reviewer to meet it is a config that fails validation: nothing runs.
+    try { requireReviewers(cfg, sync.state.reviewPolicies || {}); }
+    catch (e) {
+      if (e.code !== 'ECONFIG') throw e;
+      alarm('config-invalid', e.message);
+      r.outcome = 'alarm';
+      return { report: r, exit: EXIT.usage };
+    }
     for (const row of r.sync.changes) {
       if (row.to === 'cell:merged') r.movement.push({ package: scope.packageId((sync.state.issues.find(i => i.number === row.number) || {}).title) || `#${row.number}`, issue: row.number, artifact: { type: 'merged', ref: row.why } });
     }
@@ -144,6 +158,14 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       : { requests: [], verifying: verifyMod.inFlightCount(cfg, state), waiting: verifyMod.manualWaiting(cfg, sync), latched: false };
     reaped.requests.push(...vr.requests);
 
+    // 4c. review: one reviewer in flight per cell:awaiting-reviewer PR; a
+    // fail's re-dispatch takes the verify-failed path below. A fleet the
+    // verify stage just latched starts no reviewer either.
+    const rv = only === null && !vr.latched
+      ? reviewMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync, issues, at, alarm, r })
+      : { requests: [], reviewing: reviewMod.inFlightCount(cfg, state) };
+    reaped.requests.push(...rv.requests);
+
     // 5. launch: owned, queued, labeled packages without a session; plus relaunch/escalation requests.
     const persist = rec => { state.sessions[rec.issue] = rec; if (apply) store.save(state); };
     // A package with a branch or a PR already has a worker on it, here or on
@@ -189,12 +211,12 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
         dispatchable += 1;
         continue;
       }
-      // A verification failure sends the worker back at the same tier; it
-      // counts toward maxEscalations like any other re-dispatch.
-      if (q.next === 'verify-failed') {
+      // A verification or review failure sends the worker back at the same
+      // tier; it counts toward maxEscalations like any other re-dispatch.
+      if (q.next === 'verify-failed' || q.next === 'review-failed') {
         const escalations = Math.max(0, prior.length - 1);
         if (escalations >= cfg.maxEscalations) { alarm('escalation-cap', `${s.id} has been re-dispatched ${escalations} time(s); last: ${q.reason}. Holding.`, s.issue); continue; }
-        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt + 1, tier: s.tier, reason: q.reason, from: s, next: 'verify-failed' });
+        requests.push({ issue: iss, id: s.id, sc: d.scope, workerId: s.worker, attempt: s.attempt + 1, tier: s.tier, reason: q.reason, from: s, next: q.next });
         dispatchable += 1;
         continue;
       }
@@ -254,14 +276,15 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // A worker relaunched after vanishing is not evidence of progress, so it
     // does not hold the streak down; if it survives, the next cycle sees it live.
     const liveForStreak = reaped.live.length + r.launched.filter(l => l.pid && !l.vanished).length;
-    r.counts = counts(issues, sync.state, { length: liveAfter }, cfg, vr.verifying);
+    r.counts = counts(issues, sync.state, { length: liveAfter }, cfg, vr.verifying, rv.reviewing);
     // Faults that make the cycle an alarm when nothing moved. A WIP-cap hold
     // is not one: a full fleet with nothing else to do is exhaustion.
     const FAULT = /(-failed$|^locked$|^latched$|^escalation-cap$|^launch-|^unlaunchable$|^worker-vanished(-repeat)?$|^verify-(unreachable|refused|not-reverted|bad-sha)$)/;
-    // A verify fault is an alarm even beside movement: each one needs a look
-    // (a lab not reverted, a verifier that cannot be reached, a refused PR, a
-    // record that cannot be stamped). verify-stale is not one: the PR is queued again.
-    const VERIFY_FAULT = /^verify-(?!stale$)/;
+    // A verify or review fault is an alarm even beside movement: each one
+    // needs a look (a lab not reverted, a verifier that cannot be reached, a
+    // refused PR, a record that cannot be stamped, a reviewer that wrote,
+    // timed out or gave no verdict). A stale result is not one: the PR waits again.
+    const VERIFY_FAULT = /^(verify|review)-(?!stale$)/;
     if (r.alarms.some(a => VERIFY_FAULT.test(a.code))) r.outcome = 'alarm';
     else if (r.alarms.some(a => FAULT.test(a.code)) && r.movement.length === 0) r.outcome = 'alarm';
     else if (r.movement.length) r.outcome = 'movement';
@@ -271,9 +294,10 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
 
     if (apply) {
       // A verifier run in flight is live work: waiting on it is not idleness.
-      // So is a manual target's queue: its verifier is outside fleet.
+      // So is a manual target's queue: its verifier is outside fleet. So is a
+      // reviewer in flight.
       if (r.outcome === 'movement') state.streak = 0;
-      else if (liveForStreak === 0 && vr.verifying === 0 && vr.waiting === 0) state.streak += 1;
+      else if (liveForStreak === 0 && vr.verifying === 0 && vr.waiting === 0 && rv.reviewing === 0) state.streak += 1;
       if (state.streak >= cfg.noMovementLimit && !state.latched) {
         const parked = Object.values(state.sessions).filter(s => s.status === 'parked').map(s => `${s.id} (#${s.issue})`);
         state.latched = { at, streak: state.streak, reason: `${state.streak} consecutive cycles without movement${parked.length ? `; parked and waiting on a decision: ${parked.join(', ')}` : ''}` };
