@@ -21,6 +21,7 @@ Since agentic-work-packages 1.5.0 and fleet 0.3.0:
 
 - **Standards manifest (program S).** A repository declares its check commands and rules in `.claude/standards.json` (#132). A SessionStart hook prints the repository's preamble (#131). The worker contract and the cell-worker agent read the manifest (#133). `fleet standards init` drafts a manifest (#144). Launch requires a valid manifest and gives the worker its checks and lane rules (#149). The eval runner's `lint` check runs the manifest (#136). Gates: SV0 (#135), SV1 (#150).
 - **Operator isolation (program S, S2.1).** Workers run with `--setting-sources project,local` (`isolateWorkers`, default on). Launch refuses with `hooks-missing` or `plugin-missing` when the target's `.claude/settings.json` does not provide the worker hooks or a plugin the manifest declares (#168).
+- **Instruction-file guard (program S, S2.2).** With `isolateWorkers` on, launch refuses with `instructions-leak` when an ancestor of the worktree holds `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md`. Claude Code loads those files from each ancestor of the working directory, so a worktree under the home directory would read the operator's `~/.claude/CLAUDE.md` as a project file (SV2 run 1, #129). The dry run and `fleet doctor` report the same check on `worktreesDir` (#170).
 - **Verify queue (program K).** `targets[].verify` and `[VERIFY]` PRs (#106), `cell:awaiting-lab` (#104), the verify stage: one run in flight, stamp or re-dispatch (#112), `verify.kind: manual` (#115).
 - **fleet daemon.** Cycles on an interval and on worker exit, for several programs (#111).
 - **Fleet fixes.** A cycle acts only on its epic's packages (#110, #95). Adoption commits and pushes the lane (#109). A worker that dies without an exit file is an alarm (#114). `sync-cells` matches a PR title by the bounded package ID (#142).
@@ -29,10 +30,10 @@ Since agentic-work-packages 1.5.0 and fleet 0.3.0:
 
 ### Known issues
 
-- **Isolated workers read the operator's user instruction file** when the worktree is under the home directory. Claude Code loads `CLAUDE.md` and `.claude/CLAUDE.md` from each ancestor of the working directory, so `~/.claude/CLAUDE.md` loads as a project file (SV2 run 1, #129). Fix: S2.2 (#169). Workaround: set `worktreesDir` to a directory outside the home directory.
+- **`worktreesDir` must be outside the home directory** when `isolateWorkers` is on. A fleet config with `worktreesDir` under the home directory is now refused with `instructions-leak` (S2.2, #170). Move it, for example to `/srv/fleet-worktrees` on Linux or `/Users/Shared/fleet-worktrees` on macOS.
 - **SV2 (#129) has not passed.** The scope hook under `--setting-sources project,local` has not been verified on a real machine.
 - **A target needs its own `.claude/settings.json`.** Under isolation, allow rules and plugins from user settings do not apply. Without project allow rules for `gh` and `git`, a worker cannot read its issue, commit or open a PR, and parks with a `BLOCKER.md`.
-- **Fleet fixture tests fail under host load.** Several suites read the claude stub's argv file before the detached worker writes it. CI passes.
+- **Four fleet fixture suites fail on macOS** (`adoption`, `standards-isolation`, `standards-launch`, `sv1-standards-gate`). Each failing assertion reads the claude stub's argv file right after the detached launch. CI on Linux passes.
 
 ### Install (Windows)
 
