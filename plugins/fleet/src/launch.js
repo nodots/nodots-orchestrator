@@ -171,6 +171,31 @@ function checkIsolation(cfg, target, manifest) {
   return { ok: true };
 }
 
+// Claude Code loads CLAUDE.md and .claude/CLAUDE.md from every ancestor of the
+// working directory as project instructions, and --setting-sources does not
+// keep them out: a worktree under $HOME loads the operator's
+// ~/.claude/CLAUDE.md. Isolation holds only when no ancestor of the worktree
+// holds an instruction file.
+const INSTRUCTION_FILES = ['CLAUDE.md', 'CLAUDE.local.md', path.join('.claude', 'CLAUDE.md')];
+
+// instructionFilesFrom(dir) -> the instruction files in dir and each of its
+// ancestors to /, nearest first.
+function instructionFilesFrom(dir) {
+  const found = [];
+  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+    for (const f of INSTRUCTION_FILES) if (fs.existsSync(path.join(d, f))) found.push(path.join(d, f));
+    if (path.dirname(d) === d) return found;
+  }
+}
+
+// checkInstructionsLeak -> { ok } | { ok:false, stage, error }
+// worktree: the path the launch will use; the walk starts at its parent.
+function checkInstructionsLeak(worktree) {
+  const found = instructionFilesFrom(path.dirname(worktree));
+  if (!found.length) return { ok: true };
+  return { ok: false, stage: 'instructions-leak', error: `${worktree} has ${found.join(', ')} in an ancestor directory, and Claude Code loads an instruction file from every ancestor of the working directory, so an isolated worker (--setting-sources project,local) would read ${found.length > 1 ? 'them' : 'it'}. Set worktreesDir in fleet.config.json to a directory with no CLAUDE.md, CLAUDE.local.md or .claude/CLAUDE.md in it or any ancestor, or set isolateWorkers to false` };
+}
+
 function standardsRecord(manifest, sc) {
   if (!manifest) return 'off';
   return { checks: manifest.checks.map(c => c.name), rules: manifest.rules.length, applicable: applicableRules(manifest, sc.allowedPaths).length };
@@ -361,6 +386,8 @@ function launch(cfg, tracker, store, req, persist) {
   if (cfg.isolateWorkers) {
     const iso = checkIsolation(cfg, target, branchStandards);
     if (!iso.ok) return iso;
+    const leak = checkInstructionsLeak(scope.worktreePath(cfg.worktreesDir, target.repo, req.id));
+    if (!leak.ok) return leak;
   }
 
   if (req.dryRun) {
@@ -417,4 +444,4 @@ function localWorktreeOnBranch(cfg, target, id, branch) {
   return r.status === 0 && r.stdout.trim() === branch ? wt : null;
 }
 
-module.exports = { localWorktreeOnBranch, launch, prepareWorktree, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS, pathsOverlap, applicableRules };
+module.exports = { localWorktreeOnBranch, launch, prepareWorktree, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS, pathsOverlap, applicableRules, instructionFilesFrom };

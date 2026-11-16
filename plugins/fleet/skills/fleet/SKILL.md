@@ -33,7 +33,10 @@ coordinator session, so resolve the path as above or from a checkout of
 `fleet.config.json` lives with the program (see `fleet.config.example.json` in
 this plugin). `fleet doctor` checks binaries, the plugin scripts, labels, the
 epic, and that each target repo has the scope and handoff hooks and the worker
-contract committed.
+contract committed. With `isolateWorkers` on, it also checks that no
+`CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md` sits in `worktreesDir` or
+an ancestor of it: `worktreesDir` must be outside `$HOME`, or any other
+directory with such an ancestor.
 
 A coordinator session runs cycles on an interval, for example with `/loop`,
 and reads each report. The runtime does the mechanical part; the coordinator
@@ -108,8 +111,16 @@ Every cycle ends in exactly one outcome (the cycle contract):
   - `launch-plugin-missing`: with `isolateWorkers` on, the standards manifest
     declares a plugin in `plugins[]` that the same settings file does not
     enable as `enabledPlugins["<name>@<marketplace>"]: true`; the detail names
-    it. Enable it there. `"isolateWorkers": false` in `fleet.config.json`
-    turns off both checks and the isolation with them.
+    it. Enable it there.
+  - `launch-instructions-leak`: with `isolateWorkers` on, an ancestor of the
+    worktree path holds `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md`;
+    the detail names each file. Claude Code loads an instruction file from
+    every ancestor of the working directory, so a worktree under `$HOME` would
+    read your `~/.claude/CLAUDE.md` despite the isolation. Set `worktreesDir`
+    to a directory with no such file in it or any ancestor, outside `$HOME`.
+    Nothing was launched; the dry run and `fleet doctor` report the same check.
+    `"isolateWorkers": false` in `fleet.config.json` turns off all three
+    checks and the isolation with them.
   - `escalation-cap`: a package failed `maxEscalations` times. Read its log
     under `<stateDir>/logs/`, decide whether to split it, widen the plan, or
     re-cut it as a new package. The runtime holds it until you act.
