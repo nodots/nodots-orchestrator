@@ -79,6 +79,8 @@ assert_eq "20 22" "$(alarms "$OUT" launch-ci-disabled)" "1: the disabled-CI targ
 assert_eq "21" "$(alarms "$OUT" unlaunchable)" "1: the cheapest package with no verifiedBy is refused before the CI check"
 assert_empty "$(launched "$OUT")" "1: the cycle reports nothing launched"
 [ -d "$TMP/worktrees" ] && _fail "1: no worktree is created" "$(ls -R "$TMP/worktrees")" || _pass "1: no worktree is created"
+# Read at once: every launch was refused before the spawn, so no detached stub
+# exists to write here later.
 assert_empty "$(started)" "1: no worker process was started"
 assert_empty "$(pushed)" "1: no branch was pushed"
 
@@ -90,6 +92,7 @@ assert_eq "21" "$(alarms "$OUT" unlaunchable)" "2: the cheapest package with no 
 assert_contains "$(field "$OUT" "r.alarms.filter(a=>a.issue===21).map(a=>a.detail).join(' | ')")" "verifiedBy" "2: the refusal names verifiedBy"
 assert_empty "$(alarms "$OUT" launch-ci-disabled)" "2: with CI enabled, no CI refusal is raised"
 assert_eq "20 22" "$(launched "$OUT")" "2: the default-tier and the verified cheapest packages launch"
+wait_for_count "$TMP/claude-log" '*.argv' 2
 assert_eq "G9.1 G9.3" "$(started)" "2: workers started for exactly those two packages"
 assert_not_contains "$(pushed)" "g9-2" "2: no branch was pushed for the refused package"
 

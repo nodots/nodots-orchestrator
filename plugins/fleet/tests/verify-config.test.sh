@@ -98,6 +98,8 @@ write_config "$EXT" "$GOOD"
 OUT=$(fleet cycle --apply --json 2>/dev/null)
 LAUNCHED=$(printf '%s' "$OUT" | node -e "const r=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(r.launched.map(l=>l.issue).sort().join(' '))")
 assert_eq "10 11" "$LAUNCHED" "C: both packages launch"
+wait_for_file "$TMP/claude-log/V1.1.*.argv"
+wait_for_file "$TMP/claude-log/V1.2.*.argv"
 LAB=$(cat "$TMP"/claude-log/V1.1.*.argv 2>/dev/null)
 ACT=$(cat "$TMP"/claude-log/V1.2.*.argv 2>/dev/null)
 assert_nonempty "$LAB" "C: the verify target's worker was started"

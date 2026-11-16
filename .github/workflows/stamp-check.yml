@@ -24,20 +24,36 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Collect title, head sha and comments
+      - name: Collect title, head sha, comments and the base branch's manifest
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         run: |
-          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json title,headRefOid > "$RUNNER_TEMP/view.json"
+          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json title,headRefOid,baseRefName > "$RUNNER_TEMP/view.json"
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate --jq '.[].body | @json' > "$RUNNER_TEMP/comments.ndjson"
+          # The review policy comes from the base branch, so a PR cannot loosen
+          # its own. A 404 is no manifest; any other error stops the check.
+          BASE_REF=$(jq -r '.baseRefName | @uri' "$RUNNER_TEMP/view.json")
+          MANIFEST="$RUNNER_TEMP/manifest.json"
+          if gh api -H 'Accept: application/vnd.github.raw+json' \
+              "repos/$GITHUB_REPOSITORY/contents/.claude/standards.json?ref=$BASE_REF" \
+              > "$MANIFEST" 2> "$RUNNER_TEMP/manifest.err"; then
+            :
+          elif grep -q 'HTTP 404' "$RUNNER_TEMP/manifest.err"; then
+            MANIFEST=""
+          else
+            echo "stamp-check: could not read .claude/standards.json at $BASE_REF:" >&2
+            cat "$RUNNER_TEMP/manifest.err" >&2
+            exit 1
+          fi
           node -e '
             const fs = require("fs");
-            const [view, comments, out] = process.argv.slice(1);
+            const [view, comments, manifest, out] = process.argv.slice(1);
             const v = JSON.parse(fs.readFileSync(view, "utf8"));
             const c = fs.readFileSync(comments, "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
-            fs.writeFileSync(out, JSON.stringify({ title: v.title, headSha: v.headRefOid, comments: c }));
-          ' "$RUNNER_TEMP/view.json" "$RUNNER_TEMP/comments.ndjson" "$RUNNER_TEMP/pr.json"
+            const m = manifest ? fs.readFileSync(manifest, "utf8") : null;
+            fs.writeFileSync(out, JSON.stringify({ title: v.title, headSha: v.headRefOid, comments: c, manifest: m }));
+          ' "$RUNNER_TEMP/view.json" "$RUNNER_TEMP/comments.ndjson" "$MANIFEST" "$RUNNER_TEMP/pr.json"
 
       - name: Check the stamp
         run: node scripts/check-stamp.js "$RUNNER_TEMP/pr.json"

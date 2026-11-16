@@ -827,4 +827,123 @@ OUT=$(run_policy 500); EXIT=$?
 assert_ne 0 "$EXIT" "a manifest read that fails other than 404 fails the run"
 assert_contains "$OUT" "HTTP 500" "the failure carries what gh said"
 
+# --- a merge into an integration branch is a merge (C0.3) -------------------
+# Fleet merges a package PR into the epic's integration branch, and a person
+# merges that branch into the default branch later. The package is merged at
+# the first level: it reads cell:merged, its dependents promote, and the reason
+# says where it landed. A merge into the default branch keeps the plain reason.
+cat > "$TMP/state-integration.json" <<JSON
+{
+  "repo": "example/host",
+  "targets": ["example/code"],
+  "defaultBranches": { "example/code": "development" },
+  "issues": [
+    { "number": 701, "title": "C1.1 into the integration branch", "label": "cell:awaiting-review", "repo": "example/code",
+      "branch": "feat/c1-1", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 801, "title": "[READY]: C1.1", "state": "MERGED", "base": "collection/epic-9",
+              "headSha": "$SHA_HEAD", "comments": [] } },
+    { "number": 702, "title": "C1.2 into the default branch", "label": "cell:awaiting-review", "repo": "example/code",
+      "branch": "feat/c1-2", "branchExists": true, "blockerOnBranch": false,
+      "pr": { "number": 802, "title": "[READY]: C1.2", "state": "MERGED", "base": "development",
+              "headSha": "$SHA_HEAD", "comments": [] } }
+  ]
+}
+JSON
+OUT_I=$(bash "$SCRIPT" --state "$TMP/state-integration.json" 2>"$TMP/err-integration"); EXIT_I=$?
+assert_eq 0 "$EXIT_I" "an integration-branch fixture run exits 0"
+irow() { printf '%s' "$OUT_I" | grep -E "^#$1 " || true; }
+case "$(irow 701)" in
+  "#701  cell:awaiting-review -> cell:merged   (PR #801 merged (into collection/epic-9))") _pass "a PR merged into a non-default base is cell:merged, the reason naming the base" ;;
+  *) _fail "a PR merged into a non-default base is cell:merged, the reason naming the base" "got [$(irow 701)]" ;;
+esac
+case "$(irow 702)" in
+  "#702  cell:awaiting-review -> cell:merged   (PR #802 merged)") _pass "a PR merged into the default branch keeps the plain reason" ;;
+  *) _fail "a PR merged into the default branch keeps the plain reason" "got [$(irow 702)]" ;;
+esac
+
+# The suffix needs the repo's default branch. A state that records a base but
+# not the default branch it is compared with fails, rather than guessing.
+node -e '
+  const s = require(process.argv[1]); delete s.defaultBranches;
+  require("fs").writeFileSync(process.argv[2], JSON.stringify(s));
+' "$TMP/state-integration.json" "$TMP/state-integration-nodefault.json"
+OUT=$(bash "$SCRIPT" --state "$TMP/state-integration-nodefault.json" 2>&1); EXIT=$?
+assert_ne 0 "$EXIT" "a merged base with no recorded default branch fails the run"
+assert_contains "$OUT" "example/code" "the failure names the repo whose default branch is missing"
+assert_not_contains "$OUT" "label(s) would change" "a missing default branch never reports a result"
+
+# promote.js is not changed: its mergedBranches already counts a merge into an
+# integration branch, so the package's dependents promote. Pinned here.
+PROMOTE_JS="$(cd ../../../../../fleet/src && pwd -P)/promote.js"
+assert_file "$PROMOTE_JS" "promote.js exists in the fleet plugin"
+out=$(node -e '
+  const { mergedBranches } = require(process.argv[1]);
+  const s = require(process.argv[2]);
+  process.stdout.write([...mergedBranches(s)].sort().join(","));
+' "$PROMOTE_JS" "$TMP/state-integration.json" 2>&1)
+assert_eq "feat/c1-1,feat/c1-2" "$out" "mergedBranches counts a merge into the integration branch"
+
+# Through the collector: the PR's base is collected, and the default branch is
+# read once per repo with a merged PR, from the repo itself.
+cat > "$STUB/gh" <<'GH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_CALLS"
+case "$1 $2" in
+  "issue list")
+    cat <<'JSON'
+[
+  {"number": 711, "title": "C2.1 into integration", "state": "OPEN",
+   "body": "**Part of** #710 · **Repo:** `example/host`", "labels": [{"name": "cell:awaiting-review"}]},
+  {"number": 712, "title": "C2.2 into default", "state": "CLOSED",
+   "body": "**Part of** #710 · **Repo:** `example/host`", "labels": [{"name": "cell:awaiting-review"}]}
+]
+JSON
+    ;;
+  "pr list")
+    cat <<'JSON'
+[
+  {"number": 721, "title": "[READY]: C2.1", "body": "Closes #711", "state": "MERGED", "baseRefName": "collection/epic-710",
+   "headRefName": "feat/c2-1", "headRefOid": "1111111111111111111111111111111111111111"},
+  {"number": 722, "title": "[READY]: C2.2", "body": "Closes #712", "state": "MERGED", "baseRefName": "development",
+   "headRefName": "feat/c2-2", "headRefOid": "2222222222222222222222222222222222222222"}
+]
+JSON
+    ;;
+  "api "*)
+    case "$*" in
+      *"/branches"*) printf '%s\n' development collection/epic-710 ;;
+      *"BLOCKER.md"*) exit 1 ;;
+      *".default_branch"*)
+        [ "$STUB_DEFAULT" = "fail" ] && { echo 'gh: Server Error (HTTP 500)' >&2; exit 1; }
+        printf '%s\n' "$STUB_DEFAULT" ;;
+      *) : ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+GH
+chmod +x "$STUB/gh"
+run_integration() { : > "$STUB_CALLS"; GH_BIN="$STUB/gh" STUB_CALLS="$STUB_CALLS" STUB_DEFAULT="$1" \
+  bash "$SCRIPT" --repo example/host --emit-state "$TMP/emitted-integration.json" 2>&1; }
+
+OUT=$(run_integration development); EXIT=$?
+assert_eq 0 "$EXIT" "the collector derives an integration-branch merge and exits 0"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#711 ' || true)" "cell:merged   (PR #721 merged (into collection/epic-710))" "the collector reports the merge into the integration branch"
+assert_contains "$(printf '%s' "$OUT" | grep -E '^#712 ' || true)" "cell:merged   (PR #722 merged)" "the collector keeps the plain reason for the default branch"
+calls=$(cat "$STUB_CALLS")
+assert_contains "$(printf '%s' "$calls" | grep '^pr list' || true)" "baseRefName" "the PR query collects each PR's base"
+assert_eq 1 "$(printf '%s\n' "$calls" | grep -c 'default_branch')" "the default branch is read once per repo"
+assert_eq "collection/epic-710 development" \
+  "$(node -e 'const s=require(process.argv[1]);process.stdout.write(s.issues[0].pr.base+" "+s.defaultBranches["example/host"])' "$TMP/emitted-integration.json")" \
+  "--emit-state records the PR base and the repo's default branch"
+
+OUT=$(run_integration fail); EXIT=$?
+assert_ne 0 "$EXIT" "a default-branch read that fails fails the run"
+assert_contains "$OUT" "HTTP 500" "the failure carries what gh said"
+assert_not_contains "$OUT" "label(s) would change" "a failed default-branch read never reports a result"
+
+OUT=$(run_integration ''); EXIT=$?
+assert_ne 0 "$EXIT" "an empty default branch fails the run"
+assert_contains "$OUT" "example/host" "the failure names the repo"
+
 finish

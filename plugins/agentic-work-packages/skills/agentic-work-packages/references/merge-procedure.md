@@ -20,6 +20,44 @@ A feature that spans repos has an additional procedure: see `cross-repo.md`.
 The rule that governs it is that upstream repos merge first and downstream
 repos last.
 
+## The two-level merge
+
+A target may name an integration branch for an epic, such as
+`collection/<epic>`. The merge then has two levels, each with its own merger:
+
+| Level | From | Into | Who merges |
+|---|---|---|---|
+| 1 | a package PR | the integration branch | the coordinator, on green; fleet does it when the target sets `autoMerge` |
+| 2 | the integration branch | `develop`/`development`, then `main` | a person, by PR |
+
+A package is done at level 1. `sync-cells.sh` derives `cell:merged` from a PR
+merged into any base. When the base is not the repo's default branch, it ends
+the reason with ` (into <base>)`, so the report shows where the package landed.
+Its dependents promote on the same merge: a `dependsOn` entry is met when the
+branch's PR merged, whatever the base.
+
+**The protected list.** These branches are never merged into at level 1:
+`main`, `master`, `develop`, `development`, the target's default branch, and
+every name in the config's `protectedBranches`. An `integrationBranch` on the
+list fails config validation, so a level-1 merge can never land on a level-2
+branch.
+
+**Why `--match-head-commit`.** The coordinator merges with
+`gh pr merge <n> --merge --match-head-commit <headRefOid>`. The merge condition
+is judged at one head sha: the `VERIFIED` stamp, the `REVIEWED` stamps and the
+checks all name it. A push between the check and the merge moves the head, and
+without the flag GitHub would merge a tree no one verified. With it, GitHub
+refuses the merge and the next cycle judges the new head. A merge commit, not a
+squash, keeps each package visible in the integration branch's history.
+
+**The person's merge.** When the epic's packages have landed, a person opens a
+PR from `collection/<epic>` into `development` (or `develop`) and reviews it as
+a whole: the combined diff, and the checks on the combined tree. Each package
+was reviewed alone; this review is the one that sees them together. The merge
+into `main` follows the repo's promotion path in §Branch flow per repo. The PR
+body lists `Closes #N` for each package, and the package issues close at this
+merge, not at level 1 (`coordination.md` §Closing package issues).
+
 ## Pre-merge checklist
 
 Before merging any package:
