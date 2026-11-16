@@ -16,7 +16,9 @@
       "Bash(git fetch:*)",
       "Bash(bash scripts/*)",
       "Bash(bash plugins/*)",
-      "Bash(node:*)"
+      "Bash(node plugins/*)",
+      "Bash(node scripts/*)",
+      "Bash(node evals/*)"
     ]
   },
   "hooks": {
