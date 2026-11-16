@@ -33,7 +33,9 @@ coordinator session, so resolve the path as above or from a checkout of
 `fleet.config.json` lives with the program (see `fleet.config.example.json` in
 this plugin). `fleet doctor` checks binaries, the plugin scripts, labels, the
 epic, and that each target repo has the scope and handoff hooks and the worker
-contract committed. With `isolateWorkers` on, it also checks that no
+contract committed. It prints, per target, the identity fleet commits under:
+the `user.name` and `user.email` configured in that target's clone, which the
+scope commit and its re-cut carry as author and committer. With `isolateWorkers` on, it also checks that no
 `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md` sits in `worktreesDir` or
 an ancestor of it: `worktreesDir` must be outside `$HOME`, or any other
 directory with such an ancestor.
@@ -86,6 +88,14 @@ Every cycle ends in exactly one outcome (the cycle contract):
     (the next cycle retitles it if you do not); it then leaves the queue.
   - `launch-ci-check-failed`: the CI state could not be read (auth, network,
     API error). The launch is refused, never assumed healthy.
+  - `launch-identity-missing`: the target clone has no `user.name` or no
+    `user.email` configured; the detail names the clone and the missing value.
+    Fleet commits the scope under the clone's own identity and never makes one
+    up. Run `git -C <localPath> config user.name "<name>"` and
+    `git -C <localPath> config user.email "<email>"` with the person whose
+    commits these are. Nothing was launched; the dry run and `fleet doctor`
+    report the same check. `launch-identity-unreadable` means git could not
+    read the config at all; the detail says why.
   - `launch-standards-missing`: the target's default branch (as fetched into
     its local clone, `origin/<defaultBranch>`) has no standards manifest at
     `targets[].standards.manifest` (default `.claude/standards.json`). Publish

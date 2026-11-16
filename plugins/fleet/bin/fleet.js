@@ -9,7 +9,7 @@
  *   fleet reap   [--apply] [--json]                     classify finished sessions only
  *   fleet status [--json]                               local state and live sessions, read-only
  *   fleet resume --reason <text>                        clear the stop latch
- *   fleet doctor                                        binaries, plugin, labels, contract, hooks, worktreesDir
+ *   fleet doctor                                        binaries, plugin, labels, contract, hooks, worktreesDir, identity
  *   fleet daemon --config <a.json> [--config <b.json> ...] [--interval <minutes>]
  *                                                       cycle --apply per config on an interval and on worker exit
  *   fleet standards init --target <owner/repo> [--write] draft the target's .claude/standards.json and validate it
@@ -209,6 +209,9 @@ function main() {
       check(hooks, `scope + handoff hooks committed in ${t.repo}`, hooks ? settings : `${settings} lacks enforce-scope/require-handoff; a cloud worker sees only committed hooks`);
       const tr = trust.isTrusted(cfg.bins.git, t.localPath);
       check(tr.trusted, `workspace trusted for -p permission rules: ${t.repo}`, tr.trusted ? tr.key : `not trusted; ${trust.howToTrust(tr)}`);
+      // The launch precondition identity-missing: whose name the scope commit carries.
+      const id = require('../src/launch').readIdentity(cfg.bins.git, t.localPath);
+      check(id.ok, `commit identity for ${t.repo}`, id.ok ? `${id.name} <${id.email}>` : id.error);
       const contract = path.join(t.localPath, '.claude', 'worker-contract.md');
       check(fs.existsSync(contract), `worker contract installed in ${t.repo}`, contract);
     }
