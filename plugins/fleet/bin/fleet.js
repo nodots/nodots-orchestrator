@@ -9,7 +9,7 @@
  *   fleet reap   [--apply] [--json]                     classify finished sessions only
  *   fleet status [--json]                               local state and live sessions, read-only
  *   fleet resume --reason <text>                        clear the stop latch
- *   fleet doctor                                        binaries, plugin, labels, contract, hooks, worktreesDir
+ *   fleet doctor                                        binaries, plugin, labels, contract, hooks, worktreesDir, base ref
  *   fleet daemon --config <a.json> [--config <b.json> ...] [--interval <minutes>]
  *                                                       cycle --apply per config on an interval and on worker exit
  *   fleet standards init --target <owner/repo> [--write] draft the target's .claude/standards.json and validate it
@@ -203,6 +203,13 @@ function main() {
     } else check(true, `no instruction file in worktreesDir or an ancestor: ${cfg.worktreesDir}`, 'not checked, isolateWorkers is false');
     for (const t of cfg.targets) {
       check(fs.existsSync(t.localPath), `clone ${t.repo}`, t.localPath);
+      // The ref workers are cut from and open PRs against (launch.js baseRef).
+      const launchMod = require('../src/launch');
+      const base = launchMod.baseRef(t);
+      const be = launchMod.baseRefExists(cfg, t);
+      check(be.ok && be.exists, `base ref ${t.repo}: ${base}`, !be.ok ? `cannot be read: ${be.error}`
+        : be.exists ? `exists${t.integrationBranch ? ` (integrationBranch; PRs open against ${t.integrationBranch})` : ''}`
+        : `missing${t.integrationBranch ? `; launch refuses integration-branch-missing. Create it by running ${launchMod.createIntegrationCommand(t)} in ${t.localPath}` : `; fetch origin in ${t.localPath}`}`);
       const settings = path.join(t.localPath, '.claude', 'settings.json');
       let hooks = false;
       try { const s = JSON.parse(fs.readFileSync(settings, 'utf8')); hooks = JSON.stringify(s).includes('enforce-scope') && JSON.stringify(s).includes('require-handoff'); } catch { /* absent */ }

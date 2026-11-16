@@ -36,7 +36,18 @@ epic, and that each target repo has the scope and handoff hooks and the worker
 contract committed. With `isolateWorkers` on, it also checks that no
 `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md` sits in `worktreesDir` or
 an ancestor of it: `worktreesDir` must be outside `$HOME`, or any other
-directory with such an ancestor.
+directory with such an ancestor. For each target it prints the base ref and
+whether the clone has it.
+
+The base-ref rule: a target's base ref is `origin/<integrationBranch>` when
+`targets[].integrationBranch` is set, else `origin/<defaultBranch>`. Launch
+reads the standards manifest and `.claude/settings.json` from it, cuts each
+worker branch from it, and tells the worker to open its PR against that
+branch, so expect those PRs to target the integration branch, not the default
+one. `integrationBranch` may not be protected: `main`, `master`, `develop`,
+`development`, the target's `defaultBranch`, or a name in the top-level
+`protectedBranches` array. `targets[].autoMerge` (default `false`) requires
+`integrationBranch`. Either violation is a config error naming the key.
 
 A coordinator session runs cycles on an interval, for example with `/loop`,
 and reads each report. The runtime does the mechanical part; the coordinator
@@ -86,8 +97,14 @@ Every cycle ends in exactly one outcome (the cycle contract):
     (the next cycle retitles it if you do not); it then leaves the queue.
   - `launch-ci-check-failed`: the CI state could not be read (auth, network,
     API error). The launch is refused, never assumed healthy.
-  - `launch-standards-missing`: the target's default branch (as fetched into
-    its local clone, `origin/<defaultBranch>`) has no standards manifest at
+  - `launch-integration-branch-missing`: the target names an
+    `integrationBranch` its local clone has no `origin/` ref for. The detail
+    names the branch and the command that creates it from the default branch,
+    run in the clone: `git push origin <defaultBranch>:<integrationBranch>`.
+    Create it, or remove the key; nothing was launched for that target.
+  - `launch-standards-missing`: the target's base ref (as fetched into its
+    local clone: `origin/<integrationBranch>`, else `origin/<defaultBranch>`)
+    has no standards manifest at
     `targets[].standards.manifest` (default `.claude/standards.json`). Publish
     one on that branch; nothing was launched for that target. Setting
     `"standards": "off"` on the target launches without one, and every
@@ -101,7 +118,7 @@ Every cycle ends in exactly one outcome (the cycle contract):
     or an adopted branch carries another); the branch is then pushed but no
     worker started. Fix the manifest on the default branch.
   - `launch-hooks-missing`: with `isolateWorkers` on (the default), the
-    target's `.claude/settings.json` on `origin/<defaultBranch>` does not
+    target's `.claude/settings.json` on its base ref does not
     provide `enforce-scope` or `require-handoff`; the detail names which, or
     says the file is absent, unreadable or not JSON. An isolated worker loads
     no plugin enabled only in your user settings, so those hooks would not
