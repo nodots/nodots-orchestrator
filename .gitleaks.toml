@@ -1,0 +1,14 @@
+# gitleaks config for scripts/check-secrets.sh: gitleaks' default rules, nothing removed.
+title = "nodots-orchestrator"
+
+[extend]
+useDefault = true
+
+# Allowlist: none. The full-history scan at e17cbd6 found 0 findings, and the
+# fixture tests build their fake keys at runtime from fragments, so no committed
+# file holds a fake key on purpose. A fixture that must commit one gets its own
+# entry naming the file and the reason, for example:
+#
+# [[allowlists]]
+# description = "scripts/tests/example.test.sh: fake key the test asserts is caught"
+# paths = ['''^scripts/tests/example\.test\.sh$''']

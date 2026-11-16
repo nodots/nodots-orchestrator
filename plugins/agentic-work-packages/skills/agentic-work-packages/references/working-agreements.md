@@ -179,6 +179,19 @@ these, and its acceptance criteria must name the round-trip test explicitly.
   developer machines pass on a hand-refreshed tree. A lock-only refresh cannot fix
   this.
 
+## Two secret checks, two scopes
+
+`scripts/check-credentials.sh` is the fast local check: it pattern-matches the
+files changed against `origin/development`, including staged, unstaged and
+untracked edits, for private-key headers and common token prefixes, and it runs
+inside `bash scripts/test.sh`. It reads only the current content of those files,
+so a secret committed and then deleted passes it. `scripts/check-secrets.sh
+<base> <head>` closes that gap: CI runs it on every pull request, and it runs
+gitleaks, pinned to one version and verified by SHA-256, over each commit in the
+PR's range with the rules in `.gitleaks.toml`. Both name the file and never the
+secret. Neither catches a secret with no rule and too little entropy to look
+like one.
+
 ## Deploy verification means exercising the feature
 
 Artifacts are not evidence. Image digests, health endpoints, bundle hashes and a
