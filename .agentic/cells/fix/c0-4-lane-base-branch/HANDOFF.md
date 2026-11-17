@@ -1,7 +1,8 @@
 # HANDOFF: C0.4 — the scope hooks measure a lane from its baseBranch
 
-Stopped on `BLOCKER.md` next to this file: the `.claude/hooks/` copies could not
-be written from the worker session. Everything else is done.
+The worker stopped on a BLOCKER.md: the `.claude/hooks/` copies could not be
+written from the worker session. The coordinator synced them and removed the
+BLOCKER (decision C0.4-copies on #189).
 
 ## Done
 - Failing tests first. Against the pre-change tree: `require-handoff.test.sh`
