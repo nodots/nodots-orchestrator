@@ -1,0 +1,31 @@
+{
+  "feature": "e0-2-run-checks",
+  "project": "nodots-orchestrator",
+  "branch": "feat/e0-2-run-checks",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/run-checks.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/run-checks.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/fixtures/run-checks/**"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/check-standards.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/**",
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "plugins/fleet/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".claude/**",
+    ".github/**",
+    "scripts/**",
+    "docs/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one new script with no dependencies, one fixture test",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
