@@ -1,0 +1,11 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": ".claude/settings.json: not valid JSON: Unexpected end of JSON input",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [],
+    "plugins": [{ "name": "example-plugin", "marketplace": "example" }]
+  },
+  "settings": ""
+}

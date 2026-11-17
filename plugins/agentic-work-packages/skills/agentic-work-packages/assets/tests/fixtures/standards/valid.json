@@ -20,5 +20,6 @@
     ],
     "preamble": ".claude/standards-preamble.md",
     "plugins": [{ "name": "example-plugin", "marketplace": "example.market_1" }]
-  }
+  },
+  "settings": { "enabledPlugins": { "example-plugin@example.market_1": true } }
 }

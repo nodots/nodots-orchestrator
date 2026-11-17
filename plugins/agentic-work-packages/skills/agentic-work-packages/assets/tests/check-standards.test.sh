@@ -5,9 +5,12 @@
 #   files     the repo's tracked file list
 #   manifest  the .claude/standards.json to validate
 #   expect    (invalid-* and warn-*) the defect or warning stderr must carry
+#   settings  (optional) the .claude/settings.json to track: a string is written
+#             as-is, anything else as JSON. Absent: no settings file.
 #
 # Every fixture is materialized as a throwaway git repo — the listed files are
-# created and `git add`ed, the manifest is written to .claude/standards.json —
+# created and `git add`ed, the manifest is written to .claude/standards.json,
+# and `settings`, when present, to .claude/settings.json —
 # and the CLI is run against it, so the file list comes from `git ls-files`
 # exactly as it does for a real target.
 set -uo pipefail
@@ -47,6 +50,10 @@ materialize() {
     }
     fs.mkdirSync(path.join(root, ".claude"), { recursive: true });
     fs.writeFileSync(path.join(root, ".claude/standards.json"), JSON.stringify(d.manifest, null, 2) + "\n");
+    if (d.settings !== undefined) {
+      const s = typeof d.settings === "string" ? d.settings : JSON.stringify(d.settings, null, 2) + "\n";
+      fs.writeFileSync(path.join(root, ".claude/settings.json"), s);
+    }
   ' "$fx" "$dir"
   git_q -C "$dir" add -A
 }
@@ -165,7 +172,86 @@ for fx in "$FIX"/invalid-*.json; do
   assert_eq "standards: $MANIFEST: $(field "$fx" 'd.expect')" "$err" "$name: stderr is exactly its defect, one line"
   assert_empty "$(cat "$TMP/$name.out")" "$name: --json prints nothing on failure"
 done
-assert_eq 14 "$n_invalid" "all fourteen invalid fixtures were found (unknown key at four levels)"
+assert_eq 19 "$n_invalid" "all nineteen invalid fixtures were found (unknown key at four levels, five plugin enablement)"
+
+# --- declared plugins must be enabled in tracked .claude/settings.json --------
+fx="$FIX/valid-plugin-enabled.json"
+materialize "$fx" "$TMP/penabled"
+node "$SCRIPT" --root "$TMP/penabled" > "$TMP/penabled.out" 2> "$TMP/penabled.err"
+assert_eq 0 "$?" "valid-plugin-enabled: exits 0"
+assert_empty "$(cat "$TMP/penabled.err")" "valid-plugin-enabled: nothing on stderr"
+
+# The same settings on disk but untracked: not read, so the plugin is not enabled.
+git_q -C "$TMP/penabled" rm -q --cached .claude/settings.json
+assert_file "$TMP/penabled/.claude/settings.json" "untracked settings: the file is still on disk"
+node "$SCRIPT" --root "$TMP/penabled" > /dev/null 2> "$TMP/puntracked.err"
+assert_eq 2 "$?" "untracked settings: exits 2"
+assert_eq "standards: $MANIFEST: plugins[0]: example-plugin@example is not enabled in .claude/settings.json" \
+  "$(cat "$TMP/puntracked.err")" "untracked settings: names the plugin, one line"
+
+# No plugins: the settings file is not read, so a tracked non-JSON one is no defect.
+mkdir -p "$TMP/noplugins/.claude"
+git_q init -q "$TMP/noplugins"
+printf '{"version":1,"checks":[{"name":"test","command":"make test"}],"rules":[],"plugins":[]}\n' > "$TMP/noplugins/$MANIFEST"
+printf 'not json {\n' > "$TMP/noplugins/.claude/settings.json"
+git_q -C "$TMP/noplugins" add -A
+node "$SCRIPT" --root "$TMP/noplugins" > /dev/null 2> "$TMP/noplugins.err"
+assert_eq 0 "$?" "no plugins: a tracked non-JSON settings file is not read, exits 0"
+assert_empty "$(cat "$TMP/noplugins.err")" "no plugins: nothing on stderr"
+
+# The module: settings undefined skips the check; null, objects and non-objects are judged.
+out=$(node -e '
+  const { validateStandards } = require(process.argv[1]);
+  const m = (plugins) => JSON.stringify({ version: 1, checks: [{ name: "t", command: "x" }], rules: [], plugins });
+  const one = [{ name: "p", marketplace: "m" }];
+  const two = [{ name: "p", marketplace: "m" }, { name: "q", marketplace: "m" }];
+  const off = (i, k) => `plugins[${i}]: ${k} is not enabled in .claude/settings.json`;
+  const cases = [
+    [one, undefined],
+    [one, null, off(0, "p@m")],
+    [two, null, off(0, "p@m"), off(1, "q@m")],
+    [two, JSON.stringify({ enabledPlugins: { "p@m": true } }), off(1, "q@m")],
+    [two, JSON.stringify({ enabledPlugins: { "p@m": true, "q@m": true } })],
+    [one, JSON.stringify({ enabledPlugins: { "p@m": "true" } }), off(0, "p@m")],
+    [one, JSON.stringify({ enabledPlugins: { "p@m": 1 } }), off(0, "p@m")],
+    [one, JSON.stringify({ enabledPlugins: ["p@m"] }), off(0, "p@m")],
+    [one, JSON.stringify({}), off(0, "p@m")],
+    [one, "[]", ".claude/settings.json: not a JSON object"],
+    [one, "null", ".claude/settings.json: not a JSON object"],
+    [one, "3", ".claude/settings.json: not a JSON object"],
+    [one, "", ".claude/settings.json: not valid JSON: Unexpected end of JSON input"],
+    [[], null],
+    [[], "not json {"],
+    [undefined, null],
+  ];
+  const bad = [];
+  for (const [plugins, settings, ...want] of cases) {
+    const r = validateStandards({ text: m(plugins), files: [], settings });
+    if (r.ok !== (want.length === 0) || JSON.stringify(r.defects) !== JSON.stringify(want)) {
+      bad.push(`${JSON.stringify(plugins)} + ${JSON.stringify(settings)} -> ${JSON.stringify(r.defects)}`);
+    }
+  }
+  process.stdout.write(bad.length ? bad.join("; ") : "ok");
+' "$SCRIPT" 2>&1)
+assert_eq "ok" "$out" "validateStandards: settings undefined skips; null, absent, false and non-true values are named"
+
+# Without `settings`, every fixture validates as it did before the check existed:
+# the enablement fixtures pass, and every other one gives exactly its own defect.
+out=$(node -e '
+  const fs = require("fs"), path = require("path");
+  const { validateStandards } = require(process.argv[1]);
+  const dir = process.argv[2];
+  const bad = [];
+  for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".json"))) {
+    const d = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+    const r = validateStandards({ text: JSON.stringify(d.manifest), files: d.files });
+    const enablement = /^invalid-(plugin-|settings-)/.test(f);
+    const want = f.startsWith("invalid-") && !enablement ? [d.expect] : [];
+    if (JSON.stringify(r.defects) !== JSON.stringify(want)) bad.push(`${f} -> ${JSON.stringify(r.defects)}`);
+  }
+  process.stdout.write(bad.length ? bad.join("; ") : "ok");
+' "$SCRIPT" "$FIX" 2>&1)
+assert_eq "ok" "$out" "validateStandards without settings: every fixture gives its pre-check result"
 
 # --- several defects: one line each, all in the standards: <path>: shape -------
 mkdir -p "$TMP/multi/.claude"

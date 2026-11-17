@@ -1,0 +1,10 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "expect": "plugins[0]: example-plugin@example is not enabled in .claude/settings.json",
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [],
+    "plugins": [{ "name": "example-plugin", "marketplace": "example" }]
+  }
+}

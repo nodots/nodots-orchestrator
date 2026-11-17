@@ -1,0 +1,10 @@
+{
+  "files": ["CONTRIBUTING.md"],
+  "manifest": {
+    "version": 1,
+    "checks": [{ "name": "test", "command": "make test" }],
+    "rules": [],
+    "plugins": [{ "name": "example-plugin", "marketplace": "example" }]
+  },
+  "settings": { "enabledPlugins": { "example-plugin@example": true } }
+}
