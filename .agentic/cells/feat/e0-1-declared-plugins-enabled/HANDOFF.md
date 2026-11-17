@@ -47,3 +47,15 @@ Nothing in this package. `launch.js` keeps its own base-ref check (out of scope)
 ## Plan check
 
 Package issue still matches: yes
+
+## Coordinator decisions E0.2-B1 and E0.2-B2 (2026-11-17), which apply to E0.1
+
+Recorded on #219. They apply to every package in this epic until H0.8 (#226) merges.
+
+- Open the `[READY]:` PR.
+- Wait for the CI `Fixture tests` job to pass at the PR head sha.
+- Stamp `VERIFIED: ci-<run id> @ <full head sha>`, with the run URL. Quote the
+  local run. A local red file is excepted only when every failing assertion in it,
+  or in the nested run it reports, is `gitleaks exited 126 ... Exec format error`.
+  Today that is `check-secrets.test.sh`, `gate-h-hardening.test.sh` and
+  `v0-gate.test.sh`. Any other red still blocks.
