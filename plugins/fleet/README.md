@@ -50,7 +50,11 @@ fleet cycle --apply
   tooling lists, as `ci.verifiedBy` describes.
 - **reap** classifies finished sessions: PR ⇒ movement; `BLOCKER.md` with a
   known Kind ⇒ parked for the coordinator; silent or failed ⇒ escalate one
-  model tier up, up to `maxEscalations`. A PR belongs to a package only when
+  model tier up, up to `maxEscalations`. A package whose issue lacks
+  `agent-ready` is not re-dispatched by any of these (unpark, verify or review
+  failure, escalation, relaunch): the request is held, reported under
+  **Held**, and goes ahead in the first cycle after the label is back. To
+  finish a package by hand, remove `agent-ready` first. A PR belongs to a package only when
   its head branch equals the package branch (title and body are ignored). A
   parked session whose blocker is removed is relaunched only if the package
   has no PR in any state; otherwise it is closed as `pr`. A running session

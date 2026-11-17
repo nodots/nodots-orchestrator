@@ -210,6 +210,14 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       const s = q.session;
       const iss = issues.find(i => i.number === s.issue);
       if (!iss) continue;
+      // A package without agent-ready is the coordinator's: no re-dispatch of
+      // any kind (unpark, verify or review failure, escalation, relaunch).
+      // The request is kept for retry and goes ahead once the label is back.
+      if (!iss.labels.includes('agent-ready')) {
+        s.status = 'retry'; s.retry = { next: q.next, reason: q.reason, why: 'agent-ready removed' };
+        r.held.push({ number: s.issue, id: s.id, why: `re-dispatch (${q.next}, ${q.reason}) held: no agent-ready label` });
+        continue;
+      }
       const d = scope.describe(iss);
       if (d.problems.length) { alarm('unlaunchable', d.problems.join('; '), s.issue); s.status = 'retry'; s.retry = { next: q.next, reason: q.reason, why: d.problems.join('; ') }; continue; }
       const prior = state.dispatches[s.id] || [];
