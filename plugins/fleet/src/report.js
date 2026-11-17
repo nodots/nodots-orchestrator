@@ -94,6 +94,11 @@ function render(r) {
     for (const p of r.parked) lines.push(`- ${p.id} (#${p.issue}): ${p.detail}`);
     lines.push('');
   }
+  if (r.held && r.held.length) {
+    lines.push('**Held**');
+    for (const h of r.held) lines.push(`- ${h.id} (#${h.number}): ${h.why}`);
+    lines.push('');
+  }
   if (r.promoted && r.promoted.length) lines.push(`**Promoted to cell:queued:** ${r.promoted.map(p => `${p.id} (#${p.number})`).join(', ')}`, '');
   if (r.assigned && r.assigned.length) lines.push(`**Assigned:** ${r.assigned.map(a => `#${a.number}→worker:${a.worker}`).join(', ')}`, '');
   if (r.sync && r.sync.changes && r.sync.changes.length) lines.push(`**Labels derived:** ${r.sync.changes.map(s => `#${s.number} ${s.from || 'none'}→${s.to}`).join(', ')}`, '');
