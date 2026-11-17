@@ -1,5 +1,39 @@
 # Release notes
 
+## agentic-work-packages 1.7.0, fleet 0.5.0 (2026-11-17)
+
+Programs R, C, H and I, each closed by its gate: RV (#210), CV (#212), HV (#211), IV (#209). Platform support is unchanged from 1.6.0: `fleet` runs on macOS and Linux only.
+
+### What is in this release
+
+Since agentic-work-packages 1.6.0 and fleet 0.4.0:
+
+- **Independent review (program R).** `review: { passes: N }` in `.claude/standards.json` asks for N `REVIEWED` stamps from distinct reviewers at a PR's head. A verified PR short of the policy is `cell:awaiting-reviewer` (#194). The fleet review stage launches a read-only reviewer from `reviewers` in the fleet config, stamps the PR or re-dispatches the package. Fleet names no vendor (#202). The CI stamp check reads the policy from the base branch and requires the stamps (#199).
+- **Two-level merge (program C).** `targets[].integrationBranch`: workers branch from it and open PRs against it (#195). With `targets[].autoMerge: true`, fleet merges a PR into the integration branch when it is stamped, reviewed, green and mergeable, with a merge commit at the checked head. Fleet never merges into `main`, `master`, `develop`, `development`, the target's `defaultBranch` or a name in `protectedBranches`, and config validation refuses an `integrationBranch` on that list (#207). A PR merged into an integration branch is `cell:merged` and its dependents promote (#200). A person merges the integration branch into `develop`/`development` and `main`.
+- **Hardening (program H).**
+  - CI runs a pinned gitleaks over every commit a PR adds (`scripts/check-secrets.sh`, #205).
+  - The scope hook enforces the lane for writes made through Bash (#197).
+  - No interpreter wildcards in the allow rules; `fleet doctor` reports broad allow rules (#206).
+  - The fleet fixture suites wait for the stub's files instead of reading them right after launch (#196, #201).
+  - `scripts/test.sh` checks the installed hooks and the contract, as CI does (#208).
+- **Human commit identity (program I).** Fleet commits under the target clone's human identity, not `fleet` (#188). Commits carry `Agent-Assisted: yes` in place of an AI co-author trailer, and CI refuses a commit with an AI author, committer or co-author trailer (`scripts/check-commit-identity.sh`, #204).
+
+### Upgrade notes
+
+- **A fleet target clone needs a git identity.** Launch refuses with `launch-identity-missing` when the clone has no `user.name` and `user.email`.
+- **Projects that use the CI checks** need `.claude/settings.json` with `"attribution": {"commit": "Agent-Assisted: yes"}`, or Claude Code adds a `Co-Authored-By` trailer that `check-commit-identity.sh` refuses.
+- **All keys are opt-in.** A target without `integrationBranch`, `autoMerge` or `reviewers`, and a manifest without `review`, behave as in 0.4.0.
+
+### Known issues
+
+- **The stamp check does not re-run when the stamp comment is posted.** A `[READY]` PR whose check ran before its stamp stays red until the check is re-run (`gh run rerun`).
+- **Fleet does not re-dispatch a PR whose CI is red.** The coordinator handles it.
+- **A coordinator who finishes a package by hand** must remove `agent-ready` first, or the daemon relaunches a worker into the same worktree.
+- **#205, #206 and #207 carry `Co-Authored-By` trailers** in `development` history. Their branches were cut before #204 landed. The check runs over a PR's own commits, so it does not flag them.
+- **One worker was denied `git add` and `git commit`** while both were on its allow list (HV, #187). The cause is not known.
+- **Windows hosts** for `fleet` (#148).
+- **The secret scan runs in CI on Linux. Run locally, it works only on Linux x64.** `scripts/check-secrets.sh` pins the `linux_x64` gitleaks archive. On macOS and Windows it refuses, or the binary does not execute, so `bash scripts/test.sh` ends `FAILED` there (`check-secrets`, `gate-h-hardening`, `v0-gate`). Neither plugin ships or calls the scanner; this affects contributors to this repository, not plugin users.
+
 ## agentic-work-packages 1.6.0, fleet 0.4.0 — preview (2026-11-16)
 
 This is a preview. The code is new, and parts of it have not been verified on a real machine. Report problems as issues on `nodots/nodots-orchestrator` with the label `feedback:edi`.
