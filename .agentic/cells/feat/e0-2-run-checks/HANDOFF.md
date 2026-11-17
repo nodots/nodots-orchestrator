@@ -34,3 +34,14 @@
 ## Plan check
 
 Package issue still matches: yes
+
+## Coordinator decision E0.2-B1 (2026-11-17)
+
+Recorded in the epic's decisions log (#219). The CI run stands in for the local
+`bash scripts/test.sh` on macOS:
+
+- Open the `[READY]:` PR for head `adaef0b` or later.
+- Wait for the `Fixture tests` job in CI to pass at the PR head sha.
+- Stamp `VERIFIED: ci-<run id> @ <full head sha>`, with the run URL, and quote the
+  local run with only `scripts/tests/check-secrets.test.sh` and
+  `scripts/tests/gate-h-hardening.test.sh` red. Any other local red still blocks.
