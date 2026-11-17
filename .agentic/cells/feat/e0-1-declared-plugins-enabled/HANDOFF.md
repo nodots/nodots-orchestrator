@@ -42,7 +42,22 @@ adds noise (keeps the existing `multi` case at 8 lines).
 
 ## Next
 
-Nothing in this package. `launch.js` keeps its own base-ref check (out of scope).
+Nothing in this package beyond review and merge. `launch.js` keeps its own
+base-ref check (out of scope).
+
+## Attempt 2 (2026-11-17)
+
+- Confirmed E0.2-B1 and E0.2-B2 in the #219 decisions log.
+- Opened PR #231 (`[READY]: E0.1`, `Closes #220`).
+- CI `Fixture tests` passed at `1439c28`:
+  https://github.com/nodots/nodots-orchestrator/actions/runs/44191897909
+- Local `bash scripts/test.sh` on Darwin arm64: the only red files are
+  `check-secrets.test.sh` (4/20) and `gate-h-hardening.test.sh` (3/27).
+  Every failing assertion in them is `gitleaks exited 126 ... Exec format error`.
+  This run needs more than 20 minutes because `v0-gate.test.sh` runs the whole
+  suite again inside it. The first attempt was killed by the tool time limit.
+- This commit changes only this file. The `VERIFIED` stamp on #231 names the CI
+  run at the head that includes it. A push after the stamp voids it.
 
 ## Plan check
 
