@@ -1,5 +1,17 @@
 # Release notes
 
+## agentic-work-packages 1.7.1, fleet 0.5.1 (2026-11-17)
+
+Fixes since 1.7.0 / 0.5.0:
+
+- **A worker cut from an integration branch is no longer blocked at Stop** (#215, #217). The scope hooks took the merge base from `origin/HEAD` and `development`, `develop`, `main`, `master` only, so every package already merged into the integration branch counted as the worker's change. `SCOPE.json` takes an optional `baseBranch`; the hooks measure the lane from it (Stop, `TaskCompleted` and the Bash check), and fall back to the old rule without it. Fleet writes `baseBranch: <integrationBranch>` into the committed `SCOPE.json` and refuses an issue block that names a different one (`scope-base-mismatch`). `require-handoff` does not require a HANDOFF on a branch a `SCOPE.json` names as its `baseBranch`.
+- **Fleet holds every re-dispatch of a package without `agent-ready`** (#218). Unpark, verify or review failure, escalation and relaunch now wait until the label is back, and the report lists them under **Held**. To finish a package by hand, remove `agent-ready` first.
+
+### Upgrade notes
+
+- **A package run by hand against an integration branch** sets `"baseBranch": "<integration branch>"` in its `SCOPE.json`. Fleet sets it for you.
+- **Installed hook copies** (`.claude/hooks/enforce-scope.js`, `require-handoff.js`) in a target repository need the 1.7.1 versions. Copy them from the plugin's `hooks/`.
+
 ## agentic-work-packages 1.7.0, fleet 0.5.0 (2026-11-17)
 
 Programs R, C, H and I, each closed by its gate: RV (#210), CV (#212), HV (#211), IV (#209). Platform support is unchanged from 1.6.0: `fleet` runs on macOS and Linux only.
