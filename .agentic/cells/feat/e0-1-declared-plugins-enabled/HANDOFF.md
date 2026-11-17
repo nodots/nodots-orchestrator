@@ -13,9 +13,20 @@
 - `validateFile` reads `.claude/settings.json` only when `plugins[]` is a
   non-empty array, and only when it is in `git ls-files`; otherwise passes `null`.
   A tracked file that cannot be read is `.claude/settings.json: cannot read: <code>`.
-- Six new fixtures; `settings` field in the fixture format; `valid.json` and
-  `invalid-unknown-key-plugin.json` gained a `settings` enabling their plugin so
-  each still yields exactly its original result through the CLI.
+- Six new fixtures; `settings` field in the fixture format.
+  `invalid-unknown-key-plugin.json` gained a `settings` enabling its plugin so
+  it still yields exactly its one defect through the CLI.
+- `sv0-standards-gate.test.sh:49-65` (outside the lane, must pass unchanged)
+  has its own materializer that ignores `settings`. So:
+  - `valid.json` no longer declares `plugins`: in sv0 it would have no
+    settings file and fail. `valid-plugin-enabled.json` covers a valid declared
+    plugin, including `--json` normalization.
+  - `invalid-settings-not-json.json` lists `.claude/settings.json` in `files`
+    (written as `# .claude/settings.json`) instead of using `settings`, so both
+    materializers track the same non-JSON file. Its `expect` carries the
+    Node 20+ `JSON.parse` message; CI pins Node 20 (`.github/workflows/ci.yml:20`).
+  - `invalid-unknown-key-plugin.json` in sv0 also prints the not-enabled line;
+    sv0 asserts `contains`, so it passes.
 - Tests: untracked-on-disk case, empty-plugins-with-non-JSON-settings case, a
   module table, and a loop proving every fixture gives its pre-check result
   when `settings` is omitted. Tests committed first (c00d32e) and failed 18

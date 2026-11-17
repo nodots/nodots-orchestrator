@@ -180,6 +180,9 @@ materialize "$fx" "$TMP/penabled"
 node "$SCRIPT" --root "$TMP/penabled" > "$TMP/penabled.out" 2> "$TMP/penabled.err"
 assert_eq 0 "$?" "valid-plugin-enabled: exits 0"
 assert_empty "$(cat "$TMP/penabled.err")" "valid-plugin-enabled: nothing on stderr"
+node "$SCRIPT" --root "$TMP/penabled" --json > "$TMP/penabled.json" 2> /dev/null
+assert_eq '[{"name":"example-plugin","marketplace":"example"}]' "$(field "$TMP/penabled.json" 'JSON.stringify(d.plugins)')" \
+  "valid-plugin-enabled --json: plugins normalized to name, marketplace"
 
 # The same settings on disk but untracked: not read, so the plugin is not enabled.
 git_q -C "$TMP/penabled" rm -q --cached .claude/settings.json

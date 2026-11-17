@@ -18,8 +18,6 @@
       { "check": "test", "doc": "CONTRIBUTING.md" },
       { "doc": "CLAUDE.md", "paths": ["packages/*/src/*.js", "**/view.js"], "check": "type-check" }
     ],
-    "preamble": ".claude/standards-preamble.md",
-    "plugins": [{ "name": "example-plugin", "marketplace": "example.market_1" }]
-  },
-  "settings": { "enabledPlugins": { "example-plugin@example.market_1": true } }
+    "preamble": ".claude/standards-preamble.md"
+  }
 }
