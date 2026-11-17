@@ -24,9 +24,16 @@ tests. All four package tests pass (81, 58, 30 and 71 checks, 0 failed).
 
 ```
 FAIL  .claude/hooks/enforce-scope.js differs from plugins/agentic-work-packages/hooks/enforce-scope.js
+FAIL  .claude/hooks/require-handoff.js differs from plugins/agentic-work-packages/hooks/require-handoff.js
+FAIL  scripts/tests/v0-gate.test.sh  --- 11 checks, 2 failed
+        FAIL  clean copy: test.sh exits 0
+        FAIL  clean copy: test.sh prints ALL PASS
+FAILED
 ```
 
-(and the same line for `require-handoff.js`).
+The `v0-gate` failure is the same cause: it runs `test.sh` on a clean copy
+of the tree, and its nested output names the same two copy checks. No other
+test failed.
 
 ## Alternatives searched
 - `Edit` on `.claude/hooks/*.js`: denied as a sensitive file.
