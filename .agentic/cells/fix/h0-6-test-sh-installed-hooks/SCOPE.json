@@ -1,0 +1,23 @@
+{
+  "feature": "h0-6-test-sh-installed-hooks",
+  "project": "nodots-orchestrator",
+  "branch": "fix/h0-6-test-sh-installed-hooks",
+  "allowedPaths": [
+    "scripts/test.sh",
+    "scripts/tests/test-sh.test.sh"
+  ],
+  "forbiddenPaths": [
+    ".github/**",
+    ".claude/**",
+    "plugins/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one test.sh section, four test cases",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
