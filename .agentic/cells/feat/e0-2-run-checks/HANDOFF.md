@@ -45,3 +45,15 @@ Recorded in the epic's decisions log (#219). The CI run stands in for the local
 - Stamp `VERIFIED: ci-<run id> @ <full head sha>`, with the run URL, and quote the
   local run with only `scripts/tests/check-secrets.test.sh` and
   `scripts/tests/gate-h-hardening.test.sh` red. Any other local red still blocks.
+
+## Attempt 2 (2026-11-17)
+
+- PR #227 opened (`[READY]: E0.2 …`, `Closes #221`) at head `260ee10`.
+- CI `Fixture tests` passed: run 44179885654.
+- The local `bash scripts/test.sh` finished `FAILED` with a third red file,
+  `scripts/tests/v0-gate.test.sh` (2 failed). Its cause is the nested run's same
+  two gitleaks reds. The earlier stall was this file running the suite four
+  times; it was slow, not hung.
+- No stamp posted. Stopped on `BLOCKER.md` (ask E0.2-B2). If the coordinator
+  picks (a), stamp with the green CI `Fixture tests` run for the current head.
+  This commit moves the head past `260ee10`, so run 44179885654 no longer covers it.
