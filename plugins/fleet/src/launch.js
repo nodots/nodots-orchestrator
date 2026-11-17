@@ -82,6 +82,13 @@ function checkStandardsModule(cfg) {
 function baseBranch(target) { return target.integrationBranch || target.defaultBranch; }
 function baseRef(target) { return `origin/${baseBranch(target)}`; }
 
+// The SCOPE.json a launch commits: the issue's block, plus baseBranch for a
+// target with integrationBranch, so the worker's hooks measure the lane from
+// the branch it was cut from rather than from the default branch.
+function laneScope(target, sc) {
+  return target.integrationBranch ? { ...sc, baseBranch: target.integrationBranch } : sc;
+}
+
 // baseRefExists -> { ok, exists } | { ok:false, error }
 function baseRefExists(cfg, target) {
   const r = run(cfg.bins.git, ['-C', target.localPath, 'rev-parse', '--verify', '--quiet', `refs/remotes/${baseRef(target)}^{commit}`], { timeoutMs: 60000 });
@@ -352,7 +359,7 @@ function prepareWorktree(cfg, tracker, { target, id, sc, identity }) {
     // it (a parked package whose lane was wrong), the committed copy follows,
     // as its own commit, so the hook enforces the lane that was decided.
     const rel = path.join('.agentic', 'cells', ...sc.branch.split('/'), 'SCOPE.json');
-    const want = JSON.stringify(sc, null, 2) + '\n';
+    const want = JSON.stringify(laneScope(target, sc), null, 2) + '\n';
     let have = null; try { have = fs.readFileSync(path.join(worktree, rel), 'utf8'); } catch { /* absent */ }
     const recut = have !== want;
     if (recut) {
@@ -392,7 +399,7 @@ function prepareWorktree(cfg, tracker, { target, id, sc, identity }) {
 
   const rel = path.join('.agentic', 'cells', ...sc.branch.split('/'), 'SCOPE.json');
   fs.mkdirSync(path.dirname(path.join(worktree, rel)), { recursive: true });
-  fs.writeFileSync(path.join(worktree, rel), JSON.stringify(sc, null, 2) + '\n');
+  fs.writeFileSync(path.join(worktree, rel), JSON.stringify(laneScope(target, sc), null, 2) + '\n');
   const a = g(['add', '--', rel], worktree);
   if (a.status !== 0) return { ok: false, stage: 'commit', error: a.error || a.stderr.trim() };
   const c = commit(['-q', '-m', `${id}: scope`], worktree);
@@ -419,6 +426,13 @@ function launch(cfg, tracker, store, req, persist) {
 
   const target = targetFor(cfg, req.issue);
   if (!target) return { ok: false, stage: 'target', error: `package names a repo that is not in targets: ${declaredRepo(req.issue.body, cfg.repo)}` };
+
+  // The lane is measured from the integration branch the worker is cut from.
+  // An issue block naming another would have the hooks measure from the wrong
+  // base; refused before anything exists.
+  if (target.integrationBranch && req.sc.baseBranch !== undefined && req.sc.baseBranch !== target.integrationBranch) {
+    return { ok: false, stage: 'scope-base-mismatch', error: `${req.id}: the SCOPE.json block names baseBranch ${req.sc.baseBranch}, but ${target.repo} cuts its workers from integrationBranch ${target.integrationBranch}, so no worker is launched; set baseBranch to ${target.integrationBranch} in the issue block, or remove it` };
+  }
 
   const t = trust.isTrusted(cfg.bins.git, target.localPath);
   if (!t.trusted) return { ok: false, stage: 'trust', error: `${target.localPath} is not a trusted workspace, so the worker's permissions.allow rules would be ignored under -p and it could not commit, push or open a PR; ${trust.howToTrust(t)}${t.error ? ` (${t.error})` : ''}` };
@@ -517,4 +531,4 @@ function localWorktreeOnBranch(cfg, target, id, branch) {
   return r.status === 0 && r.stdout.trim() === branch ? wt : null;
 }
 
-module.exports = { localWorktreeOnBranch, launch, baseRef, baseBranch, baseRefExists, createIntegrationCommand, prepareWorktree, readIdentity, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS, pathsOverlap, applicableRules, instructionFilesFrom };
+module.exports = { localWorktreeOnBranch, launch, baseRef, baseBranch, laneScope, baseRefExists, createIntegrationCommand, prepareWorktree, readIdentity, buildPrompt, buildArgs, workerEnv, declaredRepo, targetFor, tierUp, TIERS, pathsOverlap, applicableRules, instructionFilesFrom };

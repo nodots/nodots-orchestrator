@@ -170,6 +170,9 @@ assert_nonempty "$WT" "E: a worktree exists"
 assert_eq "$INTEG_SHA" "$(git -C "$WT" rev-parse HEAD~1 2>/dev/null)" "E: the worktree starts from origin/integ"
 wait_for_file "$TMP/claude-log/T1.1.*.argv"
 ARGV=$(cat "$TMP"/claude-log/T1.1.*.argv 2>/dev/null)
+SCOPE_FILE="$WT/.agentic/cells/feat/t1-1-web/SCOPE.json"
+assert_eq "integ" "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).baseBranch)' "$SCOPE_FILE" 2>&1)" "E: the committed SCOPE.json carries baseBranch: integ"
+assert_empty "$(git -C "$WT" status --porcelain -- .agentic)" "E: and it is committed"
 assert_contains "$ARGV" "Open the PR against integ with a title" "E: the prompt names integ as the PR base"
 assert_not_contains "$ARGV" "Open the PR against main" "E: and not main"
 DOC=$(fleet doctor 2>&1)
@@ -195,5 +198,59 @@ JS
 )
 assert_eq "origin/main origin/integ
 true" "$P" "F: baseRef is origin/<defaultBranch> without the key; the prompt says main"
+
+# --- G. C0.4: the lane names its baseBranch ------------------------------------
+# laneScope: the SCOPE.json a launch commits. Without the key it is the issue's
+# block as is; with it, the block plus baseBranch.
+P=$(node - "$LAUNCH" <<'JS'
+const { laneScope } = require(process.argv[2]);
+const sc = { feature: 'f', branch: 'feat/x', allowedPaths: ['a/**'] };
+console.log(JSON.stringify(laneScope({ defaultBranch: 'main' }, sc)) === JSON.stringify(sc));
+console.log(JSON.stringify(laneScope({ defaultBranch: 'main', integrationBranch: 'integ' }, sc)));
+console.log(sc.baseBranch === undefined);
+JS
+)
+assert_eq 'true
+{"feature":"f","branch":"feat/x","allowedPaths":["a/**"],"baseBranch":"integ"}
+true' "$P" "G: without the key SCOPE.json is written as before; with it, baseBranch is the integration branch"
+
+# The re-cut path: an existing worktree whose lane lacks the field gains it.
+node -e '
+  const fs = require("fs"), f = process.argv[1], s = JSON.parse(fs.readFileSync(f, "utf8"));
+  delete s.baseBranch; fs.writeFileSync(f, JSON.stringify(s, null, 2) + "\n");' "$SCOPE_FILE"
+git -C "$WT" -c user.name=fixture -c user.email=f@example.invalid commit -qam "an older lane, without baseBranch"
+P=$(node - "$LAUNCH" "$TMP" <<'JS'
+const [launchPath, tmp] = process.argv.slice(2);
+const { prepareWorktree } = require(launchPath);
+const sc = { feature: 'f', branch: 'feat/t1-1-web', allowedPaths: ['packages/web/**'], forbiddenPaths: [], dependsOn: [], execution: { model: 'default', pattern: 'solo' } };
+const cfg = { bins: { git: 'git' }, worktreesDir: `${tmp}/worktrees` };
+const tracker = { remoteBranchExists: () => ({ ok: true, exists: true }) };
+const target = { repo: 'acme/api', localPath: `${tmp}/clone`, defaultBranch: 'main', integrationBranch: 'integ' };
+const r = prepareWorktree(cfg, tracker, { target, id: 'T1.1', sc });
+console.log(r.ok, r.recut, r.error || '');
+JS
+)
+assert_eq "true true " "$P" "G: the re-cut path rewrites an existing worktree's lane"
+assert_eq "integ" "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).baseBranch)' "$SCOPE_FILE" 2>&1)" "G: the re-cut lane carries baseBranch: integ"
+assert_contains "$(git -C "$WT" log -1 --format=%s)" "scope re-cut" "G: the re-cut is its own commit"
+
+# An issue block that names a different baseBranch is refused, nothing launched.
+node - "$TMP/gh" <<'JS'
+const fs = require('fs'); const [dir] = process.argv.slice(2);
+const issues = JSON.parse(fs.readFileSync(`${dir}/issues.json`, 'utf8'));
+const body = '**Part of** #1 · **Phase 1 · x** · **Repo:** `acme/api`\n\n## Goal\nx\n\n### SCOPE.json\n```json\n'
+  + JSON.stringify({ feature: 'g', branch: 'feat/t1-2-api', baseBranch: 'other', allowedPaths: ['packages/api/**'], execution: { model: 'default', pattern: 'solo' } })
+  + '\n```\n';
+issues.push({ number: 11, title: 'T1.2 Api', body, state: 'OPEN', labels: ['agent-ready', 'cell:queued', 'worker:a'] });
+fs.writeFileSync(`${dir}/issues.json`, JSON.stringify(issues, null, 2));
+JS
+write_config ', "integrationBranch": "integ"'
+OUT=$(fleet cycle --apply --json 2>/dev/null)
+assert_eq "11" "$(alarms "$OUT" launch-scope-base-mismatch)" "G: a mismatched baseBranch is refused scope-base-mismatch"
+assert_contains "$(detail "$OUT" launch-scope-base-mismatch)" "other" "G: the refusal names the issue's baseBranch"
+assert_contains "$(detail "$OUT" launch-scope-base-mismatch)" "integ" "G: and the integration branch"
+assert_not_contains " $(launched "$OUT") " " 11 " "G: the mismatched package is not launched"
+[ -d "$TMP/worktrees/api-t1-2" ] && _fail "G: no worktree for the refused package" "it exists" || _pass "G: no worktree for the refused package"
+assert_empty "$(ls "$TMP"/claude-log/T1.2.* 2>/dev/null)" "G: no worker was started for it"
 
 finish

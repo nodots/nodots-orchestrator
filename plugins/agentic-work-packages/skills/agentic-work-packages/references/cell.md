@@ -130,6 +130,7 @@ is a valid and useful answer — it marks the package as first-wave.
   "feature": "<kebab-feature>",
   "project": "<project>",
   "branch": "feat/<kebab-feature>",
+  "baseBranch": "<optional: the integration branch it is cut from and merges into>",
   "allowedPaths": ["<src paths>", "<test paths>"],
   "forbiddenPaths": ["<frozen contract>", "<migrations>", "<manifests>", "<ci>"],
   "dependsOn": ["feat/<upstream-branch>"],

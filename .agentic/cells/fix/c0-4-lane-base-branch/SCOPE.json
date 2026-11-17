@@ -1,0 +1,34 @@
+{
+  "feature": "c0-4-lane-base-branch",
+  "project": "nodots-orchestrator",
+  "branch": "fix/c0-4-lane-base-branch",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/hooks/enforce-scope.js",
+    "plugins/agentic-work-packages/hooks/require-handoff.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/enforce-scope.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/require-handoff.js",
+    ".claude/hooks/enforce-scope.js",
+    ".claude/hooks/require-handoff.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/require-handoff.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/enforce-scope.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/scope-contract.md",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/cell.md",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/src/scope.js",
+    "plugins/fleet/tests/integration-branch.test.sh",
+    "plugins/fleet/tests/scope.test.sh"
+  ],
+  "forbiddenPaths": [
+    ".github/**",
+    "scripts/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one SCOPE field, two hooks in three copies, launch write and refusal, tests",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

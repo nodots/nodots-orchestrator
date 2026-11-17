@@ -4,7 +4,9 @@
 /*
  * Stop hook: a worker leaves written state, or it does not leave.
  *
- * On a branch that is neither the default nor develop, with uncommitted changes and neither HANDOFF.md nor
+ * On a branch that is neither the default, nor develop, nor a branch that a
+ * SCOPE.json under .agentic/cells/ names as its baseBranch, with uncommitted
+ * changes and neither HANDOFF.md nor
  * BLOCKER.md present, the turn is blocked from ending, naming both files. This
  * is what makes "the coordinator is not available on demand" survivable: the
  * next session — or the next agent — resumes from a file rather than from a
@@ -12,8 +14,9 @@
  *
  * Lane check: when a SCOPE.json governs the branch, the stop first runs the
  * same lane check as enforce-scope.js's PostToolUse Bash mode, over the
- * branch's whole change against its merge base with the nearest integration
- * branch — committed, staged, unstaged and untracked. An out-of-lane path
+ * branch's whole change against its merge base with the lane's baseBranch when
+ * SCOPE.json names one, else the nearest integration branch — committed,
+ * staged, unstaged and untracked. An out-of-lane path
  * blocks the stop and is named, whatever HANDOFF.md or BLOCKER.md says, and on
  * a clean tree too. Lane artifacts (SCOPE.json, HANDOFF.md, BLOCKER.md) are
  * always in lane. No SCOPE.json => no lane check.
@@ -23,7 +26,7 @@
  * Default: block, in three states: an out-of-lane change, the one above, and a
  *   HANDOFF.md that has no "Plan check" section (a "Plan check" heading and a
  *   line "Package issue still matches: yes" or "no"). Otherwise a clean tree,
- *   the default branch, develop, a BLOCKER.md (exempt from the Plan check), or
+ *   the default branch, develop, a lane's baseBranch, a BLOCKER.md (exempt from the Plan check), or
  *   a HANDOFF.md with the section all allow the stop; the hook is silent
  *   whenever it allows.
  * Fail posture: open, and loud. Any error exits 0 after one stderr line naming
@@ -180,12 +183,22 @@ function matchesAny(patterns, rel) {
   return patterns.some(p => globToRegExp(p).test(rel));
 }
 
-// The merge base with the nearest integration branch: of origin/HEAD and the
-// LANE_BASES names, local or on origin, the one HEAD is fewest commits ahead
-// of. Nearest rather than the remote default, because a default that lags the
-// integration branch would count every package merged since as this branch's
-// change. null when there is no other branch to measure from.
-function laneMergeBase(root, branch) {
+// The merge base with the branch the lane names as its baseBranch: against
+// origin/<baseBranch>, else refs/heads/<baseBranch>. Without one, or when
+// neither ref exists, the merge base with the nearest integration branch: of
+// origin/HEAD and the LANE_BASES names, local or on origin, the one HEAD is
+// fewest commits ahead of. Nearest rather than the remote default, because a
+// default that lags the integration branch would count every package merged
+// since as this branch's change. null when there is no other branch to measure
+// from.
+function laneMergeBase(root, branch, baseBranch) {
+  if (typeof baseBranch === 'string' && baseBranch) {
+    for (const ref of [`refs/remotes/origin/${baseBranch}`, `refs/heads/${baseBranch}`]) {
+      try {
+        return laneGit(root, ['merge-base', 'HEAD', ref]).trim();
+      } catch { /* no such ref, or no common history: try the next */ }
+    }
+  }
   const refs = ['refs/remotes/origin/HEAD'];
   for (const name of LANE_BASES) {
     if (name === branch) continue;
@@ -206,13 +219,13 @@ function laneMergeBase(root, branch) {
 // Every path the branch changes, read from the worktree's state and never from
 // a command line: committed since the merge base, staged, unstaged and
 // untracked, with both sides of a rename. Ignored files are not listed.
-function laneChanges(root, branch) {
+function laneChanges(root, branch, baseBranch) {
   const files = new Set();
   const status = laneGit(root, ['status', '--porcelain', '-z', '--untracked-files=all', '--no-renames']);
   for (const entry of status.split('\0')) {
     if (entry.length > 3) files.add(entry.slice(3)); // "XY <path>"
   }
-  const base = laneMergeBase(root, branch);
+  const base = laneMergeBase(root, branch, baseBranch);
   if (base) {
     const committed = laneGit(root, ['diff', '--name-only', '-z', '--no-renames', base, 'HEAD']);
     for (const file of committed.split('\0')) if (file) files.add(file);
@@ -231,7 +244,7 @@ function laneViolations(root, branch) {
   const forbiddenPaths = Array.isArray(scope.forbiddenPaths) ? scope.forbiddenPaths : [];
   const coordination = coordinationPaths(root, branch);
   const violations = [];
-  for (const file of laneChanges(root, branch)) {
+  for (const file of laneChanges(root, branch, scope.baseBranch)) {
     if (coordination.has(file)) continue;
     if (matchesAny(forbiddenPaths, file)) {
       violations.push({ file, why: 'matches forbiddenPaths' });
@@ -260,6 +273,28 @@ function laneCheck(root, branch) {
     );
     return null;
   }
+}
+
+// True when a SCOPE.json under .agentic/cells/ names this branch as its
+// baseBranch: the branch packages are cut from and merge into, so not a
+// package lane itself. A SCOPE.json it cannot read is another lane's problem,
+// and is passed over.
+function namedAsBase(root, branch) {
+  const stack = [path.join(root, '.agentic', 'cells')];
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { stack.push(p); continue; }
+      if (e.name !== ARTIFACTS.scope) continue;
+      try {
+        if (JSON.parse(fs.readFileSync(p, 'utf8')).baseBranch === branch) return true;
+      } catch { /* unreadable: not evidence either way */ }
+    }
+  }
+  return false;
 }
 
 function handoffDirs(root, branch) {
@@ -307,6 +342,7 @@ process.stdin.on('end', () => {
     const def = defaultBranch(root);
     if (def && branch === def) process.exit(0);        // default branch: not a package
     if (INTEGRATION_BRANCHES.includes(branch)) process.exit(0); // integration branch: not a package
+    if (namedAsBase(root, branch)) process.exit(0);    // a lane's baseBranch: not a package
 
     const block = reason => {
       if (completion) {

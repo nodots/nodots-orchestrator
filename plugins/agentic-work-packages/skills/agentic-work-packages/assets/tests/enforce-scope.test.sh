@@ -263,6 +263,42 @@ assert_empty "$OUT" "bash    · malformed SCOPE.json does not block"
 assert_contains "$ERR" "enforce-scope" "bash    · malformed SCOPE.json is reported on stderr"
 git -C "$BASH_REPO" checkout -q -- "$CELL/SCOPE.json"
 
+# --- C0.4: the Bash check measures a lane from its baseBranch -----------------
+# A branch cut from an integration branch ahead of development: the integration
+# branch's work is not this branch's change when SCOPE.json names it.
+IB_REPO="$TMPROOT/ib-repo"
+IB_CELL="$IB_REPO/.agentic/cells/feat/p2"
+git init -q -b development "$IB_REPO"
+git -C "$IB_REPO" config user.email "fixture@example.invalid"
+git -C "$IB_REPO" config user.name "Fixture"
+printf '# readme\n' > "$IB_REPO/README.md"
+git -C "$IB_REPO" add -A && git -C "$IB_REPO" commit -qm "development"
+git -C "$IB_REPO" checkout -q -b collection/t
+mkdir -p "$IB_REPO/pkg1" && printf 'x\n' > "$IB_REPO/pkg1/x"
+git -C "$IB_REPO" add -A && git -C "$IB_REPO" commit -qm "pkg1, merged into the integration branch"
+git -C "$IB_REPO" checkout -q -b feat/p2
+mkdir -p "$IB_CELL" "$IB_REPO/p2"
+printf '{ "allowedPaths": ["p2/**"], "baseBranch": "collection/t" }\n' > "$IB_CELL/SCOPE.json"
+printf 'y\n' > "$IB_REPO/p2/y"
+git -C "$IB_REPO" add -A && git -C "$IB_REPO" commit -qm "p2 work"
+
+run_bash_post "$IB_REPO" "git commit -m p2"
+assert_empty "$OUT" "bash    · baseBranch: in-lane work on a branch cut from an integration branch passes"
+assert_empty "$ERR" "bash    · baseBranch: the pass is silent"
+
+mkdir -p "$IB_REPO/docs" && printf 'x\n' > "$IB_REPO/docs/out.md"
+run_bash_post "$IB_REPO" "echo x > docs/out.md"
+if post_blocked; then _pass "bash    · baseBranch: an out-of-lane change is blocked"
+else _fail "bash    · baseBranch: an out-of-lane change is blocked" "got [$OUT]"; fi
+assert_contains "$OUT" "docs/out.md" "bash    · baseBranch: the block names the out-of-lane file"
+assert_not_contains "$OUT" "pkg1/x" "bash    · baseBranch: the block does not name the integration branch's work"
+rm -rf "$IB_REPO/docs"
+
+# without baseBranch the lane is measured as before, from development
+printf '{ "allowedPaths": ["p2/**"] }\n' > "$IB_CELL/SCOPE.json"
+run_bash_post "$IB_REPO"
+assert_contains "$OUT" "pkg1/x" "bash    · no baseBranch: the integration branch's work counts, as before"
+
 # the plugin wiring sends PostToolUse Bash to this hook
 if node -e '
   const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
