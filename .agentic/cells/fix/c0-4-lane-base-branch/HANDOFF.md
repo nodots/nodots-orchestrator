@@ -27,12 +27,13 @@ BLOCKER (decision C0.4-copies on #189).
 - `scope-contract.md` documents the field and the merge-base rule. `cell.md`
   adds it to the SCOPE block.
 
+- Attempt 2: the three hook copies are byte-identical (`cmp`).
+  `bash scripts/test.sh` ends `ALL PASS`, 64 test files, 0 failed.
+
 ## Next
-- Sync `.claude/hooks/{enforce-scope,require-handoff}.js` from
-  `plugins/agentic-work-packages/hooks/`, commit, then run `bash scripts/test.sh`.
-  It fails today only on those two copy checks.
-- Then post the VERIFIED stamp and open `[READY]: C0.4` against `development`
-  with `Closes #216`.
+- Open `[READY]: C0.4` against `development` with `Closes #216`, then post the
+  VERIFIED stamp for the pushed head.
+- After that, only review and merge.
 
 ## Plan check
 
