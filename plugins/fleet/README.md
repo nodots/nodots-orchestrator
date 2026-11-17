@@ -167,6 +167,45 @@ node "$PLUGIN/bin/fleet.js" resume --reason "reviewed the last three reports; qu
 `skills/fleet/SKILL.md` tells a coordinator Claude session how to drive it and
 what each alarm asks for.
 
+## Installing the worker files
+
+A target repo commits its own copies of the worker files, because an isolated
+or cloud worker sees only what the repo commits:
+
+- `hooks/enforce-scope.js`, `hooks/require-handoff.js` and
+  `hooks/standards-preamble.js` from `pluginRoot`, as `.claude/hooks/`;
+- `skills/agentic-work-packages/assets/worker-contract.md`, as
+  `.claude/worker-contract.md`;
+- each hook registration in `assets/settings-snippet.json`, in
+  `.claude/settings.json`. A registration that is missing is added; every other
+  key and entry is kept. A target without the file gets the snippet.
+
+`fleet install` writes them:
+
+```bash
+node "$PLUGIN/bin/fleet.js" install --target acme/api           # dry run
+node "$PLUGIN/bin/fleet.js" install --target acme/api --apply
+```
+
+The dry run compares each file with the target's base ref (the base-ref rule
+below) and lists it as `add`, `update` or `same`. It writes nothing.
+
+`--apply` fetches origin, then cuts
+`chore/install-agentic-work-packages-<version>` from the base ref in a
+worktree under `worktreesDir`, writes the files, and makes one commit under
+the clone's `user.name` and `user.email`. A clone without them is refused
+`launch-identity-missing`, as launch refuses it. It pushes the branch, removes
+the worktree and the local branch, and prints the `gh pr create --base <base
+branch>` command. It opens no PR. When every file is `same`, it creates no
+branch and exits 0. When the branch already exists on origin, it is refused
+until that PR is merged or closed and the branch deleted. An unknown
+`--target` exits 64 and names the configured targets.
+
+`fleet doctor` compares each installed file on the base ref with the plugin's
+copy. A file that differs or is missing is a `FAIL` naming the file and
+`fleet install --target <repo>`. A `.claude/settings.json` without one of the
+snippet's registrations is a `FAIL` naming the event.
+
 ## Integration branch
 
 A target may name an integration branch:
@@ -453,7 +492,7 @@ Where a mechanism is unavailable:
 ## Layout
 
 ```
-bin/fleet.js        CLI: cycle, launch, reap, status, resume, doctor, daemon, standards init
+bin/fleet.js        CLI: cycle, launch, reap, status, resume, doctor, daemon, standards init, install
 src/config.js       fleet.config.json, defaults, GH_BIN/GIT_BIN/CLAUDE_BIN seams
 src/exec.js         argv-array process execution, detached spawn, liveness
 src/scripts.js      runs sync-cells.sh and assign-cells.sh, parses their rows
@@ -468,6 +507,7 @@ src/merge.js        the merge stage: autoMerge PRs into the integration branch, 
 src/store.js        atomic state file, cycle lock
 src/report.js       report JSON, rendering, idempotent post
 src/standards.js    drafts a target's .claude/standards.json from its clone
+src/install.js      a target's worker files against the base ref: install branch, doctor drift
 src/cycle.js        the pass
 tests/*.test.sh     fixture tests (bash + node builtins; gh and claude stubbed, git real)
 ```
