@@ -35,6 +35,13 @@ Everything else is green, including
 `PASS  .../assets/tests/run-checks.test.sh  --- 49 checks, 0 failed` and
 `PASS  .../assets/tests/check-standards.test.sh  --- 94 checks, 0 failed`.
 
+The run did not finish. After `PASS  scripts/tests/test-sh.test.sh  --- 37 checks, 0 failed`
+it printed nothing more for about 10 minutes and was stopped at the session's
+background time limit (about 20 minutes in all). So the file or eval test that
+ran after `test-sh.test.sh` was not judged. Whoever re-runs the suite should
+watch for it. It was not re-run here, because the suite is already red for the
+cause above.
+
 ## Alternatives searched
 
 - Set `GITLEAKS_ARCHIVE` to a darwin archive. This fails because the script's
