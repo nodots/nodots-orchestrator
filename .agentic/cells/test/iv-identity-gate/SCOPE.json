@@ -1,0 +1,28 @@
+{
+  "feature": "iv-identity-gate",
+  "project": "nodots-orchestrator",
+  "branch": "test/iv-identity-gate",
+  "allowedPaths": [
+    "plugins/fleet/tests/gate-i-identity.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/**",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/agentic-work-packages/**",
+    "scripts/**",
+    ".github/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [
+    "feat/i0-1-fleet-human-identity",
+    "feat/i0-2-no-ai-commit-identity"
+  ],
+  "estimatedScope": "one gate suite",
+  "execution": {
+    "model": "strongest",
+    "pattern": "gate-verify",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
