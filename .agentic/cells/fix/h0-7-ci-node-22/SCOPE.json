@@ -1,0 +1,22 @@
+{
+  "feature": "h0-7-ci-node-22",
+  "project": "nodots-orchestrator",
+  "branch": "fix/h0-7-ci-node-22",
+  "allowedPaths": [
+    ".github/workflows/ci.yml"
+  ],
+  "forbiddenPaths": [
+    ".claude/**",
+    "plugins/**",
+    "scripts/**",
+    "**/plugin.json"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one line in ci.yml",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
