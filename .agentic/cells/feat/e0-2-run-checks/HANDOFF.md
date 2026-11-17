@@ -57,3 +57,10 @@ Recorded in the epic's decisions log (#219). The CI run stands in for the local
 - No stamp posted. Stopped on `BLOCKER.md` (ask E0.2-B2). If the coordinator
   picks (a), stamp with the green CI `Fixture tests` run for the current head.
   This commit moves the head past `260ee10`, so run 44179885654 no longer covers it.
+
+## Coordinator decision E0.2-B2 (2026-11-17)
+
+E0.2-B1 covers any local red whose only cause is the Linux gitleaks pin. The
+`v0-gate.test.sh` red (2 of 11, the clean copy not `ALL PASS`) is excepted: its
+nested run is red only in `check-secrets.test.sh` and `gate-h-hardening.test.sh`,
+both `gitleaks exited 126 ... Exec format error`. Recorded on #219.
