@@ -13,6 +13,7 @@ Without mechanical enforcement this is a comment, and lanes will be crossed.
   "feature": "route-authorization",
   "project": "my-project",
   "branch": "feat/route-authorization",
+  "baseBranch": "collection/auth",
   "allowedPaths": ["src/routes/orders.ts", "src/middleware/**", "src/**/*.test.ts"],
   "forbiddenPaths": ["src/websocket/**", "migrations/**", "package.json", ".github/**"],
   "dependsOn": ["feat/upstream-thing"],
@@ -31,6 +32,7 @@ Without mechanical enforcement this is a comment, and lanes will be crossed.
 | `feature` | Kebab identifier; matches the branch suffix |
 | `project` | Project or repo name, for logs |
 | `branch` | The one branch this package uses. One package, one branch |
+| `baseBranch` | Optional. The branch the package is cut from and merges into. The hooks take the lane's merge base against it (see Enforcement). Absent, the merge base is taken against the nearest integration branch, as below. The fleet runtime writes it for a target with `integrationBranch` and refuses an issue block that names a different one; a person running a package by hand sets it when the package targets an integration branch |
 | `allowedPaths` | Everything the agent may edit, **including its test paths** |
 | `forbiddenPaths` | Denied even if `allowedPaths` would match. Evaluated last |
 | `dependsOn` | **Branch names**, not issue IDs — this is what tooling reads |
@@ -97,7 +99,11 @@ copies identical.
 
 "Every path the branch changes" is read from the worktree's actual state, never
 from the command: `git status --porcelain -z` for staged, unstaged and
-untracked files, plus `git diff --name-only <merge-base> HEAD` for commits. The
+untracked files, plus `git diff --name-only <merge-base> HEAD` for commits. When
+`SCOPE.json` sets `baseBranch`, the merge base is taken against
+`origin/<baseBranch>`, else `refs/heads/<baseBranch>`, so a branch cut from an
+integration branch ahead of the default is not charged with the packages
+already merged there. Without `baseBranch`, or when neither ref exists, the
 merge base is taken against the nearest integration branch — of
 `origin/HEAD`, `development`, `develop`, `main` and `master`, local or on
 `origin`, the one the branch is fewest commits ahead of — so a stale default

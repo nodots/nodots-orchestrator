@@ -11,7 +11,8 @@
  * PostToolUse, Bash: after each Bash call, lists every path the branch changes
  * — `git status --porcelain -z` (staged, unstaged, untracked) plus
  * `git diff --name-only <merge-base> HEAD` for commits, the merge base taken
- * against the nearest integration branch — and judges each with the same
+ * against the lane's baseBranch when SCOPE.json names one, else the nearest
+ * integration branch — and judges each with the same
  * matcher. It reads the worktree's actual state and never parses the command,
  * so it does not depend on shell grammar. An out-of-lane path returns a block
  * decision naming each path, telling the worker to revert it or stop and write
@@ -170,12 +171,22 @@ function matchesAny(patterns, rel) {
   return patterns.some(p => globToRegExp(p).test(rel));
 }
 
-// The merge base with the nearest integration branch: of origin/HEAD and the
-// LANE_BASES names, local or on origin, the one HEAD is fewest commits ahead
-// of. Nearest rather than the remote default, because a default that lags the
-// integration branch would count every package merged since as this branch's
-// change. null when there is no other branch to measure from.
-function laneMergeBase(root, branch) {
+// The merge base with the branch the lane names as its baseBranch: against
+// origin/<baseBranch>, else refs/heads/<baseBranch>. Without one, or when
+// neither ref exists, the merge base with the nearest integration branch: of
+// origin/HEAD and the LANE_BASES names, local or on origin, the one HEAD is
+// fewest commits ahead of. Nearest rather than the remote default, because a
+// default that lags the integration branch would count every package merged
+// since as this branch's change. null when there is no other branch to measure
+// from.
+function laneMergeBase(root, branch, baseBranch) {
+  if (typeof baseBranch === 'string' && baseBranch) {
+    for (const ref of [`refs/remotes/origin/${baseBranch}`, `refs/heads/${baseBranch}`]) {
+      try {
+        return laneGit(root, ['merge-base', 'HEAD', ref]).trim();
+      } catch { /* no such ref, or no common history: try the next */ }
+    }
+  }
   const refs = ['refs/remotes/origin/HEAD'];
   for (const name of LANE_BASES) {
     if (name === branch) continue;
@@ -196,13 +207,13 @@ function laneMergeBase(root, branch) {
 // Every path the branch changes, read from the worktree's state and never from
 // a command line: committed since the merge base, staged, unstaged and
 // untracked, with both sides of a rename. Ignored files are not listed.
-function laneChanges(root, branch) {
+function laneChanges(root, branch, baseBranch) {
   const files = new Set();
   const status = laneGit(root, ['status', '--porcelain', '-z', '--untracked-files=all', '--no-renames']);
   for (const entry of status.split('\0')) {
     if (entry.length > 3) files.add(entry.slice(3)); // "XY <path>"
   }
-  const base = laneMergeBase(root, branch);
+  const base = laneMergeBase(root, branch, baseBranch);
   if (base) {
     const committed = laneGit(root, ['diff', '--name-only', '-z', '--no-renames', base, 'HEAD']);
     for (const file of committed.split('\0')) if (file) files.add(file);
@@ -221,7 +232,7 @@ function laneViolations(root, branch) {
   const forbiddenPaths = Array.isArray(scope.forbiddenPaths) ? scope.forbiddenPaths : [];
   const coordination = coordinationPaths(root, branch);
   const violations = [];
-  for (const file of laneChanges(root, branch)) {
+  for (const file of laneChanges(root, branch, scope.baseBranch)) {
     if (coordination.has(file)) continue;
     if (matchesAny(forbiddenPaths, file)) {
       violations.push({ file, why: 'matches forbiddenPaths' });

@@ -61,6 +61,7 @@ function validate(scope) {
   const problems = [];
   if (!scope || typeof scope !== 'object') return ['SCOPE.json is not an object'];
   if (!safeBranch(scope.branch)) problems.push(`branch [${scope.branch}] is missing or unsafe`);
+  if (scope.baseBranch !== undefined && !safeBranch(scope.baseBranch)) problems.push(`baseBranch [${scope.baseBranch}] is unsafe`);
   if (!Array.isArray(scope.allowedPaths) || scope.allowedPaths.length === 0) problems.push('allowedPaths is empty: a worker that may edit nothing cannot finish');
   if (scope.forbiddenPaths !== undefined && !Array.isArray(scope.forbiddenPaths)) problems.push('forbiddenPaths must be an array');
   if (scope.dependsOn !== undefined && !Array.isArray(scope.dependsOn)) problems.push('dependsOn must be an array of branch names');

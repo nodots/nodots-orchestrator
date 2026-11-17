@@ -60,6 +60,16 @@ assert_contains "$OUT" "execution.model" "an unknown model tier is refused"
 OUT=$(js "console.log(s.validate({branch:'feat/ok',allowedPaths:['x'],execution:{mode:'cloud',pattern:'implement+test',model:'strongest'}}).length)")
 assert_eq "0" "$OUT" "a full execution block with known values passes"
 
+# baseBranch, when present, is a safe branch name.
+OUT=$(js "console.log(s.validate({branch:'feat/ok',allowedPaths:['x'],baseBranch:'collection/t'}).length)")
+assert_eq "0" "$OUT" "a safe baseBranch passes"
+for b in '-evil' 'a..b' 'has space' ''; do
+  OUT=$(B="$b" js "console.log(s.validate({branch:'feat/ok',allowedPaths:['x'],baseBranch:process.env.B}).join('|'))")
+  assert_contains "$OUT" "baseBranch [$b] is unsafe" "baseBranch [$b] is refused as unsafe"
+done
+OUT=$(js "console.log(s.validate({branch:'feat/ok',allowedPaths:['x'],baseBranch:5}).join('|'))")
+assert_contains "$OUT" "baseBranch [5] is unsafe" "a non-string baseBranch is refused"
+
 # A lane that is also forbidden cannot be worked.
 OUT=$(js "console.log(s.validate({branch:'feat/ok',allowedPaths:['src/**','tests/**'],forbiddenPaths:['src/**']}).join('|'))")
 assert_contains "$OUT" "allowedPaths [src/**] is covered by forbiddenPaths [src/**]" "an allowed pattern that is also forbidden is refused"

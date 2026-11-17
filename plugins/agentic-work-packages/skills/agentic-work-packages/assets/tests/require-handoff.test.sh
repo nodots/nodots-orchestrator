@@ -274,6 +274,97 @@ assert_empty "$OUT" "default branch: the lane check does not run"
 rm -rf "$REPO/scratch.txt" "$REPO/.agentic/cells/development"
 git -C "$REPO" checkout -q feat/thing
 
+# --- 9. C0.4: a lane measured from its baseBranch ----------------------------
+# The #215 reproduction: development has one commit and origin/HEAD points at
+# it; collection/t adds pkg1/x; feat/p2 is cut from collection/t with the lane
+# p2/**. Measured from development, pkg1/x counts as feat/p2's change.
+B="$TMPROOT/base"
+git init -q --bare -b development "$B/remote.git"
+git init -q -b development "$B/repo"
+git -C "$B/repo" config user.email "fixture@example.invalid"
+git -C "$B/repo" config user.name "Fixture"
+printf '# readme\n' > "$B/repo/README.md"
+git -C "$B/repo" add -A && git -C "$B/repo" commit -qm "development"
+git -C "$B/repo" remote add origin "$B/remote.git"
+git -C "$B/repo" push -q -u origin development
+git -C "$B/repo" remote set-head origin development
+git -C "$B/repo" checkout -q -b collection/t
+mkdir -p "$B/repo/pkg1" && printf 'x\n' > "$B/repo/pkg1/x"
+git -C "$B/repo" add -A && git -C "$B/repo" commit -qm "pkg1, merged into the integration branch"
+git -C "$B/repo" push -q -u origin collection/t
+git -C "$B/repo" checkout -q -b feat/p2
+P2="$B/repo/.agentic/cells/feat/p2"
+mkdir -p "$P2" "$B/repo/p2"
+p2_scope() { # [baseBranch]
+  if [ -n "${1:-}" ]; then printf '{ "allowedPaths": ["p2/**"], "baseBranch": "%s" }\n' "$1"
+  else printf '{ "allowedPaths": ["p2/**"] }\n'; fi > "$P2/SCOPE.json"
+}
+p2_scope collection/t
+printf 'y\n' > "$B/repo/p2/y"
+git -C "$B/repo" add -A && git -C "$B/repo" commit -qm "p2 work"
+plan_handoff yes > "$P2/HANDOFF.md"
+
+run_base() { # <event> -> sets EXIT, OUT, ERR
+  local json
+  json=$(printf '{"hook_event_name":"%s","cwd":"%s","stop_hook_active":false}' "$1" "$B/repo")
+  OUT=$(cd "$TMPROOT" && printf '%s' "$json" | node "$PLUGIN" 2>"$ERRFILE")
+  EXIT=$?
+  ERR=$(cat "$ERRFILE")
+}
+
+run_base Stop
+assert_empty "$OUT" "baseBranch: only in-lane changes on a branch cut from an integration branch pass the Stop check"
+assert_empty "$ERR" "baseBranch: the pass is silent"
+run_base TaskCompleted
+assert_eq 0 "$EXIT" "baseBranch: only in-lane changes pass the TaskCompleted check"
+
+# an out-of-lane change is blocked, naming only that file
+mkdir -p "$B/repo/docs" && printf 'x\n' > "$B/repo/docs/out.md"
+run_base Stop
+if blocked; then _pass "baseBranch: an out-of-lane change blocks the Stop check"
+else _fail "baseBranch: an out-of-lane change blocks the Stop check" "got [$OUT]"; fi
+assert_contains "$OUT" "docs/out.md" "baseBranch: the block names the out-of-lane file"
+assert_not_contains "$OUT" "pkg1/x" "baseBranch: the block does not name the integration branch's work"
+run_base TaskCompleted
+assert_eq 2 "$EXIT" "baseBranch: an out-of-lane change blocks the TaskCompleted check"
+assert_contains "$ERR" "docs/out.md" "baseBranch: TaskCompleted names the out-of-lane file"
+assert_not_contains "$ERR" "pkg1/x" "baseBranch: TaskCompleted does not name the integration branch's work"
+rm -rf "$B/repo/docs"
+
+# with no origin ref, the local branch is the base
+git -C "$B/repo" update-ref -d refs/remotes/origin/collection/t
+run_base Stop
+assert_empty "$OUT" "baseBranch: refs/heads/<baseBranch> is the base when origin has none"
+git -C "$B/repo" update-ref refs/remotes/origin/collection/t collection/t
+
+# with neither ref, the nearest-of-LANE_BASES rule holds, as before
+p2_scope collection/gone
+run_base Stop
+assert_contains "$OUT" "pkg1/x" "baseBranch naming no ref: the merge base falls back to the nearest integration branch"
+
+# without baseBranch, the current behavior holds: measured from development
+p2_scope
+run_base Stop
+if blocked; then _pass "no baseBranch: the integration branch's work counts, as before"
+else _fail "no baseBranch: the integration branch's work counts, as before" "got [$OUT]"; fi
+assert_contains "$OUT" "pkg1/x" "no baseBranch: pkg1/x is named, as before"
+p2_scope collection/t
+
+# a session on the integration branch itself needs no HANDOFF
+git -C "$B/repo" add -A && git -C "$B/repo" commit -qm "p2 scope" >/dev/null
+# (the merged cell keeps feat/p2's HANDOFF.md, which is not collection/t's)
+git -C "$B/repo" checkout -q collection/t
+git -C "$B/repo" merge -q --no-edit feat/p2
+printf 'scratch\n' > "$B/repo/scratch.txt"
+run_base Stop
+assert_empty "$OUT" "the branch a cell's SCOPE.json names as its baseBranch is not a package: no HANDOFF needed"
+run_base TaskCompleted
+assert_eq 0 "$EXIT" "the integration branch: TaskCompleted needs no HANDOFF either"
+git -C "$B/repo" checkout -q -b feat/other
+run_base Stop
+if blocked; then _pass "a branch no SCOPE.json names as a base still needs a HANDOFF"
+else _fail "a branch no SCOPE.json names as a base still needs a HANDOFF" "got [$OUT]"; fi
+
 # --- the two shipped copies must not drift -----------------------------------
 if diff -q "$HOOK" ../../../../hooks/require-handoff.js >/dev/null 2>&1; then
   _pass "the plugin and asset copies of the hook are byte-identical"
