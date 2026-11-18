@@ -50,7 +50,7 @@ Every reader validates through `check-standards.js`; none parses the manifest on
 | Preamble hook (SessionStart) | Prints the file `preamble` names |
 | Eval runner | The checks a `lint` case runs in the work directory |
 | Label sync (`sync-cells.sh`) | The `review` policy, read from the default branch, which holds a verified PR at `cell:awaiting-reviewer` until it is met. It judges the key with `validateReview`, since it has no tracked file list |
-| Standards workflow (`standards-checks.yml`) | On a pull request, the runner and validator from the **base** branch run the checks against the **head** branch's tree; on a push, the tree's own copies |
+| Standards workflow (`standards-checks.yml`) | On a pull request, the runner and validator from the **base** branch run the checks against the PR's merge commit (what `actions/checkout` checks out on `pull_request`); on a push, the tree's own copies |
 
 ## Running the checks in CI
 
@@ -70,8 +70,14 @@ out another repository: CI runs the repo's own copy, in the repo with the code.
 On `pull_request` the job copies both scripts out of the base branch
 (`git show origin/<base>:.github/standards/<file>`) into `$RUNNER_TEMP`, so a PR
 cannot change the runner or the validator that judges it. A base branch missing
-either file fails the job, naming it. On `push` to the default branch it runs
-the tree's own copies with `--base HEAD`.
+either file fails the job, naming it. The checks run against the PR's merge
+commit, the ref `actions/checkout` fetches on `pull_request`, not the head
+branch alone. On `push` the job runs the tree's own copies with `--base HEAD`,
+only when `github.ref_name` equals the repo variable `STANDARDS_BRANCH`, or,
+when that variable is unset, the repo's default branch
+(`github.event.repository.default_branch`). No branch name is written in the
+file, so a repo whose default branch is `main` or `development` commits it
+unedited; set `STANDARDS_BRANCH` to follow a different branch.
 
 **Copy check.** `scripts/test.sh` fails when an installed copy differs from its
 asset or is missing, naming the file, as it does for the hooks.

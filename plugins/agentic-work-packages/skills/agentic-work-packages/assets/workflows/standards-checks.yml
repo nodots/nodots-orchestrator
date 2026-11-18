@@ -7,7 +7,6 @@ name: Standards checks
 
 on:
   push:
-    branches: [development]
   pull_request:
 
 permissions:
@@ -42,7 +41,7 @@ jobs:
           node "$RUNNER_TEMP/run-checks.js" --root . --base "origin/$BASE_REF"
 
       - name: Run the checks with the tree's own runner
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref_name == (vars.STANDARDS_BRANCH || github.event.repository.default_branch)
         run: |
           set -euo pipefail
           for f in run-checks.js check-standards.js; do

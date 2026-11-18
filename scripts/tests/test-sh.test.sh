@@ -167,4 +167,16 @@ for f in .github/workflows/standards-checks.yml .github/standards/run-checks.js 
   assert_contains "$OUT" "FAIL  Missing installed copy: $f" "$f missing is named"
 done
 
+WF=$(cat "$(cd ../.. && pwd -P)/$ASSETS/workflows/standards-checks.yml")
+assert_eq "0" "$(printf '%s\n' "$WF" | grep -cE '\b(main|development)\b' | tr -d ' ')" "the workflow asset names no branch"
+assert_contains "$WF" "vars.STANDARDS_BRANCH || github.event.repository.default_branch" "the push step follows STANDARDS_BRANCH, else the default branch"
+
+for a in workflows/standards-checks.yml scripts/run-checks.js scripts/check-standards.js; do
+  T=$(fixture "standards-asset-missing-$(basename "$a")")
+  rm "$T/$ASSETS/$a"
+  run_in "$T"
+  assert_ne "0" "$RC" "missing asset $a exits non-zero"
+  assert_contains "$OUT" "FAIL  Missing asset: $ASSETS/$a" "missing asset $a is named"
+done
+
 finish
