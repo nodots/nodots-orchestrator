@@ -13,13 +13,17 @@
  * what a valid manifest is.
  *
  * Module:
- *   validateStandards({ text, files }) -> { ok, manifest, defects, warnings }
+ *   validateStandards({ text, files, settings }) -> { ok, manifest, defects, warnings }
  *     Pure. `text` is the manifest's contents, `files` the repo's tracked file
- *     list. Each defect is "<location>: <message>"; each warning is
- *     "<doc>: rule has no check".
+ *     list. `settings` is the text of the tracked .claude/settings.json, or null
+ *     when that file is not tracked; each declared plugin must be enabled there.
+ *     `settings` undefined skips that check. Each defect is
+ *     "<location>: <message>"; each warning is "<doc>: rule has no check".
  *   validateFile(repoRoot, manifestPath = '.claude/standards.json')
  *     Reads the manifest (tracked or not) and takes `files` from
- *     `git -C <repoRoot> ls-files`. Same result shape, plus `path`.
+ *     `git -C <repoRoot> ls-files`. When `plugins[]` is non-empty, reads
+ *     .claude/settings.json if it is tracked and passes null if not. Same result
+ *     shape, plus `path`.
  *   validateReview(review) -> defects
  *     The `review` key alone, for a reader that has no tracked file list.
  *
@@ -36,6 +40,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const DEFAULT_MANIFEST = '.claude/standards.json';
+const SETTINGS = '.claude/settings.json';
 const CHECK_NAME = /^[a-z][a-z0-9-]*$/;
 const PLUGIN_FIELD = /^[A-Za-z0-9_.-]+$/;
 
@@ -100,7 +105,29 @@ function validateReview(review) {
   return defects;
 }
 
-function validateStandards({ text, files }) {
+// Each declared plugin must be enabled in the repo's tracked .claude/settings.json:
+// the key "<name>@<marketplace>" present in enabledPlugins and exactly true, the
+// same test as the fleet launcher's pluginEnabled. `declared` holds only items
+// whose name and marketplace are well formed; a malformed one already has its
+// defect. `settings` is the file's text, or null when it is not tracked.
+function enablementDefects(declared, settings) {
+  if (declared.length === 0) return [];
+  let s = null;
+  if (settings !== null) {
+    try {
+      s = JSON.parse(settings);
+    } catch (e) {
+      return [`${SETTINGS}: not valid JSON: ${e.message}`];
+    }
+    if (!isObject(s)) return [`${SETTINGS}: not a JSON object`];
+  }
+  const ep = s && isObject(s.enabledPlugins) ? s.enabledPlugins : null;
+  return declared
+    .filter(({ key }) => !(ep && has(ep, key) && ep[key] === true))
+    .map(({ at, key }) => `${at}: ${key} is not enabled in ${SETTINGS}`);
+}
+
+function validateStandards({ text, files, settings }) {
   const defects = [];
   const warnings = [];
   const tracked = new Set(files);
@@ -194,18 +221,26 @@ function validateStandards({ text, files }) {
     if (!Array.isArray(m.plugins)) {
       defects.push('plugins: must be an array');
     } else {
+      const declared = [];
       m.plugins.forEach((p, i) => {
         const at = `plugins[${i}]`;
         if (!isObject(p)) { defects.push(`${at}: must be an object`); return; }
         unknownKeys(p, PLUGIN_KEYS, at, defects);
+        let named = true;
         for (const k of PLUGIN_KEYS) {
           if (typeof p[k] !== 'string') {
             defects.push(`${at}.${k}: must be a string matching ${PLUGIN_FIELD.source}`);
+            named = false;
           } else if (!PLUGIN_FIELD.test(p[k])) {
             defects.push(`${at}.${k}: ${show(p[k])} must match ${PLUGIN_FIELD.source}`);
+            named = false;
           }
         }
+        if (named) declared.push({ at, key: `${p.name}@${p.marketplace}` });
       });
+      if (m.plugins.length > 0 && settings !== undefined) {
+        defects.push(...enablementDefects(declared, settings));
+      }
     }
   }
 
@@ -254,7 +289,23 @@ function validateFile(repoRoot, manifestPath = DEFAULT_MANIFEST) {
     return fail(`cannot list tracked files: git ls-files failed in ${repoRoot}`);
   }
 
-  return { ...validateStandards({ text, files }), path: manifestPath };
+  // The settings file is read only when the manifest declares plugins, and only
+  // when it is tracked: an untracked one is passed as null, the same as absent.
+  let settings;
+  let m = null;
+  try { m = JSON.parse(text); } catch (e) { /* validateStandards names it */ }
+  if (isObject(m) && Array.isArray(m.plugins) && m.plugins.length > 0) {
+    settings = null;
+    if (files.includes(SETTINGS)) {
+      try {
+        settings = fs.readFileSync(path.resolve(repoRoot, SETTINGS), 'utf8');
+      } catch (e) {
+        return fail(`${SETTINGS}: cannot read: ${e.code || e.message}`);
+      }
+    }
+  }
+
+  return { ...validateStandards({ text, files, settings }), path: manifestPath };
 }
 
 // --- CLI ----------------------------------------------------------------------

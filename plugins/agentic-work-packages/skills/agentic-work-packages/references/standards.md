@@ -100,6 +100,15 @@ a defect: `rules[<i>].<key>: unknown key`.
 a defect: `plugins[<i>].<key>: unknown key`.
 
 - `name` and `marketplace` are both required strings matching `^[A-Za-z0-9_.-]+$`.
+- The plugin is enabled in the repo's tracked `.claude/settings.json`:
+  `enabledPlugins["<name>@<marketplace>"]` is present and exactly `true`.
+  Absent, `false`, any other value, a key under another marketplace, or a
+  settings file that is missing or untracked is the defect
+  `plugins[<i>]: <name>@<marketplace> is not enabled in .claude/settings.json`.
+  A settings file that is not JSON is the one defect
+  `.claude/settings.json: not valid JSON: <parser message>`, and one that is not
+  a JSON object is `.claude/settings.json: not a JSON object`. An item whose
+  `name` or `marketplace` is malformed has that defect only.
 
 **The `review` object.** Allowed key: `passes`. Any other key is a defect:
 `review.<key>: unknown key`.
@@ -122,6 +131,9 @@ node check-standards.js [--root <dir>] [--json] [<manifest>]
 
 - `--root` is the repo root; it defaults to the current directory. `<manifest>`
   is resolved against the root; it defaults to `.claude/standards.json`.
+- `.claude/settings.json` is read, from the root, only when `plugins[]` is
+  non-empty, and only when it is a tracked file. A copy on disk that is not
+  tracked is not read.
 - **Exit 0**: valid. With `--json`, stdout is the normalized manifest. Without
   it, stdout is empty.
 - **Exit 2**: invalid, missing or unparsable, or an unrecognized argument.
@@ -140,14 +152,20 @@ manifest is itself valid.
 
 **Module.** Readers in the same process use the exports instead of the CLI:
 
-- `validateStandards({ text, files })` → `{ ok, manifest, defects, warnings }`.
+- `validateStandards({ text, files, settings })` → `{ ok, manifest, defects, warnings }`.
   Pure: `text` is the manifest's contents and `files` the tracked file list.
+  `settings` is optional: the text of `.claude/settings.json`, or `null` when
+  that file is not tracked. When it is `undefined`, the plugin enablement check
+  is skipped, so a caller that passes only `text` and `files` gets the result it
+  got before the check existed.
   `defects` are the `<defect>` strings above without the `standards: <manifest>: `
   prefix; `warnings` are `<doc>: rule has no check`. When `ok`, `manifest` is
   normalized; when not, it is the parsed object, or `null` if the text did not
   parse to an object.
 - `validateFile(repoRoot, manifestPath = '.claude/standards.json')` reads the
-  file and takes `files` from `git -C <repoRoot> ls-files`. Same result, plus
-  `path`.
+  file and takes `files` from `git -C <repoRoot> ls-files`. When `plugins[]` is
+  non-empty, it passes the text of `.claude/settings.json` if that file is
+  tracked, and `null` if not; otherwise it does not read the file. Same result,
+  plus `path`.
 - `validateReview(review)` → the `review` defects above, for the value of the
   `review` key alone. `null` has none. For a reader with no tracked file list.

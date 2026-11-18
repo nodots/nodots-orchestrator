@@ -1,0 +1,31 @@
+{
+  "feature": "e0-1-declared-plugins-enabled",
+  "project": "nodots-orchestrator",
+  "branch": "feat/e0-1-declared-plugins-enabled",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/check-standards.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/fixtures/standards/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/check-standards.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/standards.md"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/standards.schema.json",
+    "plugins/fleet/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".claude/**",
+    ".github/**",
+    "scripts/**",
+    "docs/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one optional validator input, six fixtures, test cases, reference text",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

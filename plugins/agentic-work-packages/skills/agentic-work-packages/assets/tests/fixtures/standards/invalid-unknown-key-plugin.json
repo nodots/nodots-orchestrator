@@ -6,5 +6,6 @@
     "checks": [{ "name": "test", "command": "make test" }],
     "rules": [],
     "plugins": [{ "name": "example-plugin", "marketplace": "example", "version": "1.0" }]
-  }
+  },
+  "settings": { "enabledPlugins": { "example-plugin@example": true } }
 }
