@@ -3,6 +3,7 @@
 # failing test, an empty glob, a hook copy that differs, or an installed hook
 # or contract under .claude/ that differs from the plugin's or is missing.
 set -uo pipefail
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$(dirname "$0")"
 . ../../plugins/fleet/tests/lib.sh
 
@@ -32,6 +33,13 @@ fixture() {
   printf '#!/usr/bin/env bash\necho "  --- 3 checks, 0 failed"\nexit 0\n' > "$d/plugins/fleet/tests/ok.test.sh"
   printf 'console.log("  --- 4 checks, 0 failed");\n' > "$d/evals/tests/ok.test.js"
   printf 'console.log("  --- 5 checks, 0 failed");\n' > "$d/evals/gates/ok.test.js"
+  mkdir -p "$d/$ASSETS/workflows" "$d/$ASSETS/scripts" "$d/.github/workflows" "$d/.github/standards"
+  echo 'name: standards-checks' > "$d/$ASSETS/workflows/standards-checks.yml"
+  echo 'module.exports = "run";' > "$d/$ASSETS/scripts/run-checks.js"
+  echo 'module.exports = "check";' > "$d/$ASSETS/scripts/check-standards.js"
+  cp "$d/$ASSETS/workflows/standards-checks.yml" "$d/.github/workflows/standards-checks.yml"
+  cp "$d/$ASSETS/scripts/run-checks.js" "$d/.github/standards/run-checks.js"
+  cp "$d/$ASSETS/scripts/check-standards.js" "$d/.github/standards/check-standards.js"
   echo "$d"
 }
 
@@ -138,5 +146,44 @@ rm "$T/.claude/worker-contract.md"
 run_in "$T"
 assert_ne "0" "$RC" "a missing installed contract exits non-zero"
 assert_contains "$OUT" "FAIL  Missing installed contract: .claude/worker-contract.md" "a missing contract is named"
+
+T=$(fixture standards-healthy)
+run_in "$T"
+assert_eq "0" "$RC" "installed standards workflow and scripts that match exit 0"
+assert_contains "$OUT" "PASS  .github/workflows/standards-checks.yml" "a matching workflow gets a PASS line"
+assert_contains "$OUT" "PASS  .github/standards/run-checks.js" "a matching runner gets a PASS line"
+assert_contains "$OUT" "PASS  .github/standards/check-standards.js" "a matching validator gets a PASS line"
+
+for f in .github/workflows/standards-checks.yml .github/standards/run-checks.js .github/standards/check-standards.js; do
+  T=$(fixture "standards-differs-$(basename "$f")")
+  echo 'edited' >> "$T/$f"
+  run_in "$T"
+  assert_ne "0" "$RC" "$f differing exits non-zero"
+  assert_contains "$OUT" "FAIL  $f differs" "$f differing is named"
+
+  T=$(fixture "standards-missing-$(basename "$f")")
+  rm "$T/$f"
+  run_in "$T"
+  assert_ne "0" "$RC" "$f missing exits non-zero"
+  assert_contains "$OUT" "FAIL  Missing installed copy: $f" "$f missing is named"
+done
+
+WF=$(cat "$REPO_DIR/$ASSETS/workflows/standards-checks.yml")
+assert_eq "0" "$(printf '%s\n' "$WF" | grep -cE '\b(main|development)\b' | tr -d ' ')" "the workflow asset names no branch"
+assert_contains "$WF" "vars.STANDARDS_BRANCH || github.event.repository.default_branch" "the push gate follows STANDARDS_BRANCH, else the default branch"
+JOB_IF=$(printf '%s\n' "$WF" | grep -E '^    if:' || true)
+assert_contains "$JOB_IF" "github.event_name == 'push'" "the branch gate is a job-level if"
+assert_contains "$JOB_IF" "STANDARDS_BRANCH" "the job-level if carries the branch gate"
+JOB_NAME=$(printf '%s\n' "$WF" | grep -E '^    name:' || true)
+assert_contains "$JOB_NAME" "'standards (push)'" "the push run reports as standards (push)"
+assert_eq "1" "$(printf '%s\n' "$WF" | grep -cE "^    name: .*'standards'" | tr -d ' ')" "only the pull_request run reports as standards"
+
+for a in workflows/standards-checks.yml scripts/run-checks.js scripts/check-standards.js; do
+  T=$(fixture "standards-asset-missing-$(basename "$a")")
+  rm "$T/$ASSETS/$a"
+  run_in "$T"
+  assert_ne "0" "$RC" "missing asset $a exits non-zero"
+  assert_contains "$OUT" "FAIL  Missing asset: $ASSETS/$a" "missing asset $a is named"
+done
 
 finish

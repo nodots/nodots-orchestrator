@@ -6,6 +6,8 @@
 # 2. The installed worker hooks (.claude/hooks/) and contract (.claude/worker-contract.md)
 #    are byte-identical to the plugin's. enforce-scope.js and require-handoff.js must be
 #    installed; any other plugin hook that is installed must match too.
+# 2b. The installed standards workflow, runner and validator (.github/) are byte-identical
+#    to their assets.
 # 3. Every .js and .sh under plugins/ parses (scripts/check-syntax.sh).
 # 4. No changed file holds a private-key header or token (scripts/check-credentials.sh).
 # 5. Every fixture test (*.test.sh) passes. A glob that matches nothing fails.
@@ -74,6 +76,27 @@ else
   echo "FAIL  .claude/worker-contract.md differs from $ASSETS/worker-contract.md"
   status=1
 fi
+
+echo "=== installed standards workflow and scripts match the assets ==="
+for pair in \
+  ".github/workflows/standards-checks.yml:$ASSETS/workflows/standards-checks.yml" \
+  ".github/standards/run-checks.js:$ASSETS/scripts/run-checks.js" \
+  ".github/standards/check-standards.js:$ASSETS/scripts/check-standards.js"; do
+  installed=${pair%%:*}
+  asset=${pair#*:}
+  if [ ! -f "$installed" ]; then
+    echo "FAIL  Missing installed copy: $installed"
+    status=1
+  elif [ ! -f "$asset" ]; then
+    echo "FAIL  Missing asset: $asset"
+    status=1
+  elif diff "$installed" "$asset"; then
+    echo "PASS  $installed"
+  else
+    echo "FAIL  $installed differs from $asset"
+    status=1
+  fi
+done
 
 echo "=== syntax (parse check, not a style lint) ==="
 if ! REPO_ROOT="$REPO_ROOT" bash "$SELF_DIR/check-syntax.sh"; then status=1; fi
