@@ -29,17 +29,17 @@ jobs:
       - name: Run the checks with the base branch's runner
         if: github.event_name == 'pull_request'
         env:
-          BASE_REF: ${{ github.base_ref }}
+          STANDARDS_BASE_BRANCH: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           for f in run-checks.js check-standards.js; do
-            if ! git cat-file -e "origin/$BASE_REF:.github/standards/$f" 2>/dev/null; then
-              echo "::error::base branch $BASE_REF has no .github/standards/$f"
+            if ! git cat-file -e "origin/$STANDARDS_BASE_BRANCH:.github/standards/$f" 2>/dev/null; then
+              echo "::error::base branch $STANDARDS_BASE_BRANCH has no .github/standards/$f"
               exit 1
             fi
-            git show "origin/$BASE_REF:.github/standards/$f" > "$RUNNER_TEMP/$f"
+            git show "origin/$STANDARDS_BASE_BRANCH:.github/standards/$f" > "$RUNNER_TEMP/$f"
           done
-          node "$RUNNER_TEMP/run-checks.js" --root . --base "origin/$BASE_REF"
+          node "$RUNNER_TEMP/run-checks.js" --root . --base "origin/$STANDARDS_BASE_BRANCH"
 
       - name: Run the checks with the tree's own runner
         if: github.event_name == 'push'
