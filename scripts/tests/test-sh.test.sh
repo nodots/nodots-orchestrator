@@ -3,6 +3,7 @@
 # failing test, an empty glob, a hook copy that differs, or an installed hook
 # or contract under .claude/ that differs from the plugin's or is missing.
 set -uo pipefail
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$(dirname "$0")"
 . ../../plugins/fleet/tests/lib.sh
 
@@ -167,9 +168,15 @@ for f in .github/workflows/standards-checks.yml .github/standards/run-checks.js 
   assert_contains "$OUT" "FAIL  Missing installed copy: $f" "$f missing is named"
 done
 
-WF=$(cat "$(cd ../.. && pwd -P)/$ASSETS/workflows/standards-checks.yml")
+WF=$(cat "$REPO_DIR/$ASSETS/workflows/standards-checks.yml")
 assert_eq "0" "$(printf '%s\n' "$WF" | grep -cE '\b(main|development)\b' | tr -d ' ')" "the workflow asset names no branch"
-assert_contains "$WF" "vars.STANDARDS_BRANCH || github.event.repository.default_branch" "the push step follows STANDARDS_BRANCH, else the default branch"
+assert_contains "$WF" "vars.STANDARDS_BRANCH || github.event.repository.default_branch" "the push gate follows STANDARDS_BRANCH, else the default branch"
+JOB_IF=$(printf '%s\n' "$WF" | grep -E '^    if:' || true)
+assert_contains "$JOB_IF" "github.event_name == 'push'" "the branch gate is a job-level if"
+assert_contains "$JOB_IF" "STANDARDS_BRANCH" "the job-level if carries the branch gate"
+JOB_NAME=$(printf '%s\n' "$WF" | grep -E '^    name:' || true)
+assert_contains "$JOB_NAME" "'standards (push)'" "the push run reports as standards (push)"
+assert_eq "1" "$(printf '%s\n' "$WF" | grep -cE "^    name: .*'standards'" | tr -d ' ')" "only the pull_request run reports as standards"
 
 for a in workflows/standards-checks.yml scripts/run-checks.js scripts/check-standards.js; do
   T=$(fixture "standards-asset-missing-$(basename "$a")")

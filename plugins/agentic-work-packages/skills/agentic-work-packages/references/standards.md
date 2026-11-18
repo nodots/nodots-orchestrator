@@ -72,8 +72,11 @@ On `pull_request` the job copies both scripts out of the base branch
 cannot change the runner or the validator that judges it. A base branch missing
 either file fails the job, naming it. The checks run against the PR's merge
 commit, the ref `actions/checkout` fetches on `pull_request`, not the head
-branch alone. On `push` the job runs the tree's own copies with `--base HEAD`,
-only when `github.ref_name` equals the repo variable `STANDARDS_BRANCH`, or,
+branch alone. On `push` the job runs the tree's own copies with `--base HEAD`.
+The branch gate is a job-level `if:`, so a push to any other branch skips the
+whole job rather than passing it vacuously, and the push run is named
+`standards (push)`: only the `pull_request` run reports `standards`, the check
+to require. The job runs on a push only when `github.ref_name` equals the repo variable `STANDARDS_BRANCH`, or,
 when that variable is unset, the repo's default branch
 (`github.event.repository.default_branch`). No branch name is written in the
 file, so a repo whose default branch is `main` or `development` commits it
