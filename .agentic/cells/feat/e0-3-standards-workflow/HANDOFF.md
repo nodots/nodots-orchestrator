@@ -34,3 +34,9 @@ Fix, tests first where a test applies:
 3. **Test:** add a `scripts/tests/test-sh.test.sh` case for a missing asset (`FAIL  Missing asset:`).
 
 Verification (decision E-B3 on #219): do NOT run the full `scripts/test.sh`. Run `bash scripts/tests/test-sh.test.sh` and the copy-check stage. Push to the same branch; PR #233 stays open. Post the stamp as a PR comment: `VERIFIED: ci-<Fixture tests run id> @ <head sha>` once the CI `Fixture tests` run at your head sha passes (`gh pr checks 233`), quoting the targeted local runs. The `standards` job stays red (E0.3-B2).
+
+## Review fixes applied (ce36455 and later)
+- Asset and installed workflow: `branches: [development]` dropped; push step gated on `github.ref_name == (vars.STANDARDS_BRANCH || github.event.repository.default_branch)`. No `main`/`development` in the file.
+- `references/standards.md`: "merge commit" wording; `STANDARDS_BRANCH` and its default documented.
+- `scripts/tests/test-sh.test.sh`: missing-asset cases, no-branch-literal and gate checks (the last two failed before the workflow change). 61 checks, 0 failed.
+- Next: stamp `VERIFIED: ci-<Fixture tests run id> @ <head sha>` once CI `Fixture tests` passes at the head sha. `standards` stays red on the base-branch check (E0.3-B2).
