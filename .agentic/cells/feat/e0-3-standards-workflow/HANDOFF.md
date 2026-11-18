@@ -12,3 +12,14 @@
 ## Plan check
 
 Package issue still matches: yes
+
+## Coordinator decision E0.3-B2 (2026-11-17)
+
+Recorded in the #219 decisions log; #222's acceptance criteria re-cut to match.
+
+- This PR's `standards` job is expected to fail, naming the missing base-branch `.github/standards/run-checks.js`. Quote that failure in the PR body.
+- E0.2-B1 and B2 apply: the local gitleaks reds are excepted. Do not wait on a full local run; push, open the `[READY]:` PR, and stamp `VERIFIED: ci-<run id> @ <head sha>` naming the CI `Fixture tests` run at the head sha, quoting the local reds.
+- The "base runner wins" throwaway PR is done by the coordinator after merge, not by this package.
+- This cell's `HANDOFF.md` is the package's handoff. The `HANDOFF.md` at the repo root belongs to another package; leave it alone.
+
+Next: open the `[READY]:` PR for the commit already pushed (a37dac3 or later) and stamp it.
