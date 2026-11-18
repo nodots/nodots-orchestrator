@@ -6,6 +6,7 @@
     "plugins/agentic-work-packages/skills/agentic-work-packages/assets/workflows/standards-checks.yml",
     ".github/workflows/standards-checks.yml",
     ".github/standards/run-checks.js",
+    ".github/standards/check-standards.js",
     "scripts/test.sh",
     "scripts/tests/test-sh.test.sh",
     "plugins/agentic-work-packages/skills/agentic-work-packages/references/standards.md"
@@ -27,7 +28,7 @@
     "feat/e0-1-declared-plugins-enabled",
     "feat/e0-2-run-checks"
   ],
-  "estimatedScope": "one workflow asset and its installed copy, the runner's installed copy, a copy check, one reference section",
+  "estimatedScope": "one workflow asset and its installed copy, the runner's and validator's installed copies, a copy check, one reference section",
   "execution": {
     "model": "default",
     "pattern": "implement+review",
