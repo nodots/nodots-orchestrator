@@ -1,0 +1,54 @@
+name: Standards checks
+
+# Runs the repo's own checks (.claude/standards.json) on every pull request.
+# On a pull request the runner and validator come from the BASE branch, so a PR
+# cannot change the scripts that judge it. Needs .github/standards/run-checks.js
+# and .github/standards/check-standards.js committed on the base branch.
+
+on:
+  push:
+    branches: [development]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  standards:
+    name: standards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run the checks with the base branch's runner
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          for f in run-checks.js check-standards.js; do
+            if ! git cat-file -e "origin/$BASE_REF:.github/standards/$f" 2>/dev/null; then
+              echo "::error::base branch $BASE_REF has no .github/standards/$f"
+              exit 1
+            fi
+            git show "origin/$BASE_REF:.github/standards/$f" > "$RUNNER_TEMP/$f"
+          done
+          node "$RUNNER_TEMP/run-checks.js" --root . --base "origin/$BASE_REF"
+
+      - name: Run the checks with the tree's own runner
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          for f in run-checks.js check-standards.js; do
+            if [ ! -f ".github/standards/$f" ]; then
+              echo "::error::missing .github/standards/$f"
+              exit 1
+            fi
+          done
+          node .github/standards/run-checks.js --root . --base HEAD

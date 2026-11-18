@@ -50,6 +50,39 @@ Every reader validates through `check-standards.js`; none parses the manifest on
 | Preamble hook (SessionStart) | Prints the file `preamble` names |
 | Eval runner | The checks a `lint` case runs in the work directory |
 | Label sync (`sync-cells.sh`) | The `review` policy, read from the default branch, which holds a verified PR at `cell:awaiting-reviewer` until it is met. It judges the key with `validateReview`, since it has no tracked file list |
+| Standards workflow (`standards-checks.yml`) | On a pull request, the runner and validator from the **base** branch run the checks against the **head** branch's tree; on a push, the tree's own copies |
+
+## Running the checks in CI
+
+A repo commits three files, each byte-identical to its asset under
+`assets/` in this plugin:
+
+| Installed | Source |
+|---|---|
+| `.github/workflows/standards-checks.yml` | `assets/workflows/standards-checks.yml` |
+| `.github/standards/run-checks.js` | `assets/scripts/run-checks.js` |
+| `.github/standards/check-standards.js` | `assets/scripts/check-standards.js` |
+
+The runner loads the validator from its own directory, so both are copied side
+by side. The job needs `contents: read` and nothing else, and it never checks
+out another repository: CI runs the repo's own copy, in the repo with the code.
+
+On `pull_request` the job copies both scripts out of the base branch
+(`git show origin/<base>:.github/standards/<file>`) into `$RUNNER_TEMP`, so a PR
+cannot change the runner or the validator that judges it. A base branch missing
+either file fails the job, naming it. On `push` to the default branch it runs
+the tree's own copies with `--base HEAD`.
+
+**Copy check.** `scripts/test.sh` fails when an installed copy differs from its
+asset or is missing, naming the file, as it does for the hooks.
+
+**Residue.** The base-branch runner does not cover:
+
+- a PR that changes a script a check calls (E-D2);
+- a PR that changes the workflow file itself.
+
+Branch protection or a ruleset that requires the `standards` status check, with
+review required on `.github/**`, covers the second.
 
 ## Validation rules
 
