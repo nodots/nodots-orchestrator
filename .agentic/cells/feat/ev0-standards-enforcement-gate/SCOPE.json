@@ -1,0 +1,28 @@
+{
+  "feature": "ev0-standards-enforcement-gate",
+  "project": "nodots-orchestrator",
+  "branch": "feat/ev0-standards-enforcement-gate",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/ev0-standards-enforcement-gate.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/**",
+    ".github/**",
+    "plugins/fleet/**",
+    "scripts/**",
+    "docs/**"
+  ],
+  "dependsOn": [
+    "feat/e0-1-declared-plugins-enabled",
+    "feat/e0-2-run-checks",
+    "feat/e0-3-standards-workflow"
+  ],
+  "estimatedScope": "one gate test over one fixture repo, four cases",
+  "execution": {
+    "model": "default",
+    "pattern": "gate-verify",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
