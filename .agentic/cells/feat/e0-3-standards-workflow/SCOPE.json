@@ -1,0 +1,37 @@
+{
+  "feature": "e0-3-standards-workflow",
+  "project": "nodots-orchestrator",
+  "branch": "feat/e0-3-standards-workflow",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/workflows/standards-checks.yml",
+    ".github/workflows/standards-checks.yml",
+    ".github/standards/run-checks.js",
+    "scripts/test.sh",
+    "scripts/tests/test-sh.test.sh",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/standards.md"
+  ],
+  "forbiddenPaths": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/stamp-check.yml",
+    ".github/workflows/evals.yml",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/**",
+    "plugins/agentic-work-packages/hooks/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/**",
+    "plugins/fleet/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".claude/**",
+    "docs/**"
+  ],
+  "dependsOn": [
+    "feat/e0-1-declared-plugins-enabled",
+    "feat/e0-2-run-checks"
+  ],
+  "estimatedScope": "one workflow asset and its installed copy, the runner's installed copy, a copy check, one reference section",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
