@@ -170,6 +170,7 @@ done
 
 WF=$(cat "$REPO_DIR/$ASSETS/workflows/standards-checks.yml")
 assert_eq "0" "$(printf '%s\n' "$WF" | grep -cE '\b(main|development)\b' | tr -d ' ')" "the workflow asset names no branch"
+assert_eq "0" "$(printf '%s\n' "$WF" | grep -cE '^[[:space:]]+BASE_REF:' | tr -d ' ')" "the workflow sets no BASE_REF: the checks it runs read that name"
 assert_contains "$WF" "vars.STANDARDS_BRANCH || github.event.repository.default_branch" "the push gate follows STANDARDS_BRANCH, else the default branch"
 JOB_IF=$(printf '%s\n' "$WF" | grep -E '^    if:' || true)
 assert_contains "$JOB_IF" "github.event_name == 'push'" "the branch gate is a job-level if"
