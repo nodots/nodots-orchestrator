@@ -14,3 +14,12 @@
 ## Plan check
 
 Package issue still matches: yes
+
+## Coordinator decision EV0-1 (2026-11-17, standing authority)
+
+- The blocker's ask is covered by E-B3 and E0.2-B1/B2 (#219): the CI `Fixture tests` run at the head sha is the full-suite evidence; the local gitleaks `Exec format error` reds are excepted; workers do not run the full suite locally.
+- The coordinator opened the `[READY]:` PR and posts the stamp from CI.
+- Pre-change runs (coordinator, the gate copied into each tree):
+  - before E0.1 (`91e147f^1`): `--- 14 checks, 3 failed` — case 2 (exit, plugin named, no check ran).
+  - before E0.2 (`440fdce^1`): the runner is absent; cases 1–4 all fail.
+  - Case 1 is the passing case; before E0.1 it still passes, since E0.1 adds a refusal, not a pass. Case 3 fails before E0.2.
