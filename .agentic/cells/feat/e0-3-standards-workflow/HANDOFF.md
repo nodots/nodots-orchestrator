@@ -40,3 +40,11 @@ Verification (decision E-B3 on #219): do NOT run the full `scripts/test.sh`. Run
 - `references/standards.md`: "merge commit" wording; `STANDARDS_BRANCH` and its default documented.
 - `scripts/tests/test-sh.test.sh`: missing-asset cases, no-branch-literal and gate checks (the last two failed before the workflow change). 61 checks, 0 failed.
 - Next: stamp `VERIFIED: ci-<Fixture tests run id> @ <head sha>` once CI `Fixture tests` passes at the head sha. `standards` stays red on the base-branch check (E0.3-B2).
+
+## Review fixes for PR #233, round 2 (coordinator, standing authority, 2026-11-17)
+
+Review: PR #233 comment "Review at c9ebb10".
+1. **Important — vacuous `standards` pass on push.** Unfiltered `on: push` runs on every feature-branch push; the step-level gate skips the step and the job passes (run 44224875543 put a green `standards` on this PR's head). Move the branch gate to the job-level `if:`, and set the job `name: ${{ github.event_name == 'push' && 'standards (push)' || 'standards' }}` so only the `pull_request` run reports `standards`. Same in the asset and the installed copy. Update `references/standards.md`. Add a `test-sh.test.sh` assertion that the push path cannot report as `standards`.
+2. **Nit:** `test-sh.test.sh:170` — anchor the asset path to the script's own directory, not `cd ../..`.
+
+Verification as before (E-B3): targeted tests only, push, then stamp `VERIFIED: ci-<Fixture tests run id> @ <head sha>` on #233 once that run passes.
