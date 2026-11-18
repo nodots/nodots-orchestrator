@@ -23,3 +23,14 @@ Recorded in the #219 decisions log; #222's acceptance criteria re-cut to match.
 - This cell's `HANDOFF.md` is the package's handoff. The `HANDOFF.md` at the repo root belongs to another package; leave it alone.
 
 Next: open the `[READY]:` PR for the commit already pushed (a37dac3 or later) and stamp it.
+
+## Review fixes for PR #233 (coordinator, 2026-11-17)
+
+Review: https://github.com/nodots/nodots-orchestrator/pull/233#issuecomment-6967182914. #222 re-cut by decision E0.3-B3.
+
+Fix, tests first where a test applies:
+1. **Important — no branch literal.** In the asset and its installed copy, drop `branches: [development]` from `on: push`. Gate the push step with `if: github.event_name == 'push' && github.ref_name == (vars.STANDARDS_BRANCH || github.event.repository.default_branch)`. Neither `main` nor `development` may appear in the file. Document `STANDARDS_BRANCH` and its default in `references/standards.md` "Running the checks in CI".
+2. **Doc:** on `pull_request`, `actions/checkout` checks out the merge commit. Make `references/standards.md` (Readers row and the CI section) say "the PR's merge commit", not "the head branch's tree".
+3. **Test:** add a `scripts/tests/test-sh.test.sh` case for a missing asset (`FAIL  Missing asset:`).
+
+Verification (decision E-B3 on #219): do NOT run the full `scripts/test.sh`. Run `bash scripts/tests/test-sh.test.sh` and the copy-check stage. Push to the same branch; PR #233 stays open. Post the stamp as a PR comment: `VERIFIED: ci-<Fixture tests run id> @ <head sha>` once the CI `Fixture tests` run at your head sha passes (`gh pr checks 233`), quoting the targeted local runs. The `standards` job stays red (E0.3-B2).
