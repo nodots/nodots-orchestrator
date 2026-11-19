@@ -1,5 +1,16 @@
 # Release notes
 
+## fleet 0.5.2 (2026-11-19)
+
+agentic-work-packages is unchanged at 1.7.1.
+
+- **A person's review can send the worker back** (#238). After reading the reviews on a package PR, comment `REWORK: <who> @ <full head sha>` on it. The next cycle re-dispatches the worker that opened the PR at the same tier, through the path a failed machine review takes: it is recorded in the dispatch history, counts toward `maxEscalations`, and is held while `agent-ready` is off. A marker is acted on once per head, and a push voids it. Before this, only the configured reviewer and the verifier could re-dispatch, and a package with a PR was never relaunched.
+
+### Upgrade notes
+
+- No config change. The rework stage reads every open package PR of the epic and needs no `reviewers`.
+- A `CHANGES_REQUESTED` review is not read; post the marker.
+
 ## agentic-work-packages 1.7.1, fleet 0.5.1 (2026-11-17)
 
 Fixes since 1.7.0 / 0.5.0:
