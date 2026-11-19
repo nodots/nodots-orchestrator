@@ -216,6 +216,12 @@ Every cycle ends in exactly one outcome (the cycle contract):
     and the worker is re-dispatched at the same tier with reason
     `review-failed: <first claim>`, counted toward `maxEscalations`. A pass
     posts `REVIEWED: <name> @ <sha>` (movement `reviewed`).
+  - A person's review is acted on only through a marker: after reading it,
+    comment `REWORK: <who> @ <full head sha>` on the PR. The next cycle sends
+    the worker back the same way, with reason `review-failed: REWORK by <who>
+    ...`, once per head (Review section: `rework`; `rework-held` while the
+    session is not closed). With no session record on this machine it raises
+    `review-redispatch-failed`, once per head.
   - `merge-protected-refused`: an `autoMerge` target has a package PR whose
     base is a protected branch. It was not merged, and no condition was
     checked. This is an alarm even beside movement. Retarget the PR to the

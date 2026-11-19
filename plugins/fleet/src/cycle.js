@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * One pass: lock → sync → promote → assign → reap → verify → review → merge → launch → report → unlock.
+ * One pass: lock → sync → promote → assign → reap → verify → review → rework → merge → launch → report → unlock.
  * verify runs only for targets with `verify` (src/verify.js); review only
  * with `reviewers` configured, or a review still in flight (src/review.js);
  * merge only for targets with `autoMerge` (src/merge.js).
@@ -29,6 +29,7 @@ const reapMod = require('./reap');
 const report = require('./report');
 const verifyMod = require('./verify');
 const reviewMod = require('./review');
+const reworkMod = require('./rework');
 const mergeMod = require('./merge');
 const { requireReviewers } = require('./config');
 
@@ -167,6 +168,13 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       ? reviewMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync, issues, at, alarm, r })
       : { requests: [], reviewing: reviewMod.inFlightCount(cfg, state) };
     reaped.requests.push(...rv.requests);
+
+    // 4c'. rework: a person's `REWORK: <who> @ <head>` on a package PR sends
+    // its worker back through the same review-failed path (src/rework.js).
+    if (only === null && !vr.latched) {
+      const rw = reworkMod.stage({ cfg, state, apply, pulls, pullsFailed, sync, alarm, r, pending: reaped.requests });
+      reaped.requests.push(...rw.requests);
+    }
 
     // 4d. merge: each autoMerge target's PRs that meet the merge condition go
     // into its integration branch; a protected base is refused. Not when the

@@ -407,6 +407,31 @@ worktree is removed after the run. Every `review-*` alarm except
 kill, comment or stamp; the report's Review section says what would run and
 what a finished run would post. `fleet launch <issue>` runs no review stage.
 
+### Rework requested by a person
+
+A person who has read the reviews on a package PR asks for rework with a PR
+comment whose line reads `REWORK: <who> @ <full head sha>`. The rework stage
+(`src/rework.js`) runs after the review stage, on every open package PR of the
+epic whatever its cell label, and needs no `reviewers` config.
+
+- **A current marker** (at the PR's head) sends the worker that opened the PR
+  back at the same tier, through the path a review failure takes, with reason
+  `review-failed: REWORK by <who> at <head>; address the review comments on PR
+  #<n>`. It is a dispatch, counted toward `maxEscalations`, and the worker
+  prompt carries the reason. The Review section notes `rework`.
+- **Once per head.** The head acted on is recorded in `rework.<repo>.<pr>`. A
+  push voids the marker; a new head takes a new one.
+- **A marker at another sha** is ignored.
+- **A session that is not closed** (running, parked, waiting on a retry, or
+  re-dispatched already this cycle): noted `rework-held`, and read again next
+  cycle.
+- **No session record on this machine**: `review-redispatch-failed`, raised
+  once per head.
+- **No author check.** As with the stamps, anyone who can comment on the PR can
+  post a marker.
+
+A dry run records nothing and notes `would-rework`.
+
 ## Approval enforcement
 
 `approvalEnforcement` in `fleet.config.json` is `off` by default. While `off`,
