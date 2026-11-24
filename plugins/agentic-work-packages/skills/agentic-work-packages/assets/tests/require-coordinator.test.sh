@@ -111,6 +111,27 @@ REFUSED=(
   'gh issue -R o/r create -t x'
   # a comment ends at the newline
   $'# file it\ngh issue create -t x'
+  # X0.2b: a function body, find -exec, parallel and a here-string fed to a shell
+  'function f { gh issue create -t x; }; f'
+  'f() { gh issue create -t x; }; f'
+  'find . -exec gh issue create -t {} \;'
+  "find . -name '*.md' -execdir gh issue create -t {} ';'"
+  'find . -exec gh issue edit {} --add-label agent-ready +'
+  "find . -exec sh -c 'gh issue create -t x' \\;"
+  'parallel gh issue edit {} --add-label agent-ready ::: 1 2'
+  'parallel -j4 gh issue create -t {} ::: a b'
+  "parallel 'gh issue create -t {}' ::: a b"
+  'bash <<< "gh issue create -t x"'
+  "sh <<<'gh issue create -t x'"
+  'bash -s <<< "gh issue edit 5 --add-label worker:a"'
+  # X0.2b review: a quoted parallel command line, a here-string glued to bash
+  "parallel 'cd x && gh issue create -t {}' ::: a"
+  "parallel 'FOO=1 gh issue create -t {}' ::: a"
+  "parallel -j4 'true; gh issue edit {} --add-label agent-ready' ::: 1"
+  'bash<<<"gh issue create -t x"'
+  'bash 0<<< "gh issue create -t x"'
+  # X0.2b: a -f/-F field with no -X is a POST
+  'gh api repos/o/r/issues/5/labels -f labels[]=agent-ready'
 )
 ALLOWED=(
   'gh pr create --title x --body y'
@@ -140,6 +161,16 @@ ALLOWED=(
   '# gh issue create -t x'
   'echo hi # gh issue create -t x'
   'echo gh-issue-create'
+  # X0.2b: a labels field on a read is a query, not a write
+  'gh api -X GET repos/o/r/issues -f labels=agent-ready'
+  'gh api repos/o/r/issues -X GET -F labels=agent-ready'
+  'gh api --method=GET repos/o/r/issues -f labels=worker:a'
+  # X0.2b: the new forms judge commands, not data
+  'find . -name "*.md" -exec grep -l "gh issue create" {} \;'
+  'find . -exec echo {} \; -print'
+  'parallel echo {} ::: "gh issue create"'
+  'cat <<< "gh issue create -t x"'
+  'function f { echo hi; }; f'
 )
 
 for c in "${REFUSED[@]}"; do refused "$c"; done
