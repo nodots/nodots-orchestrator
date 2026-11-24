@@ -4,7 +4,8 @@
   "branch": "feat/x0-4-doctor-provenance",
   "allowedPaths": [
     "plugins/fleet/bin/fleet.js",
-    "plugins/fleet/tests/doctor-provenance.test.sh"
+    "plugins/fleet/tests/doctor-provenance.test.sh",
+    "plugins/fleet/tests/doctor-allow-rules.test.sh"
   ],
   "forbiddenPaths": [
     "plugins/fleet/src/**",
