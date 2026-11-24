@@ -1,0 +1,33 @@
+{
+  "feature": "x0-4-doctor-provenance",
+  "project": "nodots-orchestrator",
+  "branch": "feat/x0-4-doctor-provenance",
+  "allowedPaths": [
+    "plugins/fleet/bin/fleet.js",
+    "plugins/fleet/tests/doctor-provenance.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/**",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/**",
+    "plugins/agentic-work-packages/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    ".claude/**",
+    "scripts/**",
+    "docs/**",
+    "evals/**"
+  ],
+  "dependsOn": [
+    "feat/x0-3-label-provenance"
+  ],
+  "estimatedScope": "one doctor section and one test file",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
