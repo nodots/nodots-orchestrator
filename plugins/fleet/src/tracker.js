@@ -16,6 +16,42 @@ const { run, runJson } = require('./exec');
 
 const PAGE_LIMIT = Number(process.env.FLEET_PAGE_LIMIT || 1000);
 
+// `gh api --paginate` without --jq or --slurp prints each page's JSON array in
+// turn, with nothing guaranteed between them: `[..][..]`. Split the text at
+// each top-level value's end (strings and their escapes skipped), parse each
+// page, and return the events of every page in order. Anything else, a page
+// that is not an array or text that is not JSON, throws.
+function timelineEvents(text) {
+  const events = [];
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (depth === 0) {
+      if (/\s/.test(ch)) continue;
+      if (ch !== '[') throw new Error(`a page is not a JSON array at offset ${i}: ${text.slice(i, i + 80)}`);
+      start = i;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '[' || ch === '{') depth += 1;
+    else if (ch === ']' || ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        let page;
+        try { page = JSON.parse(text.slice(start, i + 1)); } catch (e) { throw new Error(`a page is not JSON (${e.message}): ${text.slice(start, start + 80)}`); }
+        events.push(...page);
+      }
+    }
+  }
+  if (depth !== 0 || inStr) throw new Error(`the last page is cut off: ${text.slice(start, start + 80)}`);
+  return events;
+}
+
 class Tracker {
   constructor(bins) { this.gh = bins.gh; this.git = bins.git; }
 
@@ -53,17 +89,17 @@ class Tracker {
   // For each label name, the login of its latest `labeled` event. The timeline
   // is oldest first, so a later event overwrites an earlier one. A deleted
   // account's events carry no actor: its login is null, which no coordinator
-  // list matches.
+  // list matches. The raw pages are read and the events selected here, not by
+  // a --jq filter, so the selection is the code the fixture tests run.
   labelActors(repo, number) {
-    const r = run(this.gh, ['api', `repos/${repo}/issues/${number}/timeline`, '--paginate',
-      '--jq', '.[] | select(.event == "labeled") | {label: .label.name, actor: .actor.login} | @json']);
+    const r = run(this.gh, ['api', `repos/${repo}/issues/${number}/timeline`, '--paginate']);
     if (r.status !== 0) return { ok: false, error: r.error || r.stderr.trim() || `gh exited ${r.status}` };
+    let events;
+    try { events = timelineEvents(r.stdout); } catch (e) { return { ok: false, error: `timeline of #${number}: ${e.message}` }; }
     const actors = {};
-    for (const line of r.stdout.split('\n')) {
-      if (!line.trim()) continue;
-      let e;
-      try { e = JSON.parse(line); } catch { return { ok: false, error: `timeline of #${number}: not JSON: ${line.slice(0, 80)}` }; }
-      if (e && typeof e.label === 'string') actors[e.label] = typeof e.actor === 'string' ? e.actor : null;
+    for (const e of events) {
+      if (!e || e.event !== 'labeled' || !e.label || typeof e.label.name !== 'string') continue;
+      actors[e.label.name] = e.actor && typeof e.actor.login === 'string' ? e.actor.login : null;
     }
     return { ok: true, actors };
   }
@@ -158,4 +194,4 @@ class Tracker {
   }
 }
 
-module.exports = { Tracker };
+module.exports = { Tracker, timelineEvents };

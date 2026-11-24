@@ -14,9 +14,10 @@
 //   checks.json   {"<repo>#<number>": [{name, state, bucket}]} for `pr checks`
 //   reads.log     one line per `pr view` / `pr checks` / timeline read ("timeline <repo> <n>")
 //                 / `api user` ("user")
-//   timeline.json {"<n>": [{event, label:{name}, actor:{login}}]}, oldest first, for
-//                 `api repos/<r>/issues/<n>/timeline`; a value that is not an array
-//                 (e.g. "fail") makes that read fail. Every label `issue edit` adds
+//   timeline.json {"<n>": [{event, label:{name}, actor:{login}}, ...]}, oldest first, any
+//                 event type, for `api repos/<r>/issues/<n>/timeline`, printed raw in
+//                 pages of GH_STUB_TIMELINE_PAGE (default 100); a value that is not an
+//                 array (e.g. "fail") makes that read fail. Every label `issue edit` adds
 //                 appends a `labeled` event (a removal, `unlabeled`) by FLEET_STUB_LOGIN.
 //   FLEET_STUB_LOGIN  the login gh runs as (`api user`), default "coordinator"
 // Branches, BLOCKER.md and .claude/standards.json come from the bare remote at
@@ -166,14 +167,21 @@ if (a === 'api') {
     out(flag('--jq') === '.login' ? `${LOGIN}\n` : { login: LOGIN }); process.exit(0);
   }
   let m;
-  // The timeline's labeled events, one JSON value per line, as tracker.labelActors'
-  // --paginate --jq '... | {label, actor} | @json' prints.
+  // The timeline raw, every event type, as `gh api --paginate` without --jq or
+  // --slurp prints it: each page's JSON array written in turn, nothing between
+  // them. Pages hold GH_STUB_TIMELINE_PAGE events (default 100). A --jq filter
+  // is refused, so the parse fleet runs is the one this stub's output exercises,
+  // never a filter the stub would ignore.
   if ((m = /^repos\/(.+?)\/issues\/(\d+)\/timeline$/.exec(ep))) {
+    if (flag('--jq') !== null) { process.stderr.write(`gh stub: --jq on the timeline is not emulated (${flag('--jq')}); parse the raw pages\n`); process.exit(2); }
     fs.appendFileSync(path.join(DIR, 'reads.log'), `timeline ${m[1]} ${Number(m[2])}\n`);
     const list = rd('timeline.json', {})[Number(m[2])];
     if (list !== undefined && !Array.isArray(list)) { process.stderr.write('gh: HTTP 502: Bad Gateway\n'); process.exit(1); }
-    const rows = (list || []).filter(e => e.event === 'labeled').map(e => ({ label: e.label && e.label.name, actor: e.actor ? e.actor.login : null }));
-    out(rows.map(v => JSON.stringify(v)).join('\n') + (rows.length ? '\n' : ''));
+    const size = Number(process.env.GH_STUB_TIMELINE_PAGE || 100);
+    const events = list || [];
+    const pages = [];
+    for (let i = 0; i < events.length; i += size) pages.push(events.slice(i, i + size));
+    out((pages.length ? pages : [[]]).map(p => JSON.stringify(p)).join(''));
     process.exit(0);
   }
   if ((m = /contents\/(.*?BLOCKER\.md)\?ref=(.+)$/.exec(ep))) {

@@ -19,6 +19,7 @@
  */
 
 const scope = require('./scope');
+const { loginKey } = require('./config');
 
 const JUDGED = l => l === 'agent-ready' || /^(cell|worker):./.test(l);
 const labelsOf = i => (i.labels || []).map(l => (typeof l === 'string' ? l : l.name));
@@ -27,7 +28,8 @@ const labelsOf = i => (i.labels || []).map(l => (typeof l === 'string' ? l : l.n
 // One timeline read per open issue that carries a judged label.
 function foreign(cfg, issues, tracker) {
   const out = { flagged: [], errors: [] };
-  const trusted = new Set(cfg.coordinators || []);
+  // GitHub logins are case-insensitive: compared lower-cased.
+  const trusted = new Set((cfg.coordinators || []).map(loginKey));
   if (!trusted.size) return out;
   for (const i of issues) {
     if (String(i.state || 'OPEN').toUpperCase() !== 'OPEN') continue;
@@ -38,7 +40,7 @@ function foreign(cfg, issues, tracker) {
     if (!t.ok) { out.errors.push({ number: i.number, id, error: t.error }); continue; }
     for (const label of judged) {
       const actor = Object.prototype.hasOwnProperty.call(t.actors, label) ? t.actors[label] : null;
-      if (actor === null || !trusted.has(actor)) out.flagged.push({ number: i.number, id, label, actor });
+      if (actor === null || !trusted.has(loginKey(actor))) out.flagged.push({ number: i.number, id, label, actor });
     }
   }
   return out;
