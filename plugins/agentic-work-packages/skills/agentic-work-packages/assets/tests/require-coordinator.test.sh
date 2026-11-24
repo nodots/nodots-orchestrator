@@ -71,6 +71,46 @@ REFUSED=(
   'true || gh issue create -t x'
   'echo ok | gh issue create -t x'
   $'echo ok\ngh issue create -t x'
+  # review finding 1: gh not the first word of its segment
+  'for n in 1 2; do gh issue edit $n --add-label agent-ready; done'
+  'if true; then gh issue create -t x; fi'
+  'while true; do gh issue create -t x; done'
+  '{ gh issue create -t x; }'
+  '! gh issue create -t x'
+  'echo 1 2 | xargs -I{} gh issue edit {} --add-label agent-ready'
+  'timeout 30 gh issue create -t x'
+  'sudo -u me gh issue create -t x'
+  "bash -c 'gh issue create -t x'"
+  "xargs -n1 sh -c 'gh issue edit \$0 --add-label agent-ready'"
+  'eval "gh issue create -t x"'
+  $'bash <<EOF\ngh issue create -t x\nEOF'
+  # review finding 2: backslash-newline continuation
+  $'gh issue \\\ncreate -t x'
+  $'gh issue edit 5 \\\n--add-label \\\nagent-ready'
+  $'gh issue edit 5 --add-label "agent-\\\nready"'
+  # review finding 3: labels are case-insensitive
+  'gh issue edit 5 --add-label Agent-Ready'
+  'gh issue edit 5 --remove-label CELL:queued'
+  'gh issue edit 5 --add-label=bug,Worker:A'
+  # review finding 4: attached short field flags
+  'gh api repos/o/r/issues/5/labels -flabels[]=agent-ready'
+  'gh api repos/o/r/issues/5 -Flabels[]=agent-ready'
+  # review finding 5: gh api issue creation and body or title edits
+  'gh api repos/o/r/issues -f title=x'
+  'gh api repos/{owner}/{repo}/issues -f title=x'
+  'gh api -X POST repos/o/r/issues --input i.json'
+  'gh api -X PATCH repos/o/r/issues/5 -f body=x'
+  'gh api --method PATCH /repos/o/r/issues/5 -F title=x'
+  'gh api -X PATCH repos/o/r/issues/5 -fbody=x'
+  'gh api -X PATCH repos/o/r/issues/5 --input b.json'
+  # review finding 6: a command substitution inside double quotes
+  'URL="$(gh issue create -t x)"'
+  'echo "made `gh issue create -t x`"'
+  'echo "$(echo "$(gh issue create -t x)")"'
+  # gh's persistent -R between issue and its verb
+  'gh issue -R o/r create -t x'
+  # a comment ends at the newline
+  $'# file it\ngh issue create -t x'
 )
 ALLOWED=(
   'gh pr create --title x --body y'
@@ -80,6 +120,26 @@ ALLOWED=(
   'gh issue edit 5 --add-label=bug,docs'
   'gh api repos/o/r/issues/5'
   'gh api -X GET repos/o/r/issues/5/labels'
+  'gh api repos/o/r/issues'
+  'gh api repos/o/r/issues/5/comments -f body=x'
+  'gh issue list --label agent-ready'
+  'gh search issues --label agent-ready'
+  # review finding 7: a heredoc body is data, not commands
+  $'git commit -F - <<EOF\ngh issue create was used by coordinator\nEOF'
+  $'cat <<\'EOF\' > notes.md\ngh issue edit 5 --add-label agent-ready\nEOF\necho done'
+  $'cat <<-EOF\n\tgh issue create -t x\n\tEOF'
+  $'git commit -F - <<"EOF"\ngh api repos/o/r/issues -f title=x\nEOF'
+  'cat <<< "gh issue create"'
+  $'git commit -m "$(cat <<\'EOF\'\nX0.2: gh issue create is refused\nEOF\n)"'
+  $'gh pr create --title x --body "$(cat <<\'EOF\'\ngh issue edit 5 --add-label agent-ready\nEOF\n)" && echo done'
+  # review finding 8: subcommand words found in flag values
+  'gh pr create --title api --body x --label labels-x -F b.md'
+  'gh pr create --title issue --body create'
+  'gh pr edit 5 --title "gh issue create" --add-label agent-ready'
+  # comments are not commands
+  '# gh issue create -t x'
+  'echo hi # gh issue create -t x'
+  'echo gh-issue-create'
 )
 
 for c in "${REFUSED[@]}"; do refused "$c"; done

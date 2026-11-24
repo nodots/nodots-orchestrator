@@ -12,16 +12,30 @@
  * Refused, when FLEET_WORKER_ID is set:
  *   - `gh issue create` (or its alias `gh issue new`), with any labels;
  *   - `gh issue edit` with --add-label or --remove-label (also `--flag=value`,
- *     and comma lists) naming `agent-ready`, `cell:<x>` or `worker:<x>`;
+ *     and comma lists) naming `agent-ready`, `cell:<x>` or `worker:<x>`, in any
+ *     letter case (GitHub label names are case-insensitive);
  *   - `gh issue edit` with --body, -b, --body-file, -F, --title or -t, on any
  *     issue: fleet re-reads the lane from the issue body and re-commits it, so a
  *     worker that edits a body could widen its own allowedPaths;
- *   - `gh api` with `labels` in the path and method POST, PUT, PATCH or DELETE
- *     (-X / --method; a field or --input flag with no method is a POST), or a
- *     `labels` field (-f labels..., -F labels...).
+ *   - `gh api` that writes labels: `labels` in the endpoint and method POST,
+ *     PUT, PATCH or DELETE (-X / --method; a field or --input flag with no
+ *     method is a POST, as gh does), or a `labels` field (-f, -F, attached
+ *     -flabels..., --field, --raw-field);
+ *   - `gh api` that files an issue (a POST to repos/<o>/<r>/issues) or edits
+ *     one (a write to repos/<o>/<r>/issues/<n> with a body or title field, or
+ *     with --input, whose contents the hook cannot see).
  *
- * The command is split on ; & | ( ) backtick and newline, outside quotes, and
- * each segment is judged on its own: a match in any segment refuses the call.
+ * How a command is read: it is split into segments on ; & | ( ) backtick and
+ * newline, outside quotes; `$(...)` and backticks inside double quotes open a
+ * segment of their own. Backslash-newline joins lines; `#` at the start of a
+ * word comments to the end of the line. A heredoc body is data and is skipped,
+ * unless the command it feeds is a shell (sh, bash, zsh, dash, ksh), in which
+ * case the body is judged as commands. In each segment the command word is
+ * found past shell keywords (if, then, do, while, `{`, `!` ...), variable
+ * assignments and wrappers (env, sudo, timeout, xargs, nohup, nice ...); a
+ * `sh -c` string and `eval` arguments are judged as commands. gh's own
+ * subcommand is its first positional word (past -R/--repo), so a flag value
+ * such as `--title api` is never read as one. A match in any segment refuses.
  *
  * Control header
  * --------------
@@ -34,12 +48,19 @@
  *   coordination guardrail and not a security control; loud, because a silent
  *   exit 0 is indistinguishable from "allowed".
  * Residue — what is still not caught: a session without FLEET_WORKER_ID; MCP
- *   GitHub tools; `gh api graphql` mutations; a command built at runtime (eval,
- *   a script file, a variable holding the verb); a subshell inside double
- *   quotes. Issue comments are not refused: a worker reports on its PR and
- *   package. A design decision a worker records in a comment is a coordination
- *   defect the worker contract already names (write BLOCKER.md); it is not
- *   mechanically checked.
+ *   GitHub tools; `gh api graphql` mutations; gh aliases (`gh alias set`); a
+ *   command built at runtime (a variable or command substitution holding the
+ *   verb, endpoint or label, a script file, `source`); a shell fed its
+ *   commands by a pipe (`cat f | bash`) or a heredoc owned by another segment;
+ *   a `<<` shift inside `$(( ))`, which is read as a heredoc and can hide the
+ *   lines after it; `gh api` to an issue endpoint given as a full URL other
+ *   than api.github.com's path form. After a wrapper, the first later word
+ *   naming gh, a shell or eval is taken as the command it runs, so
+ *   `timeout 5 echo gh issue create` is refused: a false refusal, not a miss.
+ *   Issue comments are not refused: a worker reports on its PR and package. A
+ *   design decision a worker records in a comment is a coordination defect the
+ *   worker contract already names (write BLOCKER.md); it is not mechanically
+ *   checked.
  *
  * Wire it up in .claude/settings.json:
  *   { "hooks": { "PreToolUse": [ { "matcher": "Bash",
@@ -49,43 +70,147 @@
 
 const HOOK = 'require-coordinator';
 
-const COORDINATOR_LABEL = /^(?:agent-ready|cell:.*|worker:.*)$/;
+const COORDINATOR_LABEL = /^(?:agent-ready|cell:.*|worker:.*)$/i;
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const WRAPPERS = new Set(['command', 'exec', 'env', 'sudo', 'nohup', 'time']);
 const SEPARATORS = new Set([';', '&', '|', '(', ')', '`', '\n']);
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', '}', 'time']);
+const WRAPPERS = new Set([
+  'command', 'exec', 'builtin', 'env', 'sudo', 'doas', 'nohup', 'time',
+  'timeout', 'xargs', 'nice', 'ionice', 'stdbuf', 'watch', 'caffeinate',
+]);
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh']);
+// A heredoc delimiter is a word; `1<<2` is a shift, not a heredoc.
+const HEREDOC_DELIM = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 // `gh issue new` is gh's alias for `gh issue create`.
-const ISSUE_VERBS = new Set(['create', 'new', 'edit']);
+const FILING_VERBS = new Set(['create', 'new']);
+const MAX_DEPTH = 4;
 
-// Splits a command into segments of tokens, quote-aware. A segment is
-// { raw, tokens }: the text it came from, and its words with quotes removed.
+const basename = t => t.split('/').pop();
+
+// Splits a command into segments. A segment is { raw, tokens, heredocs }: the
+// text it came from, its words with quotes removed, and the bodies of the
+// heredocs it reads.
 function parse(command) {
+  const n = command.length;
   const segments = [];
   let tokens = [];
+  let heredocs = [];
   let word = null;
   let start = 0;
   let quote = null;
+  const stack = [];    // open substitutions: { close, outer quote to restore }
+  let pending = [];    // heredocs whose body starts at the next newline
   const endWord = () => { if (word !== null) { tokens.push(word); word = null; } };
   const endSegment = (i) => {
     endWord();
-    if (tokens.length) segments.push({ raw: command.slice(start, i).trim(), tokens });
+    if (tokens.length) {
+      const seg = { raw: command.slice(start, i).trim(), tokens, heredocs };
+      segments.push(seg);
+      for (const p of pending) if (p.owner === null) p.owner = seg;
+    }
     tokens = [];
+    heredocs = [];
     start = i + 1;
   };
-  for (let i = 0; i < command.length; i++) {
+  // Reads the pending heredoc bodies from pos; returns where commands resume.
+  const readBodies = (pos) => {
+    for (const p of pending) {
+      let body = '';
+      while (pos < n) {
+        let eol = command.indexOf('\n', pos);
+        if (eol < 0) eol = n;
+        const line = command.slice(pos, eol);
+        pos = eol + 1;
+        if ((p.strip ? line.replace(/^\t+/, '') : line) === p.delim) break;
+        body += line + '\n';
+      }
+      if (p.owner) p.owner.heredocs.push(body);
+    }
+    pending = [];
+    return pos;
+  };
+  const close = (i) => {
+    endSegment(i);
+    quote = stack.pop().outer;
+    if (quote) word = '';
+  };
+
+  for (let i = 0; i < n; i++) {
     const c = command[i];
+    const top = stack[stack.length - 1];
     if (quote === "'") {
       if (c === "'") quote = null; else word += c;
-    } else if (quote === '"') {
+      continue;
+    }
+    if (quote === '"') {
       if (c === '"') quote = null;
-      else if (c === '\\' && i + 1 < command.length) { word += command[++i]; }
-      else word += c;
+      else if (c === '\\' && command[i + 1] === '\n') i++;
+      else if (c === '\\' && i + 1 < n) word += command[++i];
+      else if (c === '$' && command[i + 1] === '(') {
+        stack.push({ close: ')', outer: '"' });
+        quote = null;
+        endSegment(++i);
+      } else if (c === '`') {
+        stack.push({ close: '`', outer: '"' });
+        quote = null;
+        endSegment(i);
+      } else word += c;
+      continue;
+    }
+    if (c === '\\' && command[i + 1] === '\n') { i++; continue; }
+    if (c === '\\' && i + 1 < n) {
+      if (word === null) word = '';
+      word += command[++i];
     } else if (c === "'" || c === '"') {
       quote = c;
       if (word === null) word = '';
-    } else if (c === '\\' && i + 1 < command.length) {
+    } else if (c === '#' && word === null) {
+      while (i + 1 < n && command[i + 1] !== '\n') i++;
+    } else if (c === '<' && command.startsWith('<<<', i)) {
       if (word === null) word = '';
-      word += command[++i];
+      word += '<<<';
+      i += 2;
+    } else if (c === '<' && command[i + 1] === '<') {
+      // A heredoc: `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`.
+      let j = i + 2;
+      const strip = command[j] === '-';
+      if (strip) j++;
+      while (command[j] === ' ' || command[j] === '\t') j++;
+      let delim = '';
+      let q = null;
+      for (; j < n; j++) {
+        const d = command[j];
+        if (q) { if (d === q) q = null; else delim += d; }
+        else if (d === "'" || d === '"') q = d;
+        else if (d === '\\' && j + 1 < n) delim += command[++j];
+        else if (/[\s;&|()<>`]/.test(d)) break;
+        else delim += d;
+      }
+      if (HEREDOC_DELIM.test(delim)) {
+        endWord();
+        // Its owner is the segment it appears in, set when that segment ends.
+        pending.push({ delim, strip, owner: null });
+        i = j - 1;
+      } else {
+        if (word === null) word = '';
+        word += '<<';
+        i++;
+      }
+    } else if (c === '\n') {
+      endSegment(i);
+      if (pending.length) {
+        const pos = readBodies(i + 1);
+        start = pos;
+        i = pos - 1;
+      }
+    } else if (c === ')' && top && top.close === ')') {
+      close(i);
+    } else if (c === '`' && top && top.close === '`') {
+      close(i);
     } else if (SEPARATORS.has(c)) {
+      if (c === '(') stack.push({ close: ')', outer: null });
+      else if (c === '`') stack.push({ close: '`', outer: null });
       endSegment(i);
     } else if (c === ' ' || c === '\t' || c === '\r') {
       endWord();
@@ -94,17 +219,26 @@ function parse(command) {
       word += c;
     }
   }
-  endSegment(command.length);
+  endSegment(n);
   return segments;
 }
 
-// The words that follow `gh`, or null when the segment does not run gh.
-function ghArgs(tokens) {
+// The index of the word a segment runs, past keywords, assignments and
+// wrappers; -1 when there is none.
+function commandIndex(tokens) {
   let i = 0;
-  while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i]) || WRAPPERS.has(tokens[i]))) i++;
-  if (i >= tokens.length) return null;
-  const bin = tokens[i].split('/').pop();
-  return bin === 'gh' ? tokens.slice(i + 1) : null;
+  while (i < tokens.length && (KEYWORDS.has(tokens[i]) || ASSIGNMENT.test(tokens[i]))) i++;
+  while (i < tokens.length && WRAPPERS.has(basename(tokens[i]))) {
+    // A wrapper's own options and operands come before the command it runs.
+    const j = tokens.findIndex((t, k) => k > i && isRunner(basename(t)));
+    if (j < 0) return -1;
+    i = j;
+  }
+  return i < tokens.length ? i : -1;
+}
+
+function isRunner(b) {
+  return b === 'gh' || b === 'eval' || SHELLS.has(b) || WRAPPERS.has(b);
 }
 
 // The value of a flag at args[i]: ["--add-label", "x"] or ["--add-label=x"].
@@ -119,22 +253,32 @@ function labelsCoordinator(value) {
   return value.split(',').some(l => COORDINATOR_LABEL.test(l.trim()));
 }
 
-// Why this gh invocation is refused, or null.
-function judgeIssue(args) {
-  const at = args.findIndex((a, i) => a === 'issue' && ISSUE_VERBS.has(args[i + 1]));
-  if (at < 0) return null;
-  const verb = args[at + 1];
-  if (verb !== 'edit') return 'files an issue';
-  const rest = args.slice(at + 2);
+// gh's positional words with their indexes, skipping -R/--repo and its value.
+function positionals(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === '-R' || t === '--repo') { i++; continue; }
+    if (t.startsWith('-')) continue;
+    out.push(i);
+  }
+  return out;
+}
+
+function judgeIssueEdit(rest) {
   for (let i = 0; i < rest.length; i++) {
     const t = rest[i];
+    if (t === '-R' || t === '--repo') { i++; continue; }
+    let skipped = false;
     for (const long of ['--add-label', '--remove-label']) {
       const f = flagValue(rest, i, long);
       if (f) {
         if (labelsCoordinator(f.value)) return `writes a coordinator label (${long} ${f.value})`;
         i += f.skip;
+        skipped = true;
       }
     }
+    if (skipped) continue;
     if (/^--(?:body|body-file|title)(?:=|$)/.test(t) || /^-[bFt]/.test(t) && !t.startsWith('--')) {
       return 'edits an issue body or title';
     }
@@ -143,49 +287,88 @@ function judgeIssue(args) {
 }
 
 const API_VALUE_FLAGS = new Set([
-  '-X', '--method', '-f', '--raw-field', '-F', '--field', '-H', '--header',
-  '--input', '-q', '--jq', '-t', '--template', '--hostname', '--cache',
+  '-H', '--header', '-q', '--jq', '-t', '--template', '--hostname', '--cache',
+  '-p', '--preview',
 ]);
 
-function judgeApi(args) {
-  const at = args.indexOf('api');
-  if (at < 0) return null;
-  const rest = args.slice(at + 1);
+function judgeApi(rest) {
   let method = null;
-  let labelsPath = false;
-  let hasBody = false;
-  let labelsField = false;
+  let endpoint = null;
+  let hasInput = false;
+  const fields = [];
   for (let i = 0; i < rest.length; i++) {
     const t = rest[i];
     let m;
-    if ((m = /^(?:-X|--method=)(.+)$/.exec(t)) && t !== '--method') { method = m[1].toUpperCase(); continue; }
     if (t === '-X' || t === '--method') { method = (rest[++i] || '').toUpperCase(); continue; }
-    if (/^(?:-f|-F|--field|--raw-field)$/.test(t)) {
-      hasBody = true;
-      if (/^labels/.test(rest[++i] || '')) labelsField = true;
-      continue;
-    }
-    if ((m = /^(?:--field|--raw-field)=(.*)$/.exec(t))) {
-      hasBody = true;
-      if (/^labels/.test(m[1])) labelsField = true;
-      continue;
-    }
-    if (t === '--input' || t.startsWith('--input=')) { hasBody = true; if (t === '--input') i++; continue; }
+    if ((m = /^(?:-X|--method=)(.+)$/.exec(t))) { method = m[1].toUpperCase(); continue; }
+    if (/^(?:-f|-F|--field|--raw-field)$/.test(t)) { fields.push(rest[++i] || ''); continue; }
+    if ((m = /^(?:--field=|--raw-field=|-f|-F)(.+)$/.exec(t))) { fields.push(m[1]); continue; }
+    if (t === '--input') { hasInput = true; i++; continue; }
+    if (t.startsWith('--input=')) { hasInput = true; continue; }
     if (API_VALUE_FLAGS.has(t)) { i++; continue; }
     if (t.startsWith('-')) continue;
-    if (/labels/.test(t)) labelsPath = true;
+    if (endpoint === null) endpoint = t;
   }
-  if (labelsField) return 'writes a labels field through gh api';
-  const effective = method || (hasBody ? 'POST' : 'GET');
-  if (labelsPath && WRITE_METHODS.has(effective)) return `writes labels through gh api (${effective})`;
+  const keys = fields.map(f => f.split('=')[0]);
+  if (keys.some(k => /^labels/i.test(k))) return 'writes a labels field through gh api';
+  if (endpoint === null) return null;
+  const effective = method || (fields.length || hasInput ? 'POST' : 'GET');
+  if (!WRITE_METHODS.has(effective)) return null;
+  const path = endpoint.replace(/^https?:\/\/[^/]+\//, '').replace(/^\/+/, '').split('?')[0];
+  if (/(?:^|\/)labels(?:\/|$)/.test(path)) return `writes labels through gh api (${effective})`;
+  if (/^repos\/[^/]+\/[^/]+\/issues\/?$/.test(path) && effective === 'POST') {
+    return 'files an issue through gh api';
+  }
+  if (/^repos\/[^/]+\/[^/]+\/issues\/[^/]+\/?$/.test(path) &&
+      (hasInput || keys.some(k => /^(?:body|title)$/i.test(k)))) {
+    return 'edits an issue body or title through gh api';
+  }
   return null;
 }
 
-function judge(command) {
+// Why this gh invocation (the words after `gh`) is refused, or null.
+function judgeGh(args) {
+  const pos = positionals(args);
+  if (!pos.length) return null;
+  const cmd = args[pos[0]];
+  if (cmd === 'api') return judgeApi(args.slice(pos[0] + 1));
+  if (cmd !== 'issue' || pos.length < 2) return null;
+  const verb = args[pos[1]];
+  if (FILING_VERBS.has(verb)) return 'files an issue';
+  if (verb === 'edit') return judgeIssueEdit(args.slice(pos[1] + 1));
+  return null;
+}
+
+function judgeSegment(seg, depth) {
+  const i = commandIndex(seg.tokens);
+  if (i < 0) return null;
+  const b = basename(seg.tokens[i]);
+  const rest = seg.tokens.slice(i + 1);
+  if (b === 'gh') return judgeGh(rest);
+  if (depth >= MAX_DEPTH) return null;
+  if (b === 'eval') return nested(rest.join(' '), depth);
+  if (SHELLS.has(b)) {
+    const c = rest.findIndex(t => /^-[A-Za-z]*c[A-Za-z]*$/.test(t));
+    if (c >= 0 && rest[c + 1] !== undefined) {
+      const why = nested(rest[c + 1], depth);
+      if (why) return why;
+    }
+    for (const body of seg.heredocs) {
+      const why = nested(body, depth);
+      if (why) return why;
+    }
+  }
+  return null;
+}
+
+function nested(command, depth) {
+  const hit = judge(command, depth + 1);
+  return hit ? hit.why : null;
+}
+
+function judge(command, depth = 0) {
   for (const seg of parse(command)) {
-    const args = ghArgs(seg.tokens);
-    if (!args) continue;
-    const why = judgeIssue(args) || judgeApi(args);
+    const why = judgeSegment(seg, depth);
     if (why) return { segment: seg.raw, why };
   }
   return null;
