@@ -1,0 +1,36 @@
+{
+  "feature": "x0-2b-require-coordinator-forms",
+  "project": "nodots-orchestrator",
+  "branch": "feat/x0-2b-require-coordinator-forms",
+  "allowedPaths": [
+    "plugins/agentic-work-packages/hooks/require-coordinator.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/hooks/require-coordinator.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/tests/require-coordinator.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/agentic-work-packages/hooks/hooks.json",
+    "plugins/agentic-work-packages/hooks/enforce-scope.js",
+    "plugins/agentic-work-packages/hooks/require-handoff.js",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/assets/scripts/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/references/**",
+    "plugins/agentic-work-packages/skills/agentic-work-packages/SKILL.md",
+    "plugins/fleet/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    ".claude/**",
+    "scripts/**",
+    "docs/**",
+    "evals/**"
+  ],
+  "dependsOn": [
+    "feat/x0-2-require-coordinator-hook"
+  ],
+  "estimatedScope": "three more judged forms and one false refusal in one hook, with tests",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

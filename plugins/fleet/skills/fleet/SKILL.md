@@ -32,8 +32,14 @@ coordinator session, so resolve the path as above or from a checkout of
 
 `fleet.config.json` lives with the program (see `fleet.config.example.json` in
 this plugin). `fleet doctor` checks binaries, the plugin scripts, labels, the
-epic, and that each target repo has the scope and handoff hooks and the worker
-contract committed. It prints, per target, the identity fleet commits under:
+epic, and that each target repo's worker files on its base ref (the three
+hooks, the worker contract, and the hook registrations in
+`.claude/settings.json`) match the plugin's. A stale or missing one is a
+`FAIL` naming the file or the event; fix it with
+`node "$FLEET" install --target <owner/repo> --config fleet.config.json`, a dry
+run that lists each file as `add`, `update` or `same`, then the same command
+with `--apply`, which pushes a `chore/install-agentic-work-packages-<version>`
+branch and prints the `gh pr create` command for a person to run. It prints, per target, the identity fleet commits under:
 the `user.name` and `user.email` configured in that target's clone, which the
 scope commit and its re-cut carry as author and committer. With `isolateWorkers` on, it also checks that no
 `CLAUDE.md`, `CLAUDE.local.md` or `.claude/CLAUDE.md` sits in `worktreesDir` or

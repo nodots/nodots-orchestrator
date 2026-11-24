@@ -9,10 +9,11 @@
  *   fleet reap   [--apply] [--json]                     classify finished sessions only
  *   fleet status [--json]                               local state and live sessions, read-only
  *   fleet resume --reason <text>                        clear the stop latch
- *   fleet doctor                                        binaries, plugin, labels, contract, hooks, worktreesDir, identity, base ref, broad allow rules, label provenance
+ *   fleet doctor                                        binaries, plugin, labels, contract, worker files, worktreesDir, identity, base ref, broad allow rules, label provenance
  *   fleet daemon --config <a.json> [--config <b.json> ...] [--interval <minutes>]
  *                                                       cycle --apply per config on an interval and on worker exit
  *   fleet standards init --target <owner/repo> [--write] draft the target's .claude/standards.json and validate it
+ *   fleet install --target <owner/repo> [--apply]       write the target's worker files on a branch; dry run unless --apply
  *
  * Config: --config, else FLEET_CONFIG, else ./fleet.config.json.
  * Exit codes: 0 ok · 1 a label write failed · 64 usage · 69 missing binary ·
@@ -49,7 +50,7 @@ function parse(argv) {
 }
 
 function usage(code = EXIT.usage) {
-  process.stderr.write(fs.readFileSync(__filename, 'utf8').split('\n').slice(4, 20).map(l => l.replace(/^ \*\s?/, '')).join('\n') + '\n');
+  process.stderr.write(fs.readFileSync(__filename, 'utf8').split('\n').slice(4, 21).map(l => l.replace(/^ \*\s?/, '')).join('\n') + '\n');
   process.exit(code);
 }
 
@@ -171,6 +172,34 @@ function main() {
     process.exit(EXIT.ok);
   }
 
+  if (cmd === 'install') {
+    // Writes the worker files on a new branch and pushes it; never opens a PR.
+    if (typeof flags.target !== 'string') { process.stderr.write('fleet install: --target <owner/repo> is required\n'); process.exit(EXIT.usage); }
+    const cfg = config(flags);
+    const target = cfg.targets.find(t => t.repo === flags.target);
+    if (!target) {
+      process.stderr.write(`fleet install: ${flags.target} is not in targets[] (${cfg.targets.map(t => t.repo).join(', ')})\n`);
+      process.exit(EXIT.usage);
+    }
+    const install = require('../src/install');
+    const list = p => { for (const x of p.files) process.stdout.write(`${x.status.padEnd(6)} ${x.path}\n`); };
+    if (!flags.apply) {
+      let p;
+      try { p = install.plan(cfg, target); } catch (e) { process.stderr.write(`fleet install: ${e.message}\n`); process.exit(1); }
+      list(p);
+      process.stderr.write(`fleet install: dry run against ${p.ref}; nothing written. Run with --apply to write the files on a branch\n`);
+      process.exit(EXIT.ok);
+    }
+    let r;
+    try { r = install.apply(cfg, target); } catch (e) { process.stderr.write(`fleet install: ${e.message}\n`); process.exit(1); }
+    if (!r.ok) { process.stderr.write(`fleet install: ${r.stage}: ${r.error}\n`); process.exit(1); }
+    list(r.plan);
+    if (!r.branch) { process.stderr.write(`fleet install: every worker file in ${target.repo} is the same as the plugin's on ${r.plan.ref}; no branch created\n`); process.exit(EXIT.ok); }
+    process.stderr.write(`fleet install: committed and pushed ${r.branch} from ${r.worktree}; open the PR with:\n`);
+    process.stdout.write(`${r.prCommand}\n`);
+    process.exit(EXIT.ok);
+  }
+
   if (cmd === 'reap') {
     const cfg = config(flags);
     const store = new Store(cfg.stateDir);
@@ -237,10 +266,9 @@ function main() {
       check(be.ok && be.exists, `base ref ${t.repo}: ${base}`, !be.ok ? `cannot be read: ${be.error}`
         : be.exists ? `exists${t.integrationBranch ? ` (integrationBranch; PRs open against ${t.integrationBranch})` : ''}`
         : `missing${t.integrationBranch ? `; launch refuses integration-branch-missing. Create it by running ${launchMod.createIntegrationCommand(t)} in ${t.localPath}` : `; fetch origin in ${t.localPath}`}`);
-      const settings = path.join(t.localPath, '.claude', 'settings.json');
-      let hooks = false;
-      try { const s = JSON.parse(fs.readFileSync(settings, 'utf8')); hooks = JSON.stringify(s).includes('enforce-scope') && JSON.stringify(s).includes('require-handoff'); } catch { /* absent */ }
-      check(hooks, `scope + handoff hooks committed in ${t.repo}`, hooks ? settings : `${settings} lacks enforce-scope/require-handoff; a cloud worker sees only committed hooks`);
+      // The installed worker files on the base ref against the plugin's; a
+      // cloud or isolated worker sees only committed hooks.
+      require('../src/install').doctor(cfg, t, check);
       // A WARN names a broad allow rule; it does not fail doctor or refuse a launch.
       const broad = broadAllowRules(cfg, t);
       if (!broad.ok) warn(`allow rules in ${t.repo}`, `.claude/settings.json on ${broad.ref} cannot be read, so its allow rules are not checked: ${broad.error}`);
@@ -250,8 +278,6 @@ function main() {
       // The launch precondition identity-missing: whose name the scope commit carries.
       const id = require('../src/launch').readIdentity(cfg.bins.git, t.localPath);
       check(id.ok, `commit identity for ${t.repo}`, id.ok ? `${id.name} <${id.email}>` : id.error);
-      const contract = path.join(t.localPath, '.claude', 'worker-contract.md');
-      check(fs.existsSync(contract), `worker contract installed in ${t.repo}`, contract);
     }
     const tracker = new Tracker(cfg.bins);
     const labels = run(cfg.bins.gh, ['label', 'list', '--repo', cfg.repo, '--limit', '200', '--json', 'name', '--jq', '[.[].name]'], { timeoutMs: 60000 });

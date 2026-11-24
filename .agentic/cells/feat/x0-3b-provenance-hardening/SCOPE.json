@@ -1,0 +1,42 @@
+{
+  "feature": "x0-3b-provenance-hardening",
+  "project": "nodots-orchestrator",
+  "branch": "feat/x0-3b-provenance-hardening",
+  "allowedPaths": [
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/provenance.js",
+    "plugins/fleet/src/tracker.js",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/fleet.config.example.json",
+    "plugins/fleet/tests/stubs/gh.js",
+    "plugins/fleet/tests/provenance.test.sh",
+    "plugins/fleet/tests/config.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/verify.js",
+    "plugins/fleet/src/review.js",
+    "plugins/fleet/src/merge.js",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/**",
+    "plugins/agentic-work-packages/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    ".claude/**",
+    "scripts/**",
+    "docs/**",
+    "evals/**"
+  ],
+  "dependsOn": [
+    "feat/x0-3-label-provenance"
+  ],
+  "estimatedScope": "case-insensitive compare, a tested timeline parse, verify filtering, one example-config line",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

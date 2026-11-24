@@ -56,4 +56,14 @@ for bad in "'x'" "['']" "['a','a']" "[3]" "{}"; do
   assert_contains "$OUT" "coordinators" "the rejection of $bad names the field"
 done
 
+# --- coordinators (X0.3b): GitHub logins are case-insensitive -----------------
+assert_eq "ok" "$(js "c.requireFleetCoordinator(c.validate({...$BASE,coordinators:['Octo']},'$TMP'),'octo');console.log('ok')")" "coordinators ['Octo'] with gh login octo: fleet's login is a coordinator"
+assert_eq "ok" "$(js "c.requireFleetCoordinator(c.validate({...$BASE,coordinators:['octo']},'$TMP'),'OCTO');console.log('ok')")" "coordinators ['octo'] with gh login OCTO: fleet's login is a coordinator"
+OUT=$(js "try{c.requireFleetCoordinator(c.validate({...$BASE,coordinators:['Octo']},'$TMP'),'octopus');console.log('accepted')}catch(e){console.log(e.code, e.message)}")
+assert_contains "$OUT" "ECONFIG" "coordinators ['Octo'] with gh login octopus: still config-invalid"
+OUT=$(js "try{c.validate({...$BASE,coordinators:['Octo','octo']},'$TMP');console.log('accepted')}catch(e){console.log(e.code, e.message)}")
+assert_contains "$OUT" "listed twice" "coordinators ['Octo','octo']: the same login in two cases is listed twice"
+# The example config leaves the check off: copying it turns nothing on by accident.
+assert_eq "absent" "$(node -e "console.log('coordinators' in require('$(cd .. && pwd -P)/fleet.config.example.json') ? 'present' : 'absent')")" "fleet.config.example.json has no coordinators"
+
 finish
