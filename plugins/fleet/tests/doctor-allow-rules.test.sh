@@ -58,12 +58,15 @@ fs.writeFileSync(`${dir}/issues.json`, JSON.stringify([
 ], null, 2));
 fs.writeFileSync(`${dir}/prs.json`, '[]'); fs.writeFileSync(`${dir}/labels.json`, '{}');
 fs.writeFileSync(`${dir}/comments.json`, '{}'); fs.writeFileSync(`${dir}/writes.log`, '');
+// #10's labels were applied by the coordinator, so label provenance holds nothing.
+fs.writeFileSync(`${dir}/timeline.json`, JSON.stringify({ 10: ['agent-ready', 'cell:queued', 'worker:a']
+  .map(name => ({ event: 'labeled', label: { name }, actor: { login: 'coordinator' } })) }));
 JS
 printf '{}' > "$TMP/gh/ci.json"
 
 cat > "$TMP/fleet.config.json" <<JSON
 {
-  "repo": "acme/host", "epic": 1,
+  "repo": "acme/host", "epic": 1, "coordinators": ["coordinator"],
   "targets": [{ "repo": "acme/api", "localPath": "$TMP/clone", "defaultBranch": "main" }],
   "workers": { "a": { "mode": "local" } },
   "wipCap": 4, "worktreesDir": "$TMP/worktrees", "stateDir": "$TMP/state",

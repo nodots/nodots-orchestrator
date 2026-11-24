@@ -92,7 +92,7 @@ assert_eq "0" "$OK_EXIT" "A: doctor exits 0"
 assert_contains "$(cat "$TMP/gh/reads.log")" "timeline acme/host 10" "A: #10's timeline is read"
 assert_contains "$(cat "$TMP/gh/reads.log")" "timeline acme/host 20" "A: #20 (outside the epic) is read too"
 assert_not_contains "$(cat "$TMP/gh/reads.log")" "timeline acme/host 30" "A: a closed issue is not read"
-assert_not_contains "$(cat "$TMP/gh/reads.log")" "timeline acme/host 1$" "A: the epic, with no judged label, is not read"
+assert_empty "$(grep -x 'timeline acme/host 1' "$TMP/gh/reads.log")" "A: the epic, with no judged label, is not read"
 
 # --- B. worker:a on #10 labeled by jack: FAIL naming label, issue and jack ---------
 timeline "{\"10\": [$(ev agent-ready coordinator), $(ev cell:queued coordinator), $(ev worker:a jack)], \"20\": [$(ev agent-ready coordinator)]}"
