@@ -9,7 +9,7 @@
  *   fleet reap   [--apply] [--json]                     classify finished sessions only
  *   fleet status [--json]                               local state and live sessions, read-only
  *   fleet resume --reason <text>                        clear the stop latch
- *   fleet doctor                                        binaries, plugin, labels, contract, worker files, worktreesDir, identity, base ref, broad allow rules
+ *   fleet doctor                                        binaries, plugin, labels, contract, worker files, worktreesDir, identity, base ref, broad allow rules, label provenance
  *   fleet daemon --config <a.json> [--config <b.json> ...] [--interval <minutes>]
  *                                                       cycle --apply per config on an interval and on worker exit
  *   fleet standards init --target <owner/repo> [--write] draft the target's .claude/standards.json and validate it
@@ -31,6 +31,7 @@ const report = require('../src/report');
 const { run, isAlive } = require('../src/exec');
 const trust = require('../src/trust');
 const scope = require('../src/scope');
+const provenance = require('../src/provenance');
 
 function parse(argv) {
   // flags.config keeps the last --config, as before; configs keeps every one,
@@ -284,11 +285,31 @@ function main() {
       let have = []; try { have = JSON.parse(labels.stdout); } catch { /* ignore */ }
       for (const l of ['agent-ready', 'cell:queued', 'cell:active', 'cell:awaiting-review', 'cell:blocked', 'cell:merged', 'cell:contract-change', ...cfg.workerIds.map(w => `worker:${w}`)]) check(have.includes(l), `label ${l}`, have.includes(l) ? '' : 'run bootstrap-github-labels.sh');
     } else check(false, `gh label list ${cfg.repo}`, labels.error || labels.stderr.trim());
+    // Label provenance (X0.3): who applied agent-ready, cell:* and worker:* on
+    // every open issue in the host repo, the epic's or not. Off, it reads nothing.
+    const list = tracker.listIssues(cfg.repo);
+    if (!cfg.coordinators.length) warn('coordinators', 'not set; fleet trusts agent-ready, cell:* and worker:* from any account');
+    else {
+      const me = tracker.login();
+      if (!me.ok) check(false, "fleet's gh login", `cannot be read: ${me.error}`);
+      // Logins compare lowercased, as the cycle's coordinator check does (X0.3b).
+      else if (!cfg.coordinators.some(c => String(c).toLowerCase() === me.login.toLowerCase())) check(false, `fleet's gh login ${me.login} is not in coordinators`, `${cfg.coordinators.join(', ')}; sync, assign and promote write labels as it, so the cycle refuses config-invalid`);
+      if (!list.ok) check(false, 'label provenance', `not checked, issue list ${cfg.repo} cannot be read: ${list.error}`);
+      else {
+        const open = list.issues.filter(i => String(i.state).toUpperCase() === 'OPEN');
+        const byNumber = new Map(open.map(i => [i.number, i]));
+        const outside = n => (scope.partOf(byNumber.get(n).body) === cfg.epic ? '' : ` (outside epic #${cfg.epic})`);
+        const judged = open.filter(i => i.labels.some(provenance.JUDGED)).length;
+        const p = provenance.foreign(cfg, open, tracker);
+        for (const e of p.errors) check(false, `label provenance on #${e.number} ${e.id}`, `timeline cannot be read: ${e.error}${outside(e.number)}`);
+        for (const f of p.flagged) check(false, `label ${f.label} on #${f.number} ${f.id}`, `applied by ${f.actor === null ? 'an unknown account (no labeled event by a known login)' : f.actor}, not a coordinator${outside(f.number)}`);
+        if (!p.errors.length && !p.flagged.length) check(true, 'label provenance', `${judged} issues, all from coordinators`);
+      }
+    }
     const epic = tracker.viewIssue(cfg.repo, cfg.epic);
     check(epic.ok, `epic #${cfg.epic}`, epic.ok ? epic.issue.title : epic.error);
     // A package is an open issue that is agent-ready or already carries a
     // cell:* label; a cycle acts only on those whose **Part of** names the epic.
-    const list = tracker.listIssues(cfg.repo);
     if (list.ok) {
       const packages = list.issues.filter(i => String(i.state).toUpperCase() === 'OPEN'
         && i.labels.some(l => l === 'agent-ready' || l.startsWith('cell:')));
