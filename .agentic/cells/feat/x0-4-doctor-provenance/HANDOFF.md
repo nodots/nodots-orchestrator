@@ -8,7 +8,7 @@
 - Known nit, left as is: when the issue list cannot be read and coordinators is set, doctor prints two FAIL lines for one cause (provenance "not checked" plus the existing `issue list` FAIL).
 
 ## Next
-- Review and merge the `[READY]: X0.4` PR.
+- Blocked: see BLOCKER.md. `bash scripts/test.sh` fails only on the gitleaks tests (linux_x64 binary on a darwin arm64 host, owned by X-B1). Once that is cleared: re-run `bash scripts/test.sh`, open the `[READY]: X0.4` PR (body `Closes #246`), and post the VERIFIED stamp for the head sha.
 
 ## Plan check
 
