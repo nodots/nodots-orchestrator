@@ -20,6 +20,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-scope.js\""
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/require-coordinator.js\""
+          }
+        ]
       }
     ],
     "Stop": [

@@ -56,6 +56,10 @@ When workers run on other Claude accounts, a package also carries at most one
 
 ## Filing
 
+Only the coordinator files packages and applies `agent-ready`, `cell:*` and
+`worker:*`. With `FLEET_WORKER_ID` set, `require-coordinator.js` refuses; write
+`BLOCKER.md`.
+
 ```bash
 # package
 gh issue create --repo <owner>/<host-repo> \
