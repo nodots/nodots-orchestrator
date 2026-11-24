@@ -17,10 +17,11 @@
  *   - `gh issue edit` with --body, -b, --body-file, -F, --title or -t, on any
  *     issue: fleet re-reads the lane from the issue body and re-commits it, so a
  *     worker that edits a body could widen its own allowedPaths;
- *   - `gh api` that writes labels: `labels` in the endpoint and method POST,
- *     PUT, PATCH or DELETE (-X / --method; a field or --input flag with no
- *     method is a POST, as gh does), or a `labels` field (-f, -F, attached
- *     -flabels..., --field, --raw-field);
+ *   - `gh api` that writes labels, with method POST, PUT, PATCH or DELETE
+ *     (-X / --method; a field or --input flag with no method is a POST, as gh
+ *     does): `labels` in the endpoint, or a `labels` field (-f, -F, attached
+ *     -flabels..., --field, --raw-field). A field on a GET is a query, and is
+ *     allowed;
  *   - `gh api` that files an issue (a POST to repos/<o>/<r>/issues) or edits
  *     one (a write to repos/<o>/<r>/issues/<n> with a body or title field, or
  *     with --input, whose contents the hook cannot see).
@@ -30,10 +31,14 @@
  * segment of their own. Backslash-newline joins lines; `#` at the start of a
  * word comments to the end of the line. A heredoc body is data and is skipped,
  * unless the command it feeds is a shell (sh, bash, zsh, dash, ksh), in which
- * case the body is judged as commands. In each segment the command word is
- * found past shell keywords (if, then, do, while, `{`, `!` ...), variable
+ * case the body is judged as commands; so is a here-string (`bash <<< "..."`)
+ * fed to a shell. In each segment the command word is found past shell
+ * keywords (if, then, do, while, `{`, `!` ...), `function NAME`, variable
  * assignments and wrappers (env, sudo, timeout, xargs, nohup, nice ...); a
- * `sh -c` string and `eval` arguments are judged as commands. gh's own
+ * `sh -c` string and `eval` arguments are judged as commands, as are the words
+ * of each `find -exec`/`-execdir`/`-ok`/`-okdir` (up to `;` or `+`) and of
+ * `parallel` (from the first word naming gh, a shell, eval or a wrapper, up
+ * to `:::` or `::::`). gh's own
  * subcommand is its first positional word (past -R/--repo), so a flag value
  * such as `--title api` is never read as one. A match in any segment refuses.
  *
@@ -54,9 +59,13 @@
  *   commands by a pipe (`cat f | bash`) or a heredoc owned by another segment;
  *   a `<<` shift inside `$(( ))`, which is read as a heredoc and can hide the
  *   lines after it; `gh api` to an issue endpoint given as a full URL other
- *   than api.github.com's path form. After a wrapper, the first later word
- *   naming gh, a shell or eval is taken as the command it runs, so
- *   `timeout 5 echo gh issue create` is refused: a false refusal, not a miss.
+ *   than api.github.com's path form; `parallel` given its commands as
+ *   arguments or from a file (`parallel ::: "gh issue create"`, `parallel
+ *   :::: cmds`, `parallel < cmds`); a find -exec, a parallel or a here-string
+ *   nested deeper than four levels. After a wrapper or `parallel`, the first
+ *   later word naming gh, a shell, eval, find or parallel is taken as the
+ *   command it runs, so `timeout 5 echo gh issue create` is refused: a false
+ *   refusal, not a miss.
  *   Issue comments are not refused: a worker reports on its PR and package. A
  *   design decision a worker records in a comment is a coordination defect the
  *   worker contract already names (write BLOCKER.md); it is not mechanically
@@ -227,7 +236,12 @@ function parse(command) {
 // wrappers; -1 when there is none.
 function commandIndex(tokens) {
   let i = 0;
-  while (i < tokens.length && (KEYWORDS.has(tokens[i]) || ASSIGNMENT.test(tokens[i]))) i++;
+  for (;;) {
+    if (KEYWORDS.has(tokens[i]) || ASSIGNMENT.test(tokens[i] || '')) i++;
+    // `function f { ...`: the body's first command follows the name.
+    else if (tokens[i] === 'function') i += 2;
+    else break;
+  }
   while (i < tokens.length && WRAPPERS.has(basename(tokens[i]))) {
     // A wrapper's own options and operands come before the command it runs.
     const j = tokens.findIndex((t, k) => k > i && isRunner(basename(t)));
@@ -238,7 +252,8 @@ function commandIndex(tokens) {
 }
 
 function isRunner(b) {
-  return b === 'gh' || b === 'eval' || SHELLS.has(b) || WRAPPERS.has(b);
+  return b === 'gh' || b === 'eval' || b === 'find' || b === 'parallel' ||
+    SHELLS.has(b) || WRAPPERS.has(b);
 }
 
 // The value of a flag at args[i]: ["--add-label", "x"] or ["--add-label=x"].
@@ -310,10 +325,11 @@ function judgeApi(rest) {
     if (endpoint === null) endpoint = t;
   }
   const keys = fields.map(f => f.split('=')[0]);
+  const effective = method || (fields.length || hasInput ? 'POST' : 'GET');
+  // A field on a GET is a query parameter, so only a write sends labels.
+  if (!WRITE_METHODS.has(effective)) return null;
   if (keys.some(k => /^labels/i.test(k))) return 'writes a labels field through gh api';
   if (endpoint === null) return null;
-  const effective = method || (fields.length || hasInput ? 'POST' : 'GET');
-  if (!WRITE_METHODS.has(effective)) return null;
   const path = endpoint.replace(/^https?:\/\/[^/]+\//, '').replace(/^\/+/, '').split('?')[0];
   if (/(?:^|\/)labels(?:\/|$)/.test(path)) return `writes labels through gh api (${effective})`;
   if (/^repos\/[^/]+\/[^/]+\/issues\/?$/.test(path) && effective === 'POST') {
@@ -339,6 +355,31 @@ function judgeGh(args) {
   return null;
 }
 
+// `find ... -exec CMD ... ;` (or `+`): each -exec/-execdir/-ok/-okdir command,
+// run directly with no shell, judged as words.
+function judgeFind(rest, depth) {
+  for (let i = 0; i < rest.length; i++) {
+    if (!/^-(?:exec|execdir|ok|okdir)$/.test(rest[i])) continue;
+    let end = i + 1;
+    while (end < rest.length && rest[end] !== ';' && rest[end] !== '+') end++;
+    const why = judgeSegment({ tokens: rest.slice(i + 1, end), heredocs: [] }, depth + 1);
+    if (why) return why;
+    i = end;
+  }
+  return null;
+}
+
+// `parallel [options] CMD ... ::: args`: the words before the first argument
+// separator, from the first one naming a command, joined into the command
+// line parallel hands to a shell.
+function judgeParallel(rest, depth) {
+  let end = rest.findIndex(t => /^:{3,4}\+?$/.test(t));
+  if (end < 0) end = rest.length;
+  const words = rest.slice(0, end);
+  const k = words.findIndex(t => isRunner(basename(t.trim().split(/\s+/)[0])));
+  return k < 0 ? null : nested(words.slice(k).join(' '), depth);
+}
+
 function judgeSegment(seg, depth) {
   const i = commandIndex(seg.tokens);
   if (i < 0) return null;
@@ -347,10 +388,19 @@ function judgeSegment(seg, depth) {
   if (b === 'gh') return judgeGh(rest);
   if (depth >= MAX_DEPTH) return null;
   if (b === 'eval') return nested(rest.join(' '), depth);
+  if (b === 'find') return judgeFind(rest, depth);
+  if (b === 'parallel') return judgeParallel(rest, depth);
   if (SHELLS.has(b)) {
     const c = rest.findIndex(t => /^-[A-Za-z]*c[A-Za-z]*$/.test(t));
     if (c >= 0 && rest[c + 1] !== undefined) {
       const why = nested(rest[c + 1], depth);
+      if (why) return why;
+    }
+    // A here-string: `<<< word` or `<<<word`.
+    for (let h = 0; h < rest.length; h++) {
+      if (!rest[h].startsWith('<<<')) continue;
+      const body = rest[h] === '<<<' ? rest[h + 1] : rest[h].slice(3);
+      const why = body === undefined ? null : nested(body, depth);
       if (why) return why;
     }
     for (const body of seg.heredocs) {
