@@ -61,11 +61,14 @@
  *   lines after it; `gh api` to an issue endpoint given as a full URL other
  *   than api.github.com's path form; `parallel` given its commands as
  *   arguments or from a file (`parallel ::: "gh issue create"`, `parallel
- *   :::: cmds`, `parallel < cmds`); a find -exec, a parallel or a here-string
- *   nested deeper than four levels. After a wrapper or `parallel`, the first
- *   later word naming gh, a shell, eval, find or parallel is taken as the
- *   command it runs, so `timeout 5 echo gh issue create` is refused: a false
- *   refusal, not a miss.
+ *   :::: cmds`, `parallel < cmds`); a redirect written before the command
+ *   word (`<<< "gh issue create" bash`); a find -exec, a parallel or a
+ *   here-string nested deeper than four levels. After a wrapper or
+ *   `parallel`, the first later word naming gh, a shell, eval, find or
+ *   parallel is taken as the command it runs, so `timeout 5 echo gh issue
+ *   create` is refused: a false refusal, not a miss. So are a quoted word
+ *   before `:::` that reads as such a command (`parallel echo 'gh issue
+ *   create' ::: a`) and a shell argument quoted to start with `<<<`.
  *   Issue comments are not refused: a worker reports on its PR and package. A
  *   design decision a worker records in a comment is a coordination defect the
  *   worker contract already names (write BLOCKER.md); it is not mechanically
@@ -177,8 +180,10 @@ function parse(command) {
     } else if (c === '#' && word === null) {
       while (i + 1 < n && command[i + 1] !== '\n') i++;
     } else if (c === '<' && command.startsWith('<<<', i)) {
-      if (word === null) word = '';
-      word += '<<<';
+      // An operator: it ends the word before it (`bash<<<x`, `0<<<x`), and
+      // its own word is `<<<` plus what follows it unspaced.
+      endWord();
+      word = '<<<';
       i += 2;
     } else if (c === '<' && command[i + 1] === '<') {
       // A heredoc: `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`.
@@ -369,14 +374,19 @@ function judgeFind(rest, depth) {
   return null;
 }
 
-// `parallel [options] CMD ... ::: args`: the words before the first argument
-// separator, from the first one naming a command, joined into the command
-// line parallel hands to a shell.
+// `parallel [options] CMD ... ::: args`: parallel hands a shell the words
+// before the first argument separator. Each word is judged as a command line
+// (a quoted `'cd x && gh ...'`), and so are the words from the first one
+// naming a command, joined.
 function judgeParallel(rest, depth) {
   let end = rest.findIndex(t => /^:{3,4}\+?$/.test(t));
   if (end < 0) end = rest.length;
   const words = rest.slice(0, end);
-  const k = words.findIndex(t => isRunner(basename(t.trim().split(/\s+/)[0])));
+  for (const w of words) {
+    const why = /\s/.test(w) ? nested(w, depth) : null;
+    if (why) return why;
+  }
+  const k = words.findIndex(t => isRunner(basename(t)));
   return k < 0 ? null : nested(words.slice(k).join(' '), depth);
 }
 
