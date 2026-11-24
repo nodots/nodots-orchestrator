@@ -139,7 +139,7 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     }
     const trusted = i => !foreignHeld.has(i.number);
     const issues = epicIssues.filter(trusted);
-    // What review and merge read: the sync's state and rows without the held packages.
+    // What verify, review and merge read: the sync's state and rows without the held packages.
     const syncTrusted = foreignHeld.size
       ? { ...sync, rows: sync.rows.filter(x => !foreignHeld.has(x.number)), state: { ...sync.state, issues: sync.state.issues.filter(trusted) } }
       : sync;
@@ -199,10 +199,47 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     const only = process.env.FLEET_ONLY_ISSUE ? Number(process.env.FLEET_ONLY_ISSUE) : null;
 
     // 4b. verify: one run in flight per verify target; a failure's re-dispatch
-    // joins this cycle's launch requests below.
-    const vr = only === null
-      ? verifyMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync, issues, at, alarm, r })
-      : { requests: [], verifying: verifyMod.inFlightCount(cfg, state), waiting: verifyMod.manualWaiting(cfg, sync), latched: false };
+    // joins this cycle's launch requests below. It reads the sync without the
+    // held packages, as review and merge do, so a held package's PR is neither
+    // posted nor retitled. A run in flight for a held package is set aside:
+    // the stage neither reads nor stamps it, and the record is judged once a
+    // coordinator's labels are back. Its target posts nothing new while it is
+    // set aside (the run still holds the lab), but the stage still retitles the
+    // target's trusted PRs. One exception: a finished run that did not revert
+    // the lab is not set aside, so the stage latches the fleet on it (that
+    // path writes nothing to the PR).
+    const verifyHeld = [];
+    if (only === null && foreignHeld.size) {
+      for (const t of cfg.targets) {
+        if (!t.verify || t.verify.kind === 'manual') continue;
+        const vs = state.verify && state.verify[t.repo];
+        const f = vs && vs.inFlight;
+        if (!f || !foreignHeld.has(f.issue)) continue;
+        const g = verifyMod.request('GET', `${String(t.verify.url).replace(/\/+$/, '')}/runs/${encodeURIComponent(f.runId)}`);
+        const rec = g.ok && g.status === 200 && g.json && typeof g.json === 'object' ? g.json : null;
+        if (rec && rec.finishedAt && (rec.verify || {}).reverted !== true) continue;
+        verifyHeld.push({ repo: t.repo, vs, f });
+        vs.inFlight = null;
+        r.verify.push({ target: t.repo, pr: f.pr, action: 'held', detail: `run ${f.runId}: label-foreign-actor on #${f.issue}; its result waits` });
+      }
+    }
+    // The held targets' queues are left out, so nothing is posted in their slot.
+    const heldRepos = new Set(verifyHeld.map(h => h.repo));
+    const verifySync = heldRepos.size
+      ? (() => {
+        const inHeld = new Set(syncTrusted.state.issues.filter(i => heldRepos.has(i.repo)).map(i => i.number));
+        return { ...syncTrusted, rows: syncTrusted.rows.filter(x => !(x.to === 'cell:awaiting-lab' && inHeld.has(x.number))) };
+      })()
+      : syncTrusted;
+    let vr;
+    try {
+      vr = only === null
+        ? verifyMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync: verifySync, issues, at, alarm, r })
+        : { requests: [], verifying: verifyMod.inFlightCount(cfg, state), waiting: verifyMod.manualWaiting(cfg, syncTrusted), latched: false };
+    } finally {
+      for (const h of verifyHeld) h.vs.inFlight = h.f;
+    }
+    vr.verifying += verifyHeld.length;
     reaped.requests.push(...vr.requests);
 
     // 4c. review: one reviewer in flight per cell:awaiting-reviewer PR; a

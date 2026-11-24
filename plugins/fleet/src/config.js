@@ -187,21 +187,24 @@ function requireReviewers(c, policies) {
 // from any other account is held (src/provenance.js). Absent or [] turns the
 // check off. Fleet's own login has to be in the list, because sync, assign and
 // promote write those labels as it; the cycle checks that (it needs gh).
+// GitHub logins are case-insensitive, so every comparison goes through
+// loginKey (lower-cased); the list keeps the case it was written in.
+const loginKey = l => String(l).toLowerCase();
 function validateCoordinators(list) {
   if (list === undefined) return [];
   if (!Array.isArray(list)) fail(`coordinators [${JSON.stringify(list)}] must be an array of GitHub logins`);
   const seen = new Set();
   list.forEach((l, i) => {
     if (typeof l !== 'string' || !l.trim()) fail(`coordinators[${i}] [${JSON.stringify(l)}] must be a non-empty GitHub login`);
-    if (seen.has(l)) fail(`coordinators[${i}] [${l}] is listed twice; name each login once`);
-    seen.add(l);
+    if (seen.has(loginKey(l))) fail(`coordinators[${i}] [${l}] is listed twice (logins are case-insensitive); name each login once`);
+    seen.add(loginKey(l));
   });
   return [...list];
 }
 
 // The cycle reads the login gh runs as, once, and calls this with it.
 function requireFleetCoordinator(c, login) {
-  if (!c.coordinators.length || c.coordinators.includes(login)) return;
+  if (!c.coordinators.length || c.coordinators.some(l => loginKey(l) === loginKey(login))) return;
   fail(`coordinators (${c.coordinators.join(', ')}) does not include ${login}, the account fleet's gh runs as; sync, assign and promote write labels as it, so every package would be held. Add ${login} to coordinators`);
 }
 
@@ -308,4 +311,4 @@ function approvalGate(c, pr) {
   return { blocked: true, mechanism: c.approvalEnforcement, reason: `PR #${pr.number} has no human approval` };
 }
 
-module.exports = { loadConfig, validate, requireReviewers, requireFleetCoordinator, defaultPluginRoot, approvalGate, approvalPayload, isProtected, DEFAULTS, MODES };
+module.exports = { loadConfig, validate, requireReviewers, requireFleetCoordinator, loginKey, defaultPluginRoot, approvalGate, approvalPayload, isProtected, DEFAULTS, MODES };

@@ -12,6 +12,9 @@
 # neither reviewed nor merged; coordinators without fleet's own login is
 # config-invalid and promotes nothing; without coordinators no timeline is read
 # and the same fixture is promoted, reviewed and merge-checked as before.
+# X0.3b: logins compare case-insensitively; a raw multi-page timeline with
+# mixed event types is parsed by fleet itself (the stub refuses --jq); a held
+# package's PR on a verify target is neither posted, stamped nor retitled.
 set -uo pipefail
 cd "$(dirname "$0")"
 . ./lib.sh
@@ -22,7 +25,8 @@ PLUGIN="$(cd ../../agentic-work-packages && pwd -P)"
 assert_file "$FLEET" "fleet.js exists"
 
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+VPID=""
+trap '[ -n "$VPID" ] && kill "$VPID" 2>/dev/null; rm -rf "$TMP"' EXIT
 TMP=$(cd "$TMP" && pwd -P)
 
 # --- a real remote with a review policy, an integration branch and two package branches
@@ -241,5 +245,136 @@ FLEET_STUB_LOGIN=octo "$STUB/gh" issue edit 11 --repo acme/host --add-label cell
 assert_eq '[{"event":"labeled","label":{"name":"cell:blocked"},"actor":{"login":"octo"}}]' "$(node -e "console.log(JSON.stringify(require('$TMP/gh/timeline.json')['11'].slice(-1)))")" "E: a label written through the stub is a labeled event by FLEET_STUB_LOGIN"
 "$STUB/gh" issue edit 11 --repo acme/host --add-label cell:contract-change >/dev/null
 assert_eq '"coordinator"' "$(node -e "console.log(JSON.stringify(require('$TMP/gh/timeline.json')['11'].slice(-1)[0].actor.login))")" "E: FLEET_STUB_LOGIN defaults to coordinator"
+
+# --- F. logins compare case-insensitively (X0.3b) -------------------------------
+# coordinators ["Octo"], gh runs as octo, #12's agent-ready applied by OCTO.
+write_config ', "coordinators": ["Octo"]'
+reset '{"12":[{"event":"labeled","label":{"name":"agent-ready"},"actor":{"login":"OCTO"}}]}'
+FLEET_STUB_LOGIN=octo cycle --apply
+assert_not_contains "$(jq_out "r.alarms.map(a=>a.code).join(' ')")" "config-invalid" "F: coordinators [Octo] with gh login octo: no config-invalid"
+assert_not_contains ",$(alarm_issues label-foreign-actor)," ",12," "F: #12's agent-ready by OCTO is trusted"
+assert_contains ",$(promoted)," ",12," "F: #12 is promoted"
+
+# --- G. a multi-page timeline with mixed event types (X0.3b) --------------------
+# The stub prints the raw timeline two events a page, as `gh api --paginate`
+# does: `[..][..][..]`. Only `labeled` events count, the latest per label.
+write_config ', "coordinators": ["coordinator"]'
+reset '{
+  "11":[{"event":"labeled","label":{"name":"agent-ready"},"actor":{"login":"coordinator"}},
+        {"event":"commented","actor":{"login":"coordinator"},"body":"queued"},
+        {"event":"cross-referenced","actor":{"login":"coordinator"},"source":{"type":"issue","issue":{"number":12}}},
+        {"event":"labeled","label":{"name":"agent-ready"},"actor":{"login":"jack"}},
+        {"event":"commented","actor":{"login":"coordinator"},"body":"hm"}],
+  "12":[{"event":"labeled","label":{"name":"agent-ready"},"actor":{"login":"jack"}},
+        {"event":"commented","actor":{"login":"jack"},"body":"mine"},
+        {"event":"cross-referenced","actor":{"login":"jack"},"source":{"type":"issue","issue":{"number":11}}},
+        {"event":"unlabeled","label":{"name":"agent-ready"},"actor":{"login":"coordinator"}},
+        {"event":"labeled","label":{"name":"agent-ready"},"actor":{"login":"coordinator"}}]
+}'
+RAW=$(GH_STUB_TIMELINE_PAGE=2 "$STUB/gh" api repos/acme/host/issues/12/timeline --paginate)
+assert_eq "3" "$(printf '%s' "$RAW" | grep -o '\]\[' | wc -l | tr -d ' ' | awk '{print $1+1}')" "G: the stub prints #12's timeline as three concatenated pages"
+assert_contains "$(GH_STUB_TIMELINE_PAGE=2 "$STUB/gh" api repos/acme/host/issues/12/timeline --paginate --jq '.[]' 2>&1)" "--jq on the timeline is not emulated" "G: the stub refuses a --jq filter on the timeline"
+# The page splitter itself: brackets and quotes inside strings, whitespace
+# between pages, and text that is not a page sequence.
+TL="$(cd .. && pwd -P)/src/tracker.js"
+tl() { node -e "const {timelineEvents}=require('$TL'); try{console.log(JSON.stringify(timelineEvents(process.argv[1])))}catch(e){console.log('throws: '+e.message)}" "$1"; }
+assert_eq '[{"body":"a ] [ \" }"},{"n":2}]' "$(tl '[{"body":"a ] [ \" }"}]
+ [{"n":2}]')" "G: a bracket or escaped quote inside a string does not split a page; whitespace between pages is skipped"
+assert_eq '[]' "$(tl '[]')" "G: an empty timeline is one empty page"
+assert_contains "$(tl '[{"n":1}][{"n":2}')" "throws: the last page is cut off" "G: a cut-off last page throws"
+assert_contains "$(tl '{"message":"Not Found"}')" "throws: a page is not a JSON array" "G: an object where a page should be throws"
+: > "$TMP/gh/reads.log"
+GH_STUB_TIMELINE_PAGE=2 cycle --apply
+assert_eq "" "$(alarm_issues label-actors-failed)" "G: every timeline parses"
+assert_contains "$(jq_out "r.alarms.filter(a=>a.code==='label-foreign-actor'&&a.issue===11).map(a=>a.detail).join()")" "T1.2 #11: agent-ready applied by jack" "G: #11's latest agent-ready (jack, page 2) is judged, not the coordinator's on page 1"
+assert_not_contains ",$(alarm_issues label-foreign-actor)," ",12," "G: #12's latest agent-ready (coordinator, page 3) wins over jack's on page 1"
+assert_eq "12" "$(promoted)" "G: #12 is promoted, #11 is not"
+
+# --- H. verify skips held packages (X0.3b) ----------------------------------------
+PORT=$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")
+VDIR="$TMP/verifier"; mkdir -p "$VDIR"
+export VERIFIER_STUB_DIR="$VDIR" VERIFIER_STUB_PORT="$PORT"
+printf '{}' > "$VDIR/script.json"; : > "$VDIR/requests.log"
+node "$HERE/stubs/verifier.js" & VPID=$!
+i=0; until [ -f "$VDIR/ready" ] || [ $i -ge 40 ]; do sleep 0.25; i=$((i + 1)); done
+assert_file "$VDIR/ready" "H: the verifier stub listens on 127.0.0.1:$PORT"
+vscript() { node -e "const f='$VDIR/script.json',fs=require('fs');const s=JSON.parse(fs.readFileSync(f,'utf8'));s.results=s.results||{};$1;fs.writeFileSync(f,JSON.stringify(s,null,2))"; }
+posts() { grep -c ' POST ' "$VDIR/requests.log" || true; }
+title_of() { node -e "console.log(require('$TMP/gh/prs.json').find(x=>x.number===$1).title)"; }
+verified_on() { node -e "console.log((require('$TMP/gh/comments.json')['acme/api#$1']||[]).filter(c=>/^VERIFIED: lab-impacted @/.test(c.body)).length)"; }
+inflight_pr() { node -e "const v=(require('$TMP/state/state.json').verify||{})['acme/api']||{}; console.log(v.inFlight?v.inFlight.pr:'none')"; }
+# #13's PR #200 is [VERIFY]: without a stamp (the verifier's queue); #14's PR
+# #201 is [VERIFY]: with a stamp at its head (to be retitled [READY]:).
+to_verify() { node -e "const f='$TMP/gh/prs.json',fs=require('fs');const a=JSON.parse(fs.readFileSync(f,'utf8'));for(const p of a)p.title=p.title.replace(/^\[READY\]:/,'[VERIFY]:');fs.writeFileSync(f,JSON.stringify(a,null,2))"; }
+write_config_verify() {
+  cat > "$TMP/fleet.config.json" <<JSON
+{
+  "repo": "acme/host", "epic": 1,
+  "targets": [{ "repo": "acme/api", "localPath": "$TMP/api", "defaultBranch": "main", "integrationBranch": "integ",
+    "ci": { "gate": "external", "verifiedBy": "true" },
+    "verify": { "kind": "lab-runner", "url": "http://127.0.0.1:$PORT", "suite": "impacted_v2" } }],
+  "workers": { "a": { "mode": "local" } },
+  "wipCap": 2, "worktreesDir": "$TMP/worktrees", "stateDir": "$TMP/state",
+  "pluginRoot": "$PLUGIN", "maxEscalations": 1, "noMovementLimit": 99, "sessionTimeoutMinutes": 5,
+  "reviewers": [{ "name": "stub-a", "argv": ["$STUB/reviewer", "{prompt}", "{worktree}", "{out}"] }],
+  "coordinators": ["coordinator"]
+}
+JSON
+}
+write_config_verify
+
+# H. #13 and #14 flagged (worker:a by jack): nothing posted, nothing retitled.
+reset; to_verify
+cycle --apply
+assert_eq "10,11,13,14" "$(alarm_issues label-foreign-actor)" "H: #13 and #14 are flagged"
+assert_eq "0" "$(posts)" "H: flagged #13's PR #200 is not posted to the verifier"
+assert_eq "" "$(grep '^title ' "$TMP/gh/writes.log")" "H: no PR is retitled"
+assert_eq "[VERIFY]: T1.5 done" "$(title_of 201)" "H: flagged #14's stamped PR #201 stays [VERIFY]:"
+
+# H'. Control: the same fixture with #13 and #14 trusted posts #200 and retitles #201.
+reset "$TRUST1314"; to_verify; : > "$VDIR/requests.log"
+cycle --apply
+assert_eq "1" "$(posts)" "H': trusted #13's PR #200 is posted to the verifier"
+assert_contains "$(grep ' POST ' "$VDIR/requests.log")" "pr=200" "H': the POST is for PR #200"
+assert_eq "[READY]: T1.5 done" "$(title_of 201)" "H': trusted #14's stamped PR #201 is retitled [READY]:"
+assert_eq "200" "$(inflight_pr)" "H': the run for #200 is in flight"
+
+# H''. #13 flagged while its run is in flight: the finished run is neither
+# stamped nor commented; the record is kept and judged once a coordinator relabels.
+FLEET_STUB_LOGIN=jack "$STUB/gh" issue edit 13 --repo acme/host --remove-label worker:a >/dev/null
+FLEET_STUB_LOGIN=jack "$STUB/gh" issue edit 13 --repo acme/host --add-label worker:a >/dev/null
+vscript "s.results['200']={finished:true,exitCode:0,reverted:true,tests:[]}"
+# A push to trusted #14's PR #201 voids its stamp: the held run on the same
+# target does not stop #201 going back to [VERIFY]:.
+node -e "const f='$TMP/gh/prs.json',fs=require('fs');const a=JSON.parse(fs.readFileSync(f,'utf8'));a.find(x=>x.number===201).headRefOid='$(printf '%040d' 1)';fs.writeFileSync(f,JSON.stringify(a,null,2))"
+: > "$VDIR/requests.log"
+cycle --apply
+assert_contains ",$(alarm_issues label-foreign-actor)," ",13," "H'': #13 is flagged"
+assert_eq "[VERIFY]: T1.5 done" "$(title_of 201)" "H'': trusted #14's PR #201, its stamp voided by a push, is retitled [VERIFY]: while #13's run is held"
+assert_eq "0" "$(posts)" "H'': nothing is posted in the held run's slot"
+assert_eq "0" "$(verified_on 200)" "H'': flagged #13's finished run posts no VERIFIED stamp"
+assert_eq "[VERIFY]: T1.4 done" "$(title_of 200)" "H'': flagged #13's PR #200 is not retitled"
+assert_contains "$(jq_out "r.verify.filter(x=>x.pr===200).map(x=>x.action).join()")" "held" "H'': the report names the held run"
+assert_eq "200" "$(inflight_pr)" "H'': the in-flight record is kept"
+"$STUB/gh" issue edit 13 --repo acme/host --remove-label worker:a >/dev/null
+"$STUB/gh" issue edit 13 --repo acme/host --add-label worker:a >/dev/null
+cycle --apply
+assert_eq "1" "$(verified_on 200)" "H'': once a coordinator re-applies worker:a, the held run is stamped"
+assert_eq "[READY]: T1.4 done" "$(title_of 200)" "H'': and #200 is retitled [READY]:"
+
+# H'''. A held package's run that did not revert the lab still latches the fleet:
+# holding a package never hides a lab left dirty.
+vscript "for (const k of Object.keys(s.results)) s.results[k].finished=true; s.results['201']=s.results['201']||{finished:true,exitCode:0,reverted:true,tests:[]}; s.results['200']={finished:false}"
+reset "$TRUST1314"; to_verify
+cycle --apply
+assert_eq "200" "$(inflight_pr)" "H''': a run for trusted #13's PR #200 is in flight"
+FLEET_STUB_LOGIN=jack "$STUB/gh" issue edit 13 --repo acme/host --remove-label worker:a >/dev/null
+FLEET_STUB_LOGIN=jack "$STUB/gh" issue edit 13 --repo acme/host --add-label worker:a >/dev/null
+vscript "s.results['200']={finished:true,exitCode:0,reverted:false,tests:[]}"
+cycle --apply
+assert_contains ",$(alarm_issues label-foreign-actor)," ",13," "H''': #13 is flagged"
+assert_contains "$(jq_out "r.alarms.map(a=>a.code).join(' ')")" "verify-not-reverted" "H''': the not-reverted run raises verify-not-reverted"
+assert_contains "$(node -e "console.log(JSON.stringify(require('$TMP/state/state.json').latched))")" "verify-not-reverted" "H''': the fleet is latched"
+assert_eq "0" "$(verified_on 200)" "H''': #200 is not stamped"
 
 finish
