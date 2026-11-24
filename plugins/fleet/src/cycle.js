@@ -4,7 +4,9 @@
  * One pass: lock → sync → promote → assign → reap → verify → review → rework → merge → launch → report → unlock.
  * verify runs only for targets with `verify` (src/verify.js); review only
  * with `reviewers` configured, or a review still in flight (src/review.js);
- * merge only for targets with `autoMerge` (src/merge.js).
+ * merge only for targets with `autoMerge` (src/merge.js). With `coordinators`
+ * set, a package whose coordinator labels came from another account is held
+ * out of every step after sync (src/provenance.js).
  *
  * Every step reads the tracker fresh; the only local memory is the session
  * table, the dispatch history and the no-movement streak. A failure in sync
@@ -31,7 +33,8 @@ const verifyMod = require('./verify');
 const reviewMod = require('./review');
 const reworkMod = require('./rework');
 const mergeMod = require('./merge');
-const { requireReviewers } = require('./config');
+const provenance = require('./provenance');
+const { requireReviewers, requireFleetCoordinator } = require('./config');
 
 const EXIT = { ok: 0, labelWriteFailed: 1, usage: 64, missingBinary: 69, internal: 70, truncated: 75, latched: 78, locked: 79 };
 
@@ -92,6 +95,19 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
       r.outcome = 'alarm';
       return { report: r, exit: EXIT.usage };
     }
+    // With coordinators set, fleet's own login must be one: sync, assign and
+    // promote write coordinator labels as it. Read once, before promote.
+    if (cfg.coordinators.length) {
+      const me = tracker.login();
+      if (!me.ok) { alarm('login-failed', `gh api user: ${me.error}; with coordinators set, fleet cannot tell its own label writes from another account's`); r.outcome = 'alarm'; return { report: r, exit: EXIT.internal }; }
+      try { requireFleetCoordinator(cfg, me.login); }
+      catch (e) {
+        if (e.code !== 'ECONFIG') throw e;
+        alarm('config-invalid', e.message);
+        r.outcome = 'alarm';
+        return { report: r, exit: EXIT.usage };
+      }
+    }
     for (const row of r.sync.changes) {
       if (row.to === 'cell:merged') r.movement.push({ package: scope.packageId((sync.state.issues.find(i => i.number === row.number) || {}).title) || `#${row.number}`, issue: row.number, artifact: { type: 'merged', ref: row.why } });
     }
@@ -101,7 +117,32 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     if (!list.ok) { alarm('issues-failed', list.error); r.outcome = 'alarm'; return { report: r, exit: list.truncated ? EXIT.truncated : EXIT.internal }; }
     // The epic's packages only, matching the sync's --epic: promotion, launch,
     // reap and the counts never act on another program in the same host repo.
-    let issues = list.issues.filter(i => scope.partOf(i.body) === cfg.epic);
+    const epicIssues = list.issues.filter(i => scope.partOf(i.body) === cfg.epic);
+
+    // 1b. provenance: a package whose agent-ready, cell:* or worker:* came from
+    // an account not in coordinators, or whose timeline cannot be read, is
+    // held: no promote, assign, launch, re-dispatch, review or merge. It stays
+    // in the counts, and in the assign state without cell:queued, so a held
+    // cell:active package still holds a WIP slot (a held cell:queued one does not).
+    const foreignHeld = new Set();
+    if (cfg.coordinators.length) {
+      const pv = provenance.foreign(cfg, epicIssues, tracker);
+      const refusal = 'fleet will not promote, assign, launch, re-dispatch, review or merge it';
+      for (const f of pv.flagged) {
+        alarm('label-foreign-actor', `${f.id} #${f.number}: ${f.label} applied by ${f.actor === null ? 'an unknown account (no labeled event by a known login)' : f.actor}, not a coordinator (${cfg.coordinators.join(', ')}); ${refusal}`, f.number);
+        foreignHeld.add(f.number);
+      }
+      for (const e of pv.errors) {
+        alarm('label-actors-failed', `${e.id} #${e.number}: the timeline read failed (${String(e.error).split('\n')[0]}); an unread provenance is not trusted, so ${refusal}`, e.number);
+        foreignHeld.add(e.number);
+      }
+    }
+    const trusted = i => !foreignHeld.has(i.number);
+    const issues = epicIssues.filter(trusted);
+    // What review and merge read: the sync's state and rows without the held packages.
+    const syncTrusted = foreignHeld.size
+      ? { ...sync, rows: sync.rows.filter(x => !foreignHeld.has(x.number)), state: { ...sync.state, issues: sync.state.issues.filter(trusted) } }
+      : sync;
 
     // 2. promote
     const pr = promote(issues, sync.state);
@@ -117,7 +158,10 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     }
 
     // 3. assign worker:<id> labels (fleet-wide WIP, every worker id)
-    const asg = scripts.runAssign(cfg, { apply });
+    // A held package stays in, so an in-flight one still counts toward
+    // wipCap, but without cell:queued, so it is never a candidate.
+    const assignIssues = epicIssues.map(i => (trusted(i) ? i : { ...i, labels: i.labels.filter(l => l !== 'cell:queued') }));
+    const asg = scripts.runAssign(cfg, { apply, issues: assignIssues });
     if (asg.status !== 0 && asg.status !== 1) {
       alarm('assign-failed', `assign-cells.sh exited ${asg.status === null ? asg.error : asg.status}: ${asg.stderr.trim().split('\n')[0] || 'no stderr'}`);
       r.outcome = 'alarm';
@@ -164,22 +208,42 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // 4c. review: one reviewer in flight per cell:awaiting-reviewer PR; a
     // fail's re-dispatch takes the verify-failed path below. A fleet the
     // verify stage just latched starts no reviewer either.
-    const rv = only === null && !vr.latched
-      ? reviewMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync, issues, at, alarm, r })
-      : { requests: [], reviewing: reviewMod.inFlightCount(cfg, state) };
+    // A reviewer already running on a held package is set aside: the stage
+    // neither judges its verdict nor stamps its PR. The record is kept, and
+    // judged once a coordinator's labels are back.
+    const reviewsHeld = [];
+    if (foreignHeld.size) {
+      for (const [repo, rs] of Object.entries(state.review || {})) {
+        const list = (rs && rs.inFlight) || [];
+        const held = list.filter(f => foreignHeld.has(f.issue));
+        if (!held.length) continue;
+        rs.inFlight = list.filter(f => !foreignHeld.has(f.issue));
+        reviewsHeld.push({ rs, held });
+        for (const f of held) r.review.push({ target: repo, pr: f.pr, action: 'held', detail: `${f.reviewer}: label-foreign-actor on #${f.issue}; its verdict waits` });
+      }
+    }
+    let rv;
+    try {
+      rv = only === null && !vr.latched
+        ? reviewMod.stage({ cfg, state, apply, tracker, pulls, pullsFailed, sync: syncTrusted, issues, at, alarm, r })
+        : { requests: [], reviewing: reviewMod.inFlightCount(cfg, state) };
+    } finally {
+      for (const { rs, held } of reviewsHeld) rs.inFlight.push(...held);
+    }
+    rv.reviewing += reviewsHeld.reduce((n, x) => n + x.held.length, 0);
     reaped.requests.push(...rv.requests);
 
     // 4c'. rework: a person's `REWORK: <who> @ <head>` on a package PR sends
     // its worker back through the same review-failed path (src/rework.js).
     if (only === null && !vr.latched) {
-      const rw = reworkMod.stage({ cfg, state, apply, pulls, pullsFailed, sync, alarm, r, pending: reaped.requests });
+      const rw = reworkMod.stage({ cfg, state, apply, pulls, pullsFailed, sync: syncTrusted, alarm, r, pending: reaped.requests });
       reaped.requests.push(...rw.requests);
     }
 
     // 4d. merge: each autoMerge target's PRs that meet the merge condition go
     // into its integration branch; a protected base is refused. Not when the
     // verify stage latched the fleet.
-    if (only === null && !vr.latched) mergeMod.stage({ cfg, apply, tracker, pulls, pullsFailed, sync, alarm, r });
+    if (only === null && !vr.latched) mergeMod.stage({ cfg, apply, tracker, pulls, pullsFailed, sync: syncTrusted, alarm, r });
 
     // 5. launch: owned, queued, labeled packages without a session; plus relaunch/escalation requests.
     const persist = rec => { state.sessions[rec.issue] = rec; if (apply) store.save(state); };
@@ -216,6 +280,13 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     }
     for (const q of reaped.requests) {
       const s = q.session;
+      // A held package's re-dispatch waits, like one without agent-ready, and
+      // goes ahead once a coordinator's labels are back.
+      if (foreignHeld.has(s.issue)) {
+        s.status = 'retry'; s.retry = { next: q.next, reason: q.reason, why: 'label-foreign-actor' };
+        r.held.push({ number: s.issue, id: s.id, why: 'label-foreign-actor' });
+        continue;
+      }
       const iss = issues.find(i => i.number === s.issue);
       if (!iss) continue;
       // A package without agent-ready is the coordinator's: no re-dispatch of
@@ -299,7 +370,7 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // A worker relaunched after vanishing is not evidence of progress, so it
     // does not hold the streak down; if it survives, the next cycle sees it live.
     const liveForStreak = reaped.live.length + r.launched.filter(l => l.pid && !l.vanished).length;
-    r.counts = counts(issues, sync.state, { length: liveAfter }, cfg, vr.verifying, rv.reviewing);
+    r.counts = counts(epicIssues, sync.state, { length: liveAfter }, cfg, vr.verifying, rv.reviewing);
     // Faults that make the cycle an alarm when nothing moved. A WIP-cap hold
     // is not one: a full fleet with nothing else to do is exhaustion.
     const FAULT = /(-failed$|^locked$|^latched$|^escalation-cap$|^launch-|^unlaunchable$|^worker-vanished(-repeat)?$|^verify-(unreachable|refused|not-reverted|bad-sha)$)/;
@@ -308,7 +379,8 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // refused PR, a record that cannot be stamped, a reviewer that wrote,
     // timed out or gave no verdict). A stale result is not one: the PR waits again.
     // A refused protected merge is one too: a PR aimed at a protected branch.
-    const VERIFY_FAULT = /^((verify|review)-(?!stale$)|merge-protected-refused$)/;
+    // So is a package held for its label provenance: a person has to look.
+    const VERIFY_FAULT = /^((verify|review)-(?!stale$)|merge-protected-refused$|label-(foreign-actor|actors-failed)$)/;
     if (r.alarms.some(a => VERIFY_FAULT.test(a.code))) r.outcome = 'alarm';
     else if (r.alarms.some(a => FAULT.test(a.code)) && r.movement.length === 0) r.outcome = 'alarm';
     else if (r.movement.length) r.outcome = 'movement';

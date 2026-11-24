@@ -182,6 +182,29 @@ function requireReviewers(c, policies) {
   if (held.length) fail(`${held.join(', ')} ${held.length === 1 ? 'has' : 'have'} a review policy (review in .claude/standards.json) and reviewers is empty; configure at least one reviewer, or no PR there leaves cell:awaiting-reviewer`);
 }
 
+// coordinators: the GitHub logins trusted to apply agent-ready, cell:* and
+// worker:* (decision X-D1 on #242). A package carrying one of those labels
+// from any other account is held (src/provenance.js). Absent or [] turns the
+// check off. Fleet's own login has to be in the list, because sync, assign and
+// promote write those labels as it; the cycle checks that (it needs gh).
+function validateCoordinators(list) {
+  if (list === undefined) return [];
+  if (!Array.isArray(list)) fail(`coordinators [${JSON.stringify(list)}] must be an array of GitHub logins`);
+  const seen = new Set();
+  list.forEach((l, i) => {
+    if (typeof l !== 'string' || !l.trim()) fail(`coordinators[${i}] [${JSON.stringify(l)}] must be a non-empty GitHub login`);
+    if (seen.has(l)) fail(`coordinators[${i}] [${l}] is listed twice; name each login once`);
+    seen.add(l);
+  });
+  return [...list];
+}
+
+// The cycle reads the login gh runs as, once, and calls this with it.
+function requireFleetCoordinator(c, login) {
+  if (!c.coordinators.length || c.coordinators.includes(login)) return;
+  fail(`coordinators (${c.coordinators.join(', ')}) does not include ${login}, the account fleet's gh runs as; sync, assign and promote write labels as it, so every package would be held. Add ${login} to coordinators`);
+}
+
 function validate(raw, baseDir) {
   const c = { ...DEFAULTS, ...raw, models: { ...DEFAULTS.models, ...(raw.models || {}) } };
 
@@ -233,6 +256,7 @@ function validate(raw, baseDir) {
   if (c.permissionPrompts !== 'none' && c.permissionPrompts !== 'host') fail('permissionPrompts must be "none" or "host"');
   if (typeof c.isolateWorkers !== 'boolean') fail(`isolateWorkers [${c.isolateWorkers}] must be true or false`);
   c.reviewers = validateReviewers(raw.reviewers);
+  c.coordinators = validateCoordinators(raw.coordinators);
 
   const first = c.targets[0];
   const repoName = first.repo.split('/')[1];
@@ -284,4 +308,4 @@ function approvalGate(c, pr) {
   return { blocked: true, mechanism: c.approvalEnforcement, reason: `PR #${pr.number} has no human approval` };
 }
 
-module.exports = { loadConfig, validate, requireReviewers, defaultPluginRoot, approvalGate, approvalPayload, isProtected, DEFAULTS, MODES };
+module.exports = { loadConfig, validate, requireReviewers, requireFleetCoordinator, defaultPluginRoot, approvalGate, approvalPayload, isProtected, DEFAULTS, MODES };

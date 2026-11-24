@@ -46,4 +46,14 @@ assert_contains "$(js "const {validate}=c; const base=$BASE; delete base.pluginR
 assert_eq "off" "$(js "console.log(c.validate($BASE,'$TMP').approvalEnforcement)")" "approvalEnforcement defaults to off"
 assert_eq "ECONFIG" "$(js "try{c.validate({...$BASE,approvalEnforcement:'yes'},'$TMP');console.log('accepted')}catch(e){console.log(e.code)}")" "approvalEnforcement rejects an unknown value"
 
+# --- coordinators (X0.3): the logins trusted to write coordinator labels ------
+assert_eq "[]" "$(js "console.log(JSON.stringify(c.validate($BASE,'$TMP').coordinators))")" "coordinators absent: [] (the provenance check is off)"
+assert_eq "[]" "$(js "console.log(JSON.stringify(c.validate({...$BASE,coordinators:[]},'$TMP').coordinators))")" "coordinators []: [] (the provenance check is off)"
+assert_eq '["octo","fleet-bot"]' "$(js "console.log(JSON.stringify(c.validate({...$BASE,coordinators:['octo','fleet-bot']},'$TMP').coordinators))")" "coordinators: a list of logins is kept in order"
+for bad in "'x'" "['']" "['a','a']" "[3]" "{}"; do
+  OUT=$(js "try{c.validate({...$BASE,coordinators:$bad},'$TMP');console.log('accepted')}catch(e){console.log(e.code, e.message)}")
+  assert_contains "$OUT" "ECONFIG" "coordinators rejected: $bad"
+  assert_contains "$OUT" "coordinators" "the rejection of $bad names the field"
+done
+
 finish
