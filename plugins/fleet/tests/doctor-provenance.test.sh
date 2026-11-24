@@ -114,7 +114,8 @@ assert_not_contains "$(prov "$OUT")" "on #10" "C: the epic's clean issue draws n
 
 # --- C2. a label with no labeled event, and a timeline that cannot be read --------
 timeline "{\"10\": [$(ev agent-ready coordinator), $(ev cell:queued coordinator)], \"20\": \"fail\"}"
-OUT=$(fleet doctor 2>/dev/null)
+OUT=$(fleet doctor 2>/dev/null); C2_EXIT=$?
+assert_ne "0" "$C2_EXIT" "C2: doctor exits non-zero"
 assert_eq "FAIL  label worker:a on #10 T1.1: applied by an unknown account (no labeled event by a known login), not a coordinator" "$(printf '%s\n' "$OUT" | grep '^FAIL  label worker:a on #10')" "C2: a label with no labeled event is flagged"
 L=$(printf '%s\n' "$OUT" | grep '^FAIL  label provenance on #20')
 assert_contains "$L" "T9.1" "C2: a failed timeline read is a FAIL naming the issue"
@@ -123,10 +124,21 @@ assert_contains "$L" "(outside epic #1)" "C2: and that it is outside the epic"
 
 # --- D. fleet's login is not in coordinators ---------------------------------------
 timeline "$ALL_COORD"
-OUT=$(FLEET_STUB_LOGIN=mallory fleet doctor 2>/dev/null)
+OUT=$(FLEET_STUB_LOGIN=mallory fleet doctor 2>/dev/null); D_EXIT=$?
 assert_contains "$OUT" "FAIL  fleet's gh login mallory is not in coordinators" "D: the login FAIL line names the login"
+assert_ne "0" "$D_EXIT" "D: doctor exits non-zero"
 OUT=$(fleet doctor 2>/dev/null)
 assert_not_contains "$OUT" "is not in coordinators" "D: a coordinator login draws no login FAIL"
+# Logins compare case-insensitively, as the cycle's coordinator check does (X0.3b).
+config '["Coordinator"]'
+OUT=$(fleet doctor 2>/dev/null)
+assert_not_contains "$OUT" "is not in coordinators" "D: coordinators [\"Coordinator\"] accepts gh login coordinator"
+config '["coordinator", "ken"]'
+# A login that cannot be read is a FAIL. The wrapper fails only `gh api user`.
+printf '#!/usr/bin/env bash\n[ "$1 $2" = "api user" ] && { echo "HTTP 401: Bad credentials" >&2; exit 1; }\nexec "%s" "$@"\n' "$STUB/gh" > "$TMP/gh-nologin"; chmod +x "$TMP/gh-nologin"
+OUT=$(GH_BIN="$TMP/gh-nologin" fleet doctor 2>/dev/null); NOLOGIN_EXIT=$?
+assert_contains "$OUT" "FAIL  fleet's gh login: cannot be read: HTTP 401: Bad credentials" "D: an unreadable login is a FAIL with the error"
+assert_ne "0" "$NOLOGIN_EXIT" "D: and doctor exits non-zero"
 
 # --- E. no coordinators: the WARN line, and no timeline is read --------------------
 config ''
@@ -136,7 +148,9 @@ assert_contains "$OUT" "WARN  coordinators: not set; fleet trusts agent-ready, c
 assert_not_contains "$(cat "$TMP/gh/reads.log" 2>/dev/null)" "timeline" "E: no timeline is read"
 assert_empty "$(prov "$OUT" | grep '^FAIL')" "E: no provenance FAIL line"
 config '[]'
+: > "$TMP/gh/reads.log"
 assert_contains "$(fleet doctor 2>/dev/null)" "WARN  coordinators: not set" "E: coordinators [] is not set too"
+assert_not_contains "$(cat "$TMP/gh/reads.log")" "timeline" "E: coordinators [] reads no timeline"
 
 # --- F. doctor's header lists the check --------------------------------------------
 assert_contains "$(sed -n 12p "$FLEET")" "label provenance" "F: the header line lists label provenance"

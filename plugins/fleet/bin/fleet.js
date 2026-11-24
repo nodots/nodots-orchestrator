@@ -266,7 +266,8 @@ function main() {
     else {
       const me = tracker.login();
       if (!me.ok) check(false, "fleet's gh login", `cannot be read: ${me.error}`);
-      else if (!cfg.coordinators.includes(me.login)) check(false, `fleet's gh login ${me.login} is not in coordinators`, `${cfg.coordinators.join(', ')}; sync, assign and promote write labels as it, so the cycle refuses config-invalid`);
+      // Logins compare lowercased, as the cycle's coordinator check does (X0.3b).
+      else if (!cfg.coordinators.some(c => String(c).toLowerCase() === me.login.toLowerCase())) check(false, `fleet's gh login ${me.login} is not in coordinators`, `${cfg.coordinators.join(', ')}; sync, assign and promote write labels as it, so the cycle refuses config-invalid`);
       if (!list.ok) check(false, 'label provenance', `not checked, issue list ${cfg.repo} cannot be read: ${list.error}`);
       else {
         const open = list.issues.filter(i => String(i.state).toUpperCase() === 'OPEN');

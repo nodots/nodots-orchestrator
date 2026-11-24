@@ -7,8 +7,11 @@
 - Independent review: no correctness defects found beyond the vacuous assertion.
 - Known nit, left as is: when the issue list cannot be read and coordinators is set, doctor prints two FAIL lines for one cause (provenance "not checked" plus the existing `issue list` FAIL).
 
+- Rework after coordinator review on PR #263 (attempt 3): doctor's login check (`plugins/fleet/bin/fleet.js`, the `fleet's gh login ... is not in coordinators` line) compares lowercased on both sides, as X0.3b (#262) does; it does not depend on #262. Test first: `coordinators: ["Coordinator"]` with stub login `coordinator` failed before the fix (33 checks, 1 failed), passes after (33 checks, 0 failed). `provenance.foreign` in `plugins/fleet/src/` is still case-sensitive on this branch; that is #262's, and `src/` is outside this lane.
+- Minor test additions: unreadable login (a gh wrapper failing only `gh api user`) is a FAIL with the error and a non-zero exit; C2 and D assert a non-zero exit; E with `coordinators: []` asserts no timeline is read.
+
 ## Next
-- Blocked: see BLOCKER.md. `bash scripts/test.sh` fails only on the gitleaks tests (linux_x64 binary on a darwin arm64 host, owned by X-B1). Once that is cleared: re-run `bash scripts/test.sh`, open the `[READY]: X0.4` PR (body `Closes #246`), and post the VERIFIED stamp for the head sha.
+- Nothing beyond review and merge. Per X-B1 on #242, the gitleaks failures on darwin arm64 are not a blocker; CI `Fixture tests` is the full-suite evidence. PR #263 carries the VERIFIED: ci-pending stamp for the head.
 
 ## Plan check
 
