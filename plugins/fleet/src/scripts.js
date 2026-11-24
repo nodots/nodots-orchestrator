@@ -11,7 +11,6 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { run } = require('./exec');
-const { Tracker } = require('./tracker');
 const { partOf } = require('./scope');
 
 // "#101  cell:active -> cell:merged   (PR #201 merged)"
@@ -79,17 +78,17 @@ function assignState(cfg, issues) {
   };
 }
 
-function runAssign(cfg, { apply }) {
-  const list = new Tracker(cfg.bins).listIssues(cfg.repo);
-  if (!list.ok) {
-    return { status: list.truncated ? 75 : 70, error: null, stdout: '', stderr: `fleet: issue list for assign: ${list.error}\n`, rows: [], load: null };
-  }
+// issues: the cycle's own list, with this cycle's promotions applied and a
+// held package's cell:queued stripped (src/cycle.js), so the assignment is
+// computed from what the cycle decided, not from a second read.
+function runAssign(cfg, { apply, issues }) {
+  if (!Array.isArray(issues)) throw new Error('runAssign: issues is required');
   let dir;
   try { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-assign-')); }
   catch (e) { return { status: 70, error: null, stdout: '', stderr: `fleet: no temp dir for the assign state: ${e.message}\n`, rows: [], load: null }; }
   try {
     const statePath = path.join(dir, 'state.json');
-    fs.writeFileSync(statePath, JSON.stringify(assignState(cfg, list.issues)));
+    fs.writeFileSync(statePath, JSON.stringify(assignState(cfg, issues)));
     const script = path.join(cfg.scriptsDir, 'assign-cells.sh');
     // --state supplies the packages; --repo is where --apply writes the labels.
     const args = [script, '--state', statePath, '--repo', cfg.repo, '--workers', cfg.workerIds.join(','), '--wip-cap', String(cfg.wipCap)];

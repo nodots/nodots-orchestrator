@@ -12,7 +12,13 @@
 //                 "title <repo> <n> <new title>" (`pr edit --title`, which rewrites prs.json) /
 //                 "merge-attempt <repo> <n> <args>" and "merge <repo> <n> <args>" (`pr merge`)
 //   checks.json   {"<repo>#<number>": [{name, state, bucket}]} for `pr checks`
-//   reads.log     one line per `pr view` / `pr checks`
+//   reads.log     one line per `pr view` / `pr checks` / timeline read ("timeline <repo> <n>")
+//                 / `api user` ("user")
+//   timeline.json {"<n>": [{event, label:{name}, actor:{login}}]}, oldest first, for
+//                 `api repos/<r>/issues/<n>/timeline`; a value that is not an array
+//                 (e.g. "fail") makes that read fail. Every label `issue edit` adds
+//                 appends a `labeled` event (a removal, `unlabeled`) by FLEET_STUB_LOGIN.
+//   FLEET_STUB_LOGIN  the login gh runs as (`api user`), default "coordinator"
 // Branches, BLOCKER.md and .claude/standards.json come from the bare remote at
 // GH_STUB_REMOTE.
 const fs = require('fs');
@@ -20,6 +26,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const DIR = process.env.GH_STUB_DIR;
+const LOGIN = process.env.FLEET_STUB_LOGIN || 'coordinator';
 const REMOTE = process.env.GH_STUB_REMOTE;
 const rd = (f, d) => { try { return JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')); } catch { return d; } };
 const wr = (f, v) => fs.writeFileSync(path.join(DIR, f), JSON.stringify(v, null, 2));
@@ -54,9 +61,16 @@ if (a === 'issue' && b === 'edit') {
   const n = Number(argv[2]);
   const over = rd('labels.json', {});
   const cur = new Set((over[n] || (issues().find(x => x.number === n) || {}).labels || []));
-  for (const l of flags('--add-label')) cur.add(l);
-  for (const l of flags('--remove-label')) cur.delete(l);
+  const events = [];
+  const ev = (event, name) => events.push({ event, label: { name }, actor: { login: LOGIN } });
+  for (const l of flags('--add-label')) { if (!cur.has(l)) ev('labeled', l); cur.add(l); }
+  for (const l of flags('--remove-label')) { if (cur.has(l)) ev('unlabeled', l); cur.delete(l); }
   over[n] = [...cur]; wr('labels.json', over);
+  if (events.length) {
+    const tl = rd('timeline.json', {});
+    tl[n] = [...(Array.isArray(tl[n]) ? tl[n] : []), ...events];
+    wr('timeline.json', tl);
+  }
   log(`edit ${n} ${flags('--add-label').map(l => '+' + l).join(' ')} ${flags('--remove-label').map(l => '-' + l).join(' ')}`.trim());
   process.exit(0);
 }
@@ -147,7 +161,21 @@ if (a === 'api') {
     else out({ workflow_runs: ci.runs || [{ created_at: new Date().toISOString() }] });
     process.exit(0);
   }
+  if (ep === 'user') {
+    fs.appendFileSync(path.join(DIR, 'reads.log'), 'user\n');
+    out(flag('--jq') === '.login' ? `${LOGIN}\n` : { login: LOGIN }); process.exit(0);
+  }
   let m;
+  // The timeline's labeled events, one JSON value per line, as tracker.labelActors'
+  // --paginate --jq '... | {label, actor} | @json' prints.
+  if ((m = /^repos\/(.+?)\/issues\/(\d+)\/timeline$/.exec(ep))) {
+    fs.appendFileSync(path.join(DIR, 'reads.log'), `timeline ${m[1]} ${Number(m[2])}\n`);
+    const list = rd('timeline.json', {})[Number(m[2])];
+    if (list !== undefined && !Array.isArray(list)) { process.stderr.write('gh: HTTP 502: Bad Gateway\n'); process.exit(1); }
+    const rows = (list || []).filter(e => e.event === 'labeled').map(e => ({ label: e.label && e.label.name, actor: e.actor ? e.actor.login : null }));
+    out(rows.map(v => JSON.stringify(v)).join('\n') + (rows.length ? '\n' : ''));
+    process.exit(0);
+  }
   if ((m = /contents\/(.*?BLOCKER\.md)\?ref=(.+)$/.exec(ep))) {
     try { execFileSync('git', ['--git-dir', REMOTE, 'cat-file', '-e', `${m[2]}:${m[1]}`], { stdio: 'ignore' }); process.exit(0); } catch { process.exit(1); }
   }

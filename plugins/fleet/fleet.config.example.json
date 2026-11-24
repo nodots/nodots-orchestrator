@@ -9,6 +9,7 @@
     "b": { "mode": "local" },
     "c": { "mode": "external" }
   },
+  "coordinators": ["acme-coordinator"],
   "wipCap": 4,
   "approvalEnforcement": "off",
   "worktreesDir": "../api-worktrees",

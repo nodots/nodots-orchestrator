@@ -4,7 +4,8 @@
  * The tracker is the bus. This is the only module that talks to gh, so what
  * the runtime reads and writes there is listable in one place:
  *   reads:  issue list (with bodies), issue view, PR list, PR view, PR checks,
- *           issue comments
+ *           issue comments, an issue's timeline (who applied each label), the
+ *           login gh runs as
  *   writes: add/remove one label, post one comment, post one PR comment on a
  *           target repo, edit one PR title (the verify stage's retitle), merge
  *           one PR at a given head (the merge stage)
@@ -47,6 +48,31 @@ class Tracker {
     const all = [];
     for (const line of r.stdout.split('\n')) { if (!line.trim()) continue; try { all.push(JSON.parse(line)); } catch { /* skip */ } }
     return { ok: true, comments: all };
+  }
+
+  // For each label name, the login of its latest `labeled` event. The timeline
+  // is oldest first, so a later event overwrites an earlier one. A deleted
+  // account's events carry no actor: its login is null, which no coordinator
+  // list matches.
+  labelActors(repo, number) {
+    const r = run(this.gh, ['api', `repos/${repo}/issues/${number}/timeline`, '--paginate',
+      '--jq', '.[] | select(.event == "labeled") | {label: .label.name, actor: .actor.login} | @json']);
+    if (r.status !== 0) return { ok: false, error: r.error || r.stderr.trim() || `gh exited ${r.status}` };
+    const actors = {};
+    for (const line of r.stdout.split('\n')) {
+      if (!line.trim()) continue;
+      let e;
+      try { e = JSON.parse(line); } catch { return { ok: false, error: `timeline of #${number}: not JSON: ${line.slice(0, 80)}` }; }
+      if (e && typeof e.label === 'string') actors[e.label] = typeof e.actor === 'string' ? e.actor : null;
+    }
+    return { ok: true, actors };
+  }
+
+  // The login gh runs as: the account fleet's own label writes come from.
+  login() {
+    const r = run(this.gh, ['api', 'user', '--jq', '.login']);
+    const login = r.status === 0 ? r.stdout.trim() : '';
+    return login ? { ok: true, login } : { ok: false, error: r.error || r.stderr.trim() || `gh exited ${r.status} with no login` };
   }
 
   addLabel(repo, number, label) {
