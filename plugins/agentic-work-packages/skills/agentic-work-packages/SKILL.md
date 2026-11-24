@@ -84,17 +84,21 @@ exceed about six checkboxes, or `allowedPaths` spans two subsystems, split it.
 **6. File them** — `references/adapter-github.md` or `references/adapter-jira.md`
 for the tracker mechanics: parentage, labels or statuses, and the create calls.
 
-**7. Install enforcement** in every target repo. Two hooks, both wired
+**7. Install enforcement** in every target repo. Three hooks, all wired
 automatically by the plugin; for a manual install, copy
-`assets/hooks/enforce-scope.js` and `assets/hooks/require-handoff.js` to
-`.claude/hooks/` and merge `assets/settings-snippet.json` into
-`.claude/settings.json`.
+`assets/hooks/enforce-scope.js`, `assets/hooks/require-handoff.js` and
+`assets/hooks/require-coordinator.js` to `.claude/hooks/` and merge
+`assets/settings-snippet.json` into `.claude/settings.json`.
 
 - `enforce-scope.js` (`PreToolUse`) blocks an `Edit`/`Write` outside the
   package's lane. Without it, `SCOPE.json` is a suggestion.
 - `require-handoff.js` (`Stop`) blocks a turn from ending on a dirty feature
   branch with neither `HANDOFF.md` nor `BLOCKER.md` written. Without it, a
   compacted worker's state is gone.
+- `require-coordinator.js` (`PreToolUse`, `Bash`) refuses, in a session with
+  `FLEET_WORKER_ID` set, a command that files an issue, writes `agent-ready`,
+  `cell:*` or `worker:*`, or edits an issue body or title. Without it, a worker
+  can assign itself work.
 
 Three more are opt-in, because the plugin cannot safely register them for every
 repository: the same handoff check as a `TaskCompleted` hook,
@@ -185,6 +189,7 @@ before filing the package.
 | `references/adapter-jira.md` | Jira mechanics |
 | `assets/hooks/enforce-scope.js` | PreToolUse scope hook, no dependencies |
 | `assets/hooks/require-handoff.js` | Stop hook: no exit from a dirty lane without written state; also runs as an opt-in `TaskCompleted` hook |
+| `assets/hooks/require-coordinator.js` | PreToolUse Bash hook: with `FLEET_WORKER_ID` set, refuses issue filing, coordinator-label writes and issue body or title edits |
 | `assets/hooks/enforce-scope-staged.js` | Opt-in git pre-commit check: staged files against the lane, so it also catches shell-mediated writes |
 | `assets/hooks/session-start-install-deps.sh` | Opt-in `SessionStart` hook for remote sessions: installs dependencies and flags a wrong-repository checkout |
 | `assets/hooks/standards-preamble.js` | `SessionStart` hook: prints the preamble the repo's manifest names, and nothing in a repo without one |

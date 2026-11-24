@@ -19,7 +19,7 @@ process one account holds a handle on, does not.
 | Role | Does | Never does |
 |---|---|---|
 | Coordinator account | runs `sync-cells.sh`, promotes packages to `cell:queued`, runs `assign-cells.sh`, logs the wave, resolves `BLOCKER.md` | writes feature code, as in `coordination.md` §The coordinator |
-| Worker account `<id>` | works only packages labeled `worker:<id>`, one worktree and one PR each | assigns itself work, changes any `cell:*` or `worker:*` label |
+| Worker account `<id>` | works only packages labeled `worker:<id>`, one worktree and one PR each | assigns itself work, files an issue, changes any `cell:*` or `worker:*` label; `require-coordinator.js` refuses these when `FLEET_WORKER_ID` is set |
 
 ## The `worker:<id>` label
 
