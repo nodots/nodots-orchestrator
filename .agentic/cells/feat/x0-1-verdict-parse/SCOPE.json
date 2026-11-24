@@ -1,0 +1,33 @@
+{
+  "feature": "x0-1-verdict-parse",
+  "project": "nodots-orchestrator",
+  "branch": "feat/x0-1-verdict-parse",
+  "allowedPaths": [
+    "plugins/fleet/src/review.js",
+    "plugins/fleet/tests/review-verdict.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/tracker.js",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/**",
+    "plugins/agentic-work-packages/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    ".claude/**",
+    "scripts/**",
+    "docs/**",
+    "evals/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one parser function, one renderer, the brief line, one new test file",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}

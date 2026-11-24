@@ -48,6 +48,7 @@ const BRIEF = [
   'Report each defect with file, line, claim and evidence: the file and line, what is wrong, and the input or state that shows it.',
   'Write only the JSON verdict to the verdict file named below, and nothing else there:',
   '  {"verdict":"pass"|"fail","findings":[{"file":"<path>","line":<n>,"claim":"<what is wrong>","evidence":"<what shows it>"}]}',
+  'Use "line":<n> for a line, and 0 for the file as a whole.',
   'A fail lists at least one defect. A pass lists, in the same shape, what you checked and found sound.',
   'If you cannot write files, make your final answer the JSON verdict alone; the command that runs you writes it there.',
   'change no file: do not edit, commit, push, or write to the tracker. The worktree is checked after you exit, and any change discards your verdict.',
@@ -155,16 +156,32 @@ function buildPrompt({ target, p, iss, reviewer, checks, diff, out }) {
 }
 
 // parseVerdict(text) -> { ok, verdict, findings } | { ok:false, error }
+// A reviewer may put prose around its JSON. Whole text first; else one candidate:
+// the last fenced block (```json or bare ```), else the first "{" to the last "}".
+function jsonCandidate(text) {
+  const s = String(text);
+  let fenced = null;
+  for (const m of s.matchAll(/```(?:json)?[ \t]*\r?\n([\s\S]*?)```/g)) fenced = m[1];
+  if (fenced !== null) return fenced;
+  const a = s.indexOf('{');
+  const b = s.lastIndexOf('}');
+  return a !== -1 && b > a ? s.slice(a, b + 1) : null;
+}
+
 function parseVerdict(text) {
   let v;
-  try { v = JSON.parse(text); } catch (e) { return { ok: false, error: `not JSON (${e.message})` }; }
+  try { v = JSON.parse(text); } catch (e) {
+    const cand = jsonCandidate(text);
+    if (cand === null) return { ok: false, error: `not JSON (${e.message}; no JSON candidate found)` };
+    try { v = JSON.parse(cand); } catch (e2) { return { ok: false, error: `not JSON (${e2.message})` }; }
+  }
   if (!v || typeof v !== 'object' || Array.isArray(v)) return { ok: false, error: 'not a JSON object' };
   if (v.verdict !== 'pass' && v.verdict !== 'fail') return { ok: false, error: `verdict ${JSON.stringify(v.verdict)} is not "pass" or "fail"` };
   if (!Array.isArray(v.findings)) return { ok: false, error: 'findings is not an array' };
   for (const [i, f] of v.findings.entries()) {
-    const ok = f && typeof f === 'object' && typeof f.file === 'string' && f.file.trim() && Number.isInteger(f.line) && f.line >= 1
+    const ok = f && typeof f === 'object' && typeof f.file === 'string' && f.file.trim() && Number.isInteger(f.line) && f.line >= 0
       && typeof f.claim === 'string' && f.claim.trim() && typeof f.evidence === 'string' && f.evidence.trim();
-    if (!ok) return { ok: false, error: `findings[${i}] is not {file, line >= 1, claim, evidence}, each non-empty` };
+    if (!ok) return { ok: false, error: `findings[${i}] is not {file, line >= 0, claim, evidence}, each non-empty` };
   }
   if (v.verdict === 'fail' && !v.findings.length) return { ok: false, error: 'a fail with no findings' };
   return { ok: true, verdict: v.verdict, findings: v.findings };
@@ -174,7 +191,7 @@ function parseVerdict(text) {
 // never forge a REVIEWED or VERIFIED stamp line.
 function findingLines(findings) {
   if (!findings.length) return '- (no findings listed)';
-  return findings.map(f => `- ${oneLine(f.file)}:${f.line} — ${oneLine(f.claim)}\n  evidence: ${clip(f.evidence, 1000)}`).join('\n');
+  return findings.map(f => `- ${oneLine(f.file)}${f.line === 0 ? '' : `:${f.line}`} — ${oneLine(f.claim)}\n  evidence: ${clip(f.evidence, 1000)}`).join('\n');
 }
 
 // stage(ctx) -> { requests: [{ session, next: 'review-failed', reason }], reviewing }
