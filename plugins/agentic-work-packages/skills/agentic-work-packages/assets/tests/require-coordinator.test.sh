@@ -46,6 +46,8 @@ passes_unset() {
 REFUSED=(
   'gh issue create --repo o/r --title x --label agent-ready'
   'gh issue create --repo o/r --title x'
+  'gh issue new --repo o/r --title x'
+  'gh -R o/r issue create --title x'
   'gh issue edit 5 --add-label worker:a'
   'gh issue edit 5 --remove-label cell:queued'
   'gh issue edit 5 --add-label agent-ready'

@@ -10,7 +10,7 @@
  * finds more work writes BLOCKER.md naming it, and the coordinator files it.
  *
  * Refused, when FLEET_WORKER_ID is set:
- *   - `gh issue create`, with any labels;
+ *   - `gh issue create` (or its alias `gh issue new`), with any labels;
  *   - `gh issue edit` with --add-label or --remove-label (also `--flag=value`,
  *     and comma lists) naming `agent-ready`, `cell:<x>` or `worker:<x>`;
  *   - `gh issue edit` with --body, -b, --body-file, -F, --title or -t, on any
@@ -53,6 +53,8 @@ const COORDINATOR_LABEL = /^(?:agent-ready|cell:.*|worker:.*)$/;
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const WRAPPERS = new Set(['command', 'exec', 'env', 'sudo', 'nohup', 'time']);
 const SEPARATORS = new Set([';', '&', '|', '(', ')', '`', '\n']);
+// `gh issue new` is gh's alias for `gh issue create`.
+const ISSUE_VERBS = new Set(['create', 'new', 'edit']);
 
 // Splits a command into segments of tokens, quote-aware. A segment is
 // { raw, tokens }: the text it came from, and its words with quotes removed.
@@ -119,10 +121,10 @@ function labelsCoordinator(value) {
 
 // Why this gh invocation is refused, or null.
 function judgeIssue(args) {
-  const at = args.findIndex((a, i) => a === 'issue' && (args[i + 1] === 'create' || args[i + 1] === 'edit'));
+  const at = args.findIndex((a, i) => a === 'issue' && ISSUE_VERBS.has(args[i + 1]));
   if (at < 0) return null;
   const verb = args[at + 1];
-  if (verb === 'create') return 'files an issue';
+  if (verb !== 'edit') return 'files an issue';
   const rest = args.slice(at + 2);
   for (let i = 0; i < rest.length; i++) {
     const t = rest[i];
