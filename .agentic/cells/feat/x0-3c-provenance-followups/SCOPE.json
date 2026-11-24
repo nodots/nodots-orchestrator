@@ -1,0 +1,36 @@
+{
+  "feature": "x0-3c-provenance-followups",
+  "project": "nodots-orchestrator",
+  "branch": "feat/x0-3c-provenance-followups",
+  "allowedPaths": [
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/tests/provenance.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/verify.js",
+    "plugins/fleet/src/tracker.js",
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/**",
+    "plugins/agentic-work-packages/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    ".claude/**",
+    "scripts/**",
+    "docs/**",
+    "evals/**"
+  ],
+  "dependsOn": [
+    "feat/x0-3b-provenance-hardening"
+  ],
+  "estimatedScope": "one test fixture and one alarm in the held-verify path",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
