@@ -330,7 +330,7 @@ assert_contains "$OUT" '"launched": []' "fleet launch of an external worker's pa
 OUT=$(fleet doctor 2>&1); EXIT=$?
 assert_contains "$OUT" "ok    sync-cells.sh supports --emit-state" "doctor confirms the plugin version"
 assert_contains "$OUT" "ok    sync-cells.sh supports --epic" "doctor confirms sync-cells can be scoped to the epic"
-assert_contains "$OUT" "FAIL  scope + handoff hooks committed in acme/api" "doctor flags a target without committed hooks"
+assert_contains "$OUT" "FAIL  worker file .claude/hooks/enforce-scope.js in acme/api" "doctor flags a target without committed hooks"
 assert_ne 0 "$EXIT" "doctor exits non-zero when a check fails"
 
 finish

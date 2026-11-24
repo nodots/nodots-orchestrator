@@ -1,0 +1,37 @@
+{
+  "feature": "h0-8-fleet-install",
+  "project": "nodots-orchestrator",
+  "branch": "feat/h0-8-fleet-install",
+  "allowedPaths": [
+    "plugins/fleet/src/install.js",
+    "plugins/fleet/bin/fleet.js",
+    "plugins/fleet/tests/install.test.sh",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/fleet/SKILL.md",
+    "plugins/fleet/tests/cycle.test.sh",
+    "plugins/fleet/tests/commit-identity.test.sh",
+    "plugins/fleet/tests/epic-scope.test.sh",
+    "plugins/fleet/tests/doctor-allow-rules.test.sh",
+    "plugins/fleet/tests/instructions-leak.test.sh",
+    "plugins/fleet/tests/integration-branch.test.sh",
+    "scripts/tests/gate-h-hardening.test.sh"
+  ],
+  "forbiddenPaths": [
+    ".github/**",
+    ".claude/**",
+    "scripts/test.sh",
+    "scripts/check-*",
+    "plugins/agentic-work-packages/**",
+    "plugins/fleet/src/launch.js",
+    "plugins/fleet/src/cycle.js",
+    "**/plugin.json"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one command module, doctor check, one test file, docs",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+test",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
