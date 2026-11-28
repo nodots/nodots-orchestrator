@@ -36,11 +36,11 @@ fixture_standards "$TMP/clone"
 # and the snippet's registrations as .claude/settings.json.
 node -e "
 const fs = require('fs'), path = require('path');
-const [plugin, clone] = process.argv.slice(1);
-for (const [dest, src] of require('$(cd .. && pwd -P)/src/install.js').COPIES) {
+const [install, plugin, clone] = process.argv.slice(1);
+for (const [dest, src] of require(install).COPIES) {
   fs.mkdirSync(path.dirname(path.join(clone, dest)), { recursive: true });
   fs.copyFileSync(path.join(plugin, src), path.join(clone, dest));
-}" "$PLUGIN" "$TMP/clone"
+}" "$(cd .. && pwd -P)/src/install.js" "$PLUGIN" "$TMP/clone"
 cp "$PLUGIN/skills/agentic-work-packages/assets/settings-snippet.json" "$TMP/clone/.claude/settings.json"
 git -C "$TMP/clone" add -A && git -C "$TMP/clone" commit -qm "fixture: hooks and contract" && git -C "$TMP/clone" push -q -u origin main
 

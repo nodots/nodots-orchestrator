@@ -110,7 +110,9 @@ git --git-dir "$TMP/remote.git" show "$BRANCH:.claude/hooks/require-coordinator.
 cmp -s "$TMP/got" "$PLUGIN/hooks/require-coordinator.js" && _pass "C: a bare target gets .claude/hooks/require-coordinator.js, byte-identical to the plugin's" \
   || _fail "C: a bare target gets .claude/hooks/require-coordinator.js, byte-identical to the plugin's" "missing or different on $BRANCH"
 # Every hook the snippet registers is a file the install writes.
-for h in $(grep -o '\.claude/hooks/[a-z-]*\.js' "$ASSETS/settings-snippet.json" | sort -u); do
+REGISTERED=$(grep -o '\.claude/hooks/[A-Za-z0-9_.-]*\.js' "$ASSETS/settings-snippet.json" | sort -u)
+assert_eq 4 "$(printf '%s\n' "$REGISTERED" | grep -c .)" "C: the snippet registers four hooks"
+for h in $REGISTERED; do
   git --git-dir "$TMP/remote.git" cat-file -e "$BRANCH:$h" 2>/dev/null && _pass "C: the registered hook $h is installed" \
     || _fail "C: the registered hook $h is installed" "settings-snippet.json registers $h; $BRANCH lacks it"
 done
