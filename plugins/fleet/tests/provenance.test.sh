@@ -290,6 +290,36 @@ assert_contains "$(jq_out "r.alarms.filter(a=>a.code==='label-foreign-actor'&&a.
 assert_not_contains ",$(alarm_issues label-foreign-actor)," ",12," "G: #12's latest agent-ready (coordinator, page 3) wins over jack's on page 1"
 assert_eq "12" "$(promoted)" "G: #12 is promoted, #11 is not"
 
+# G'. An `unlabeled` event is not a label write (X0.3c): a coordinator labeled
+# #11 agent-ready, jack unlabeled it, then a coordinator labeled worker:a. The
+# latest labeled agent-ready is the coordinator's, so #11 stays trusted. A
+# parser that counted jack's unlabeled as labeled would flag #11 here.
+UNLABELED11='{
+  "11":[{"event":"labeled","label":{"name":"agent-ready"},"actor":{"login":"coordinator"}},
+        {"event":"unlabeled","label":{"name":"agent-ready"},"actor":{"login":"jack"}},
+        {"event":"labeled","label":{"name":"worker:a"},"actor":{"login":"coordinator"}}]
+}'
+reset "$UNLABELED11"
+GH_STUB_TIMELINE_PAGE=2 cycle --apply
+assert_eq "" "$(alarm_issues label-actors-failed)" "G': every timeline parses"
+assert_not_contains ",$(alarm_issues label-foreign-actor)," ",11," "G': jack's unlabeled agent-ready on #11 is not a label write: #11 is not flagged"
+assert_contains ",$(promoted)," ",11," "G': #11 is promoted"
+# The fixture discriminates: a copy of fleet whose tracker.js counts
+# `unlabeled` as `labeled` flags #11 on the same fixture.
+MUT="$TMP/fleet-mutant"; cp -R "$(cd .. && pwd -P)" "$MUT"
+node -e '
+const fs = require("fs"), f = process.argv[1], s = fs.readFileSync(f, "utf8");
+const from = "e.event !== \x27labeled\x27 ||";
+if (!s.includes(from)) { console.log("anchor-missing"); process.exit(0); }
+fs.writeFileSync(f, s.replace(from, "(e.event !== \x27labeled\x27 && e.event !== \x27unlabeled\x27) ||"));
+console.log("mutated");
+' "$MUT/src/tracker.js" > "$TMP/mutant.out"
+assert_eq "mutated" "$(cat "$TMP/mutant.out")" "G': the mutant's tracker.js counts unlabeled as labeled"
+reset "$UNLABELED11"
+OUT=$(GH_STUB_TIMELINE_PAGE=2 node "$MUT/bin/fleet.js" cycle --apply --json --config "$TMP/fleet.config.json" 2>"$TMP/cycle.err")
+assert_contains "$(jq_out "r.alarms.filter(a=>a.code==='label-foreign-actor'&&a.issue===11).map(a=>a.detail).join()")" "T1.2 #11: agent-ready applied by jack" "G': the mutant flags #11 on jack's unlabeled, so G' fails against it"
+assert_not_contains ",$(promoted)," ",11," "G': the mutant does not promote #11"
+
 # --- H. verify skips held packages (X0.3b) ----------------------------------------
 PORT=$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")
 VDIR="$TMP/verifier"; mkdir -p "$VDIR"
@@ -376,5 +406,21 @@ assert_contains ",$(alarm_issues label-foreign-actor)," ",13," "H''': #13 is fla
 assert_contains "$(jq_out "r.alarms.map(a=>a.code).join(' ')")" "verify-not-reverted" "H''': the not-reverted run raises verify-not-reverted"
 assert_contains "$(node -e "console.log(JSON.stringify(require('$TMP/state/state.json').latched))")" "verify-not-reverted" "H''': the fleet is latched"
 assert_eq "0" "$(verified_on 200)" "H''': #200 is not stamped"
+
+# H''''. A held package's run whose status fetch fails raises verify-unreachable
+# and keeps the record, as the stage does for an unheld run (X0.3c).
+vscript "for (const k of Object.keys(s.results)) s.results[k].finished=true; s.results['200']={finished:false}"
+reset "$TRUST1314"; to_verify
+cycle --apply
+assert_eq "200" "$(inflight_pr)" "H'''': a run for trusted #13's PR #200 is in flight"
+FLEET_STUB_LOGIN=jack "$STUB/gh" issue edit 13 --repo acme/host --remove-label worker:a >/dev/null
+FLEET_STUB_LOGIN=jack "$STUB/gh" issue edit 13 --repo acme/host --add-label worker:a >/dev/null
+kill "$VPID" 2>/dev/null; wait "$VPID" 2>/dev/null; VPID=""
+cycle --apply
+assert_contains ",$(alarm_issues label-foreign-actor)," ",13," "H'''': #13 is flagged"
+assert_eq "13" "$(alarm_issues verify-unreachable)" "H'''': the failed status fetch of held #13's run raises verify-unreachable on #13"
+assert_contains "$(alarm_detail verify-unreachable)" "for PR #200 is kept" "H'''': the alarm detail has verify.js's shape: the run and PR, kept"
+assert_eq "200" "$(inflight_pr)" "H'''': the in-flight record is kept"
+assert_contains "$(jq_out "r.verify.filter(x=>x.pr===200).map(x=>x.action).join()")" "held" "H'''': the report still names the held run"
 
 finish

@@ -207,7 +207,9 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
     // set aside (the run still holds the lab), but the stage still retitles the
     // target's trusted PRs. One exception: a finished run that did not revert
     // the lab is not set aside, so the stage latches the fleet on it (that
-    // path writes nothing to the PR).
+    // path writes nothing to the PR). A status fetch that fails raises
+    // verify-unreachable, as the stage does for an unheld run, and the record
+    // is kept and set aside all the same.
     const verifyHeld = [];
     if (only === null && foreignHeld.size) {
       for (const t of cfg.targets) {
@@ -215,8 +217,10 @@ function runCycle(cfg, { apply = false, log = () => {} } = {}) {
         const vs = state.verify && state.verify[t.repo];
         const f = vs && vs.inFlight;
         if (!f || !foreignHeld.has(f.issue)) continue;
-        const g = verifyMod.request('GET', `${String(t.verify.url).replace(/\/+$/, '')}/runs/${encodeURIComponent(f.runId)}`);
+        const base = String(t.verify.url).replace(/\/+$/, '');
+        const g = verifyMod.request('GET', `${base}/runs/${encodeURIComponent(f.runId)}`);
         const rec = g.ok && g.status === 200 && g.json && typeof g.json === 'object' ? g.json : null;
+        if (!rec) alarm('verify-unreachable', `${g.ok ? `GET ${base}/runs/${f.runId} answered ${g.status}` : g.error}; run ${f.runId} for PR #${f.pr} is kept`, f.issue);
         if (rec && rec.finishedAt && (rec.verify || {}).reverted !== true) continue;
         verifyHeld.push({ repo: t.repo, vs, f });
         vs.inFlight = null;
