@@ -22,6 +22,7 @@ const SETTINGS = '.claude/settings.json';
 // it is merged, never copied.
 const COPIES = [
   ['.claude/hooks/enforce-scope.js', 'hooks/enforce-scope.js'],
+  ['.claude/hooks/require-coordinator.js', 'hooks/require-coordinator.js'],
   ['.claude/hooks/require-handoff.js', 'hooks/require-handoff.js'],
   ['.claude/hooks/standards-preamble.js', 'hooks/standards-preamble.js'],
   ['.claude/worker-contract.md', 'skills/agentic-work-packages/assets/worker-contract.md'],
