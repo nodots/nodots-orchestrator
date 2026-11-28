@@ -1,0 +1,35 @@
+{
+  "feature": "x0-5-install-every-hook",
+  "project": "nodots-orchestrator",
+  "branch": "fix/x0-5-install-every-hook",
+  "allowedPaths": [
+    "plugins/fleet/src/install.js",
+    "plugins/fleet/tests/install.test.sh",
+    "plugins/fleet/tests/doctor-provenance.test.sh"
+  ],
+  "forbiddenPaths": [
+    "plugins/fleet/src/cycle.js",
+    "plugins/fleet/src/tracker.js",
+    "plugins/fleet/src/config.js",
+    "plugins/fleet/bin/**",
+    "plugins/fleet/tests/stubs/**",
+    "plugins/fleet/README.md",
+    "plugins/fleet/skills/**",
+    "plugins/agentic-work-packages/**",
+    "**/plugin.json",
+    ".claude-plugin/**",
+    ".github/**",
+    ".claude/**",
+    "scripts/**",
+    "docs/**",
+    "evals/**"
+  ],
+  "dependsOn": [],
+  "estimatedScope": "one COPIES entry and two test fixtures",
+  "execution": {
+    "model": "default",
+    "pattern": "implement+review",
+    "window": "default; autocompact on",
+    "agents": []
+  }
+}
