@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # fleet install writes a target's worker files, and fleet doctor reports drift.
 #
-# The worker files are the three hooks under .claude/hooks/, the worker contract
+# The worker files are the four hooks under .claude/hooks/ (enforce-scope,
+# require-coordinator, require-handoff, standards-preamble), the worker contract
 # at .claude/worker-contract.md, and the hook registrations of the plugin's
-# settings-snippet.json in .claude/settings.json. fleet install compares each
+# settings-snippet.json in .claude/settings.json. Every hook the snippet
+# registers is a file install writes. fleet install compares each
 # with the target's base ref: the dry run lists add, update or same and writes
 # nothing; --apply cuts chore/install-agentic-work-packages-<version> from the
 # base ref in a worktree, commits once under the clone's identity, pushes, and
@@ -57,7 +59,7 @@ cat > "$TMP/fleet.config.json" <<JSON
 }
 JSON
 fleet() { node "$FLEET" "$@" --config "$TMP/fleet.config.json"; }
-FILES=".claude/hooks/enforce-scope.js .claude/hooks/require-handoff.js .claude/hooks/standards-preamble.js .claude/worker-contract.md .claude/settings.json"
+FILES=".claude/hooks/enforce-scope.js .claude/hooks/require-coordinator.js .claude/hooks/require-handoff.js .claude/hooks/standards-preamble.js .claude/worker-contract.md .claude/settings.json"
 src() {
   case "$1" in
     .claude/hooks/*) printf '%s/hooks/%s' "$PLUGIN" "${1#.claude/hooks/}" ;;
@@ -80,7 +82,7 @@ assert_eq 0 "$EXIT" "A: the dry run exits 0"
 for f in $FILES; do
   assert_contains "$OUT" "add    $f" "A: the dry run lists $f as add"
 done
-assert_eq 5 "$(printf '%s\n' "$OUT" | grep -c '^add ')" "A: five files to add"
+assert_eq 6 "$(printf '%s\n' "$OUT" | grep -c '^add ')" "A: six files to add"
 assert_eq "main " "$(remote_branches)" "A: the dry run pushes no branch"
 assert_empty "$(git -C "$TMP/clone" status --porcelain)" "A: the dry run writes nothing to the clone"
 assert_eq "" "$(git -C "$TMP/clone" branch --list "$BRANCH")" "A: the dry run creates no local branch"
@@ -104,6 +106,14 @@ for f in $FILES; do
   git --git-dir "$TMP/remote.git" show "$BRANCH:$f" > "$TMP/got" 2>/dev/null
   cmp -s "$TMP/got" "$(src "$f")" && _pass "C: $f matches the plugin byte for byte" || _fail "C: $f matches the plugin byte for byte" "$(src "$f")"
 done
+git --git-dir "$TMP/remote.git" show "$BRANCH:.claude/hooks/require-coordinator.js" > "$TMP/got" 2>/dev/null
+cmp -s "$TMP/got" "$PLUGIN/hooks/require-coordinator.js" && _pass "C: a bare target gets .claude/hooks/require-coordinator.js, byte-identical to the plugin's" \
+  || _fail "C: a bare target gets .claude/hooks/require-coordinator.js, byte-identical to the plugin's" "missing or different on $BRANCH"
+# Every hook the snippet registers is a file the install writes.
+for h in $(grep -o '\.claude/hooks/[a-z-]*\.js' "$ASSETS/settings-snippet.json" | sort -u); do
+  git --git-dir "$TMP/remote.git" cat-file -e "$BRANCH:$h" 2>/dev/null && _pass "C: the registered hook $h is installed" \
+    || _fail "C: the registered hook $h is installed" "settings-snippet.json registers $h; $BRANCH lacks it"
+done
 assert_contains "$OUT" "gh pr create --repo acme/api --base main --head $BRANCH" "C: --apply prints the gh pr create command"
 assert_eq '[]' "$(node -e "console.log(JSON.stringify(require('fs').existsSync('$TMP/gh/prs.json') ? JSON.parse(require('fs').readFileSync('$TMP/gh/prs.json','utf8')) : []))")" "C: --apply opens no PR"
 
@@ -116,9 +126,9 @@ assert_contains "$OUT" "$BRANCH" "D: the refusal names the branch"
 land
 L=$(doctor_lines)
 assert_empty "$(printf '%s\n' "$L" | grep '^FAIL')" "E: doctor passes every worker file on an installed target"
-assert_eq 8 "$(printf '%s\n' "$L" | grep -c '^ok ')" "E: five files and three registrations are ok"
+assert_eq 10 "$(printf '%s\n' "$L" | grep -c '^ok ')" "E: six files and four registrations are ok"
 OUT=$(fleet install --target acme/api 2>&1)
-assert_eq 5 "$(printf '%s\n' "$OUT" | grep -c '^same ')" "E: the dry run lists every file as same"
+assert_eq 6 "$(printf '%s\n' "$OUT" | grep -c '^same ')" "E: the dry run lists every file as same"
 HEAD_BEFORE=$(git --git-dir "$TMP/remote.git" rev-parse main)
 OUT=$(fleet install --target acme/api --apply 2>&1); EXIT=$?
 assert_eq 0 "$EXIT" "E: a second --apply with nothing changed exits 0"
@@ -134,7 +144,7 @@ assert_contains "$(printf '%s\n' "$L" | grep 'worker file .claude/hooks/require-
 assert_eq 1 "$(printf '%s\n' "$L" | grep -c '^FAIL')" "F: only the stale hook fails"
 OUT=$(fleet install --target acme/api 2>&1)
 assert_contains "$OUT" "update .claude/hooks/require-handoff.js" "F: the dry run lists the stale hook as update"
-assert_eq 4 "$(printf '%s\n' "$OUT" | grep -c '^same ')" "F: the other files are same"
+assert_eq 5 "$(printf '%s\n' "$OUT" | grep -c '^same ')" "F: the other files are same"
 OUT=$(fleet install --target acme/api --apply 2>&1); EXIT=$?
 assert_eq 0 "$EXIT" "F: --apply after the first install landed exits 0"
 land

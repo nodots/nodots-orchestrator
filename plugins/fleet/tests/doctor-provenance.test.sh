@@ -31,9 +31,17 @@ git -C "$TMP/clone" config user.email f@example.invalid; git -C "$TMP/clone" con
 printf '# api\n' > "$TMP/clone/README.md"
 git -C "$TMP/clone" add -A && git -C "$TMP/clone" commit -qm init
 fixture_standards "$TMP/clone"
-# Doctor's other checks pass, so its exit code moves only with provenance.
-printf '{"hooks": {"PreToolUse": [{"hooks": [{"command": "enforce-scope.js"}]}], "Stop": [{"hooks": [{"command": "require-handoff.js"}]}]}}\n' > "$TMP/clone/.claude/settings.json"
-printf '# contract\n' > "$TMP/clone/.claude/worker-contract.md"
+# Doctor's other checks pass, so its exit code moves only with provenance: the
+# fixture commits every worker file fleet install writes, copied from $PLUGIN,
+# and the snippet's registrations as .claude/settings.json.
+node -e "
+const fs = require('fs'), path = require('path');
+const [plugin, clone] = process.argv.slice(1);
+for (const [dest, src] of require('$(cd .. && pwd -P)/src/install.js').COPIES) {
+  fs.mkdirSync(path.dirname(path.join(clone, dest)), { recursive: true });
+  fs.copyFileSync(path.join(plugin, src), path.join(clone, dest));
+}" "$PLUGIN" "$TMP/clone"
+cp "$PLUGIN/skills/agentic-work-packages/assets/settings-snippet.json" "$TMP/clone/.claude/settings.json"
 git -C "$TMP/clone" add -A && git -C "$TMP/clone" commit -qm "fixture: hooks and contract" && git -C "$TMP/clone" push -q -u origin main
 
 STUB="$TMP/stub"; mkdir -p "$STUB" "$TMP/gh" "$TMP/claude-log"
